@@ -27,7 +27,10 @@ export default function LoginPage() {
 
       {/* Left Side */}
       <div className="hidden md:flex w-1/2 bg-graphite flex-col items-center justify-center p-12 relative z-10">
-        <h1 className="text-chestnut text-5xl font-bold mb-4">Drum Up</h1>
+        <div className="bg-white rounded-2xl p-3 mb-5">
+          <img src="/orange-drum-up.png" alt="Drum Up" className="w-20 h-20 object-contain" />
+        </div>
+        <h1 className="text-snow text-3xl font-black tracking-tight mb-4">Drum Up</h1>
         <p className="text-snow text-xl text-center mb-8">
           Connecting restaurants and live music
         </p>

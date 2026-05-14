@@ -6,7 +6,12 @@ export default function HomePage() {
 
       {/* Navbar */}
       <nav className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-8 py-6">
-        <h1 className="text-chestnut text-2xl font-bold">Drum Up</h1>
+        <div className="flex items-center gap-2.5">
+          <div className="bg-white rounded-lg p-1">
+            <img src="/orange-drum-up.png" alt="Drum Up" className="w-7 h-7 object-contain" />
+          </div>
+          <h1 className="text-snow text-xl font-black tracking-tight">Drum Up</h1>
+        </div>
         <div className="flex items-center gap-6">
           <Link href="#how-it-works" className="text-snow hover:text-chestnut transition-colors font-medium hidden md:inline">
             How It Works
@@ -311,7 +316,12 @@ export default function HomePage() {
       <footer className="bg-graphite border-t border-charcoal border-opacity-30 py-12 px-8">
         <div className="max-w-6xl mx-auto grid md:grid-cols-4 gap-8">
           <div>
-            <h3 className="text-chestnut text-xl font-bold mb-3">Drum Up</h3>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="bg-white rounded-lg p-1">
+                <img src="/orange-drum-up.png" alt="Drum Up" className="w-6 h-6 object-contain" />
+              </div>
+              <h3 className="text-snow text-lg font-black tracking-tight">Drum Up</h3>
+            </div>
             <p className="text-charcoal text-sm">Connecting restaurants and live music, one gig at a time.</p>
           </div>
           <div>
