@@ -15,14 +15,24 @@ export default function DashboardPage() {
   useEffect(() => {
     const checkUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      
+
       if (!user) {
         router.push('/auth/login')
         return
       }
 
-      const type = user.user_metadata?.user_type
-      setUserType(type || 'fan')
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id, user_type')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (!profile) {
+        router.push('/onboarding')
+        return
+      }
+
+      setUserType(profile.user_type || user.user_metadata?.user_type || 'fan')
       setLoading(false)
     }
     checkUser()
@@ -31,7 +41,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-snow flex items-center justify-center">
-        <p className="text-charcoal">Loading...</p>
+        <div className="w-12 h-12 border-4 border-chestnut border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }

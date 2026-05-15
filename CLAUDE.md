@@ -17,11 +17,12 @@ Drum Up is a two-sided marketplace platform (web + mobile) that connects restaur
 
 - **Framework:** Next.js 16 (App Router, TypeScript)
 - **Hosting:** Vercel (Hobby tier)
-- **Database & Auth:** Supabase
+- **Database & Auth:** Supabase (with PostGIS extension for location queries)
 - **Styling:** Tailwind CSS v3 with custom config
 - **Payments:** Stripe Connect (planned, not yet integrated)
 - **Messaging:** Stream or Sendbird (planned)
 - **Video:** Link to YouTube/Instagram for MVP, Cloudinary later
+- **Geocoding:** Google Places Autocomplete + Browser Geolocation API
 
 ---
 
@@ -46,12 +47,14 @@ Also: `#E8E4E0` is used as the darker right-side background on auth pages.
 - **Shadows over borders:** Use `shadow-sm` resting → `shadow-md` on hover/focus instead of borders on inputs and cards
 - **Cards:** White background, rounded-2xl, shadow-sm
 - **Buttons:** chestnut for primary, teal for secondary, with `font-bold`
+- **Logo:** DU monogram in chestnut. Located at `public/logo.png` (transparent bg). Use `next/image` to render. Always pair with "Drum Up" text in the navbar so first-time visitors know the brand name.
 
 ---
 
 ## Database Schema (Supabase)
 
 All tables have **Row Level Security (RLS) enabled**.
+PostGIS extension is enabled for location-based queries (`CREATE EXTENSION IF NOT EXISTS postgis;`).
 
 ### `profiles`
 Stores all users — restaurants, musicians, and fans.
@@ -62,7 +65,9 @@ Stores all users — restaurants, musicians, and fans.
 - `avatar_url` (text)
 - `bio` (text)
 - `user_type` (text) — `"restaurant"`, `"musician"`, or `"fan"`
-- `location` (text)
+- `location_text` (text) — human readable, e.g. "Philadelphia, PA"
+- `latitude` (numeric) — for distance calculations
+- `longitude` (numeric) — for distance calculations
 - `website` (text)
 - `instagram_url` (text)
 - `tiktok_url` (text)
@@ -80,6 +85,8 @@ Restaurants post open slots for musicians.
 - `description` (text)
 - `pay` (numeric)
 - `status` (text) — `"open"`, `"filled"`, `"cancelled"`
+- `latitude` (numeric)
+- `longitude` (numeric)
 
 ### `bookings`
 Confirmed gigs between restaurants and musicians. Tracks payment.
@@ -112,6 +119,75 @@ Tracks fans/users following restaurants and musicians.
 
 ---
 
+## Auth Flow
+
+1. User signs up via `/auth/signup` — selects user_type (restaurant/musician/fan)
+2. `user_type` saved to Supabase auth metadata via `options.data`
+3. Alternatively, user can sign up via Google OAuth (Supabase OAuth with `signInWithOAuth`)
+4. After signup → redirected to `/onboarding` (NOT dashboard)
+5. After onboarding complete → redirected to `/dashboard`
+6. On login, `/dashboard` reads `user.user_metadata.user_type`
+7. Routes user to RestaurantDashboard, MusicianDashboard, or FanDashboard
+8. Logout via `supabase.auth.signOut()` then `router.push('/')`
+
+**Note:** Email confirmation is currently disabled for development. Re-enable before going live.
+
+---
+
+## Onboarding Flow (`/onboarding`)
+
+Triggered immediately after signup, before the user ever sees the dashboard. Must be completed (or skipped) before accessing the app. Show a progress bar across all steps.
+
+### Step 1 — Basic Info (all user types)
+- Full name
+- Profile photo upload
+- Location (browser geolocation auto-detect OR manual Google Places autocomplete)
+
+### Step 2 — Role-Specific Info
+- **Restaurant:** venue name, capacity, cuisine type, typical music nights, photos
+- **Musician:** genre(s), instruments, solo/band, years performing, performance videos
+- **Fan:** favorite genres, favorite venues (keep it light and optional)
+
+### Step 3 — Social Links & Bio
+- Short bio / description
+- Instagram, TikTok, Spotify, YouTube links
+- Website URL
+
+**Key principles:**
+- Let users skip steps — partial profile > abandoned signup
+- Max 3 steps — don't overwhelm
+- Save progress as they go — don't lose data if they close the tab
+- On completion, create/update the `profiles` row in Supabase
+
+---
+
+## Location Strategy
+
+Location is critical to the entire app — musicians need to find nearby gigs, restaurants need to find nearby talent, fans need to discover local shows.
+
+### Two Layers
+1. **Profile location** — user's home base, set during onboarding, stored in `profiles` table
+2. **Browse/search location** — dynamic, defaults to profile location but can be changed. Users can search by city/zip with radius filter (10mi, 25mi, 50mi, 100mi)
+
+### How to Capture
+- **Primary:** Browser Geolocation API — one-click auto-detect during onboarding
+- **Fallback:** Google Places Autocomplete input — user types a city/address, returns coordinates automatically
+- Store both `location_text` (human readable) and `latitude`/`longitude` (for calculations)
+
+### Distance Queries
+Use PostGIS extension in Supabase for queries like "find all open gigs within 25 miles":
+```sql
+SELECT * FROM availability
+WHERE status = 'open'
+AND ST_DWithin(
+  ST_MakePoint(longitude, latitude)::geography,
+  ST_MakePoint(user_lng, user_lat)::geography,
+  40234  -- 25 miles in meters
+);
+```
+
+---
+
 ## Conventions
 
 - All client components must start with `'use client'`
@@ -120,18 +196,9 @@ Tracks fans/users following restaurants and musicians.
 - The Supabase URL and anon key are in `.env.local` (never commit this file)
 - Environment variables: `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - User type is stored in `auth.users.raw_user_meta_data.user_type` and must match the `user_type` column on the `profiles` row
-
----
-
-## Auth Flow
-
-1. User signs up via `/auth/signup` — selects user_type (restaurant/musician/fan)
-2. `user_type` saved to Supabase auth metadata via `options.data`
-3. On login, `/dashboard` reads `user.user_metadata.user_type`
-4. Routes user to RestaurantDashboard, MusicianDashboard, or FanDashboard
-5. Logout via `supabase.auth.signOut()` then `router.push('/')`
-
-**Note:** Email confirmation is currently disabled for development. Re-enable before going live.
+- Use TypeScript — files end in .tsx for components, .ts for utilities
+- Stick to the brand colors defined in tailwind.config.ts
+- Match the existing design system — shadows not borders, rounded-xl, Inter font
 
 ---
 
@@ -140,22 +207,27 @@ Tracks fans/users following restaurants and musicians.
 - ✅ Next.js project scaffolded and deployed to Vercel
 - ✅ Supabase connected with all 5 tables
 - ✅ Tailwind configured with brand colors
-- ✅ Homepage with hero, how-it-works, features, pricing, testimonials, footer
+- ✅ Homepage with hero, how-it-works, features, pricing, footer
 - ✅ Signup page with split screen layout and animated wave divider
 - ✅ Login page matching signup style
+- ✅ Google OAuth callback handler
 - ✅ Dashboard router that detects user_type
-- ✅ Three dashboard variants (restaurant, musician, fan) — basic shell
+- ✅ Three dashboard variants (restaurant, musician, fan) with bottom tab bar navigation
+- ✅ DU logo created and added to project
 
 ## What's Next
 
-- Instagram-style bottom tab navigation on dashboards
+- Onboarding flow (3-step profile setup after signup)
+- Location capture during onboarding (geolocation + Google Places)
+- PostGIS setup in Supabase for distance queries
 - Profile editing page for each user type
 - Availability posting form for restaurants
-- Browse/apply flow for musicians
+- Browse/apply flow for musicians with distance filtering
 - Feed view for fans
 - Direct messaging UI
 - Stripe Connect integration for payments
 - Reviews and ratings system
+- Apple OAuth (requires Apple Developer account)
 
 ---
 
@@ -166,3 +238,6 @@ Tracks fans/users following restaurants and musicians.
 - **Stick to the brand colors** defined in tailwind.config.ts
 - **Match the existing design system** — shadows not borders, rounded-xl, Inter font
 - **Use TypeScript** — files end in .tsx for components, .ts for utilities
+- **Location is required** — every profile needs location_text + lat/lng for the marketplace to work
+- **Onboarding before dashboard** — new users must go through onboarding first
+- **Logo usage** — always pair the DU monogram with "Drum Up" text in navigation

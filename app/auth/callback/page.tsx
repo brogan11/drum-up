@@ -17,15 +17,22 @@ function CallbackHandler() {
         const { data, error } = await supabase.auth.exchangeCodeForSession(code)
         if (!error && data.session && userType) {
           await supabase.auth.updateUser({ data: { user_type: userType } })
-          await supabase.from('profiles').upsert({
-            id: data.session.user.id,
-            user_type: userType,
-            full_name: data.session.user.user_metadata.full_name ?? '',
-            avatar_url: data.session.user.user_metadata.avatar_url ?? '',
-          })
         }
       }
-      router.push('/dashboard')
+
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push('/auth/login')
+        return
+      }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      router.push(profile ? '/dashboard' : '/onboarding')
     }
 
     handleCallback()
