@@ -2,7 +2,23 @@
 
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { eqBarStyle } from '@/lib/eq'
+import { WaveDivider } from '@/components/WaveDivider'
 import { useRouter } from 'next/navigation'
+
+const EQ_BARS = 28
+
+const DARK_PANEL_BG = `
+  radial-gradient(ellipse 60% 50% at 12% 10%, rgba(220, 127, 65, 0.18), transparent 70%),
+  radial-gradient(ellipse 60% 50% at 12% 90%, rgba(108, 154, 139, 0.13), transparent 70%),
+  #333333
+`
+
+const LIGHT_PANEL_BG = `
+  radial-gradient(ellipse 60% 50% at 88% 10%, rgba(220, 127, 65, 0.14), transparent 70%),
+  radial-gradient(ellipse 60% 50% at 88% 90%, rgba(108, 154, 139, 0.10), transparent 70%),
+  #E8E4E0
+`
 
 export default function LoginPage() {
   const router = useRouter()
@@ -10,6 +26,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
 
   const handleLogin = async () => {
     setLoading(true)
@@ -22,125 +39,147 @@ export default function LoginPage() {
     }
   }
 
+  const handleGoogleLogin = async () => {
+    setGoogleLoading(true)
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    })
+    if (error) {
+      setError(error.message)
+      setGoogleLoading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen flex relative overflow-hidden">
 
-      {/* Left Side */}
-      <div className="hidden md:flex w-1/2 bg-graphite flex-col items-center justify-center p-12 relative z-10">
-        <div className="bg-white rounded-2xl p-3 mb-5">
-          <img src="/orange-drum-up.png" alt="Drum Up" className="w-20 h-20 object-contain" />
+      {/* LEFT — dark stage panel */}
+      <div
+        className="hidden md:flex w-1/2 flex-col items-center justify-center p-12 relative z-10 overflow-hidden"
+        style={{ background: DARK_PANEL_BG }}
+      >
+
+        {/* Equalizer bars across the floor */}
+        <div className="absolute inset-x-0 bottom-0 top-1/2 flex items-end justify-around opacity-[0.12] pointer-events-none">
+          {Array.from({ length: EQ_BARS }).map((_, i) => (
+            <div
+              key={i}
+              className="eq-bar w-2 bg-chestnut rounded-t"
+              style={eqBarStyle(i, 7)}
+            />
+          ))}
         </div>
-        <h1 className="text-snow text-3xl font-black tracking-tight mb-4">Drum Up</h1>
-        <p className="text-snow text-xl text-center mb-8">
-          Connecting restaurants and live music
-        </p>
-        <div className="border-t border-charcoal w-16 mb-8" />
-        <div className="flex flex-col gap-4 text-snow text-sm">
-          <div className="flex items-center gap-3">
-            <span className="text-teal text-lg">♪</span>
-            <span>Musicians find venues looking for live music</span>
+
+        {/* Live indicator top-left */}
+        <div className="absolute top-8 left-8 flex items-center gap-2.5 z-10">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-chestnut opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-chestnut" />
+          </span>
+          <p className="text-teal text-[10px] font-bold uppercase tracking-[0.3em]">Live</p>
+        </div>
+
+        <div className="relative z-10 flex flex-col items-center max-w-md">
+          <div className="bg-white rounded-2xl p-3 mb-5 shadow-2xl">
+            <img src="/orange-drum-up.png" alt="Drum Up" className="w-20 h-20 object-contain" />
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-teal text-lg">🍽</span>
-            <span>Restaurants post availability and book talent</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-teal text-lg">★</span>
-            <span>Fans discover who is playing where tonight</span>
+          <h1 className="text-snow text-5xl font-black tracking-tight mb-4">Drum Up</h1>
+          <p className="text-snow/80 text-xl text-center mb-8 max-w-sm">
+            Connecting restaurants and live music
+          </p>
+          <div className="h-[3px] w-16 bg-chestnut mb-8 rounded-full" />
+
+          <div className="flex flex-col gap-3 w-full">
+            <div className="flex items-center gap-3 bg-white/5 backdrop-blur-sm rounded-2xl px-4 py-3 border border-white/10">
+              <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-chestnut/20 text-chestnut text-lg shrink-0">♪</span>
+              <span className="text-snow/90 text-sm">Musicians find venues looking for live music</span>
+            </div>
+            <div className="flex items-center gap-3 bg-white/5 backdrop-blur-sm rounded-2xl px-4 py-3 border border-white/10">
+              <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-teal/25 text-base shrink-0">🍽</span>
+              <span className="text-snow/90 text-sm">Restaurants post availability and book talent</span>
+            </div>
+            <div className="flex items-center gap-3 bg-white/5 backdrop-blur-sm rounded-2xl px-4 py-3 border border-white/10">
+              <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-chestnut/20 text-chestnut text-lg shrink-0">★</span>
+              <span className="text-snow/90 text-sm">Fans discover who is playing where tonight</span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Animated Wave Divider */}
-      <div className="hidden md:block absolute left-1/2 -translate-x-1/2 top-0 h-full z-20" style={{ width: '80px' }}>
-        <svg
-          width="80"
-          height="100%"
-          viewBox="0 0 80 900"
-          preserveAspectRatio="none"
-          xmlns="http://www.w3.org/2000/svg"
-          style={{ height: '100%', width: '100%' }}
-        >
-          <path
-            d="M40 0 C 65 15, 15 35, 40 50 C 65 65, 15 85, 40 100 C 65 115, 15 135, 40 150 C 65 165, 15 185, 40 200 C 65 215, 15 235, 40 250 C 65 265, 15 285, 40 300 C 65 315, 15 335, 40 350 C 65 365, 15 385, 40 400 C 65 415, 15 435, 40 450 C 65 465, 15 485, 40 500 C 65 515, 15 535, 40 550 C 65 565, 15 585, 40 600 C 65 615, 15 635, 40 650 C 65 665, 15 685, 40 700 C 65 715, 15 735, 40 750 C 65 765, 15 785, 40 800 C 65 815, 15 835, 40 850 C 65 865, 15 885, 40 900 C 65 915, 15 935, 40 950 C 65 965, 15 985, 40 1000 C 65 1015, 15 1035, 40 1050 L 80 1050 L 80 0 Z"
-            fill="#E8E4E0"
-          >
-            <animateTransform
-              attributeName="transform"
-              type="translate"
-              values="0 -150; 0 0"
-              dur="2s"
-              repeatCount="indefinite"
-            />
-          </path>
-          <path
-            d="M40 0 C 65 15, 15 35, 40 50 C 65 65, 15 85, 40 100 C 65 115, 15 135, 40 150 C 65 165, 15 185, 40 200 C 65 215, 15 235, 40 250 C 65 265, 15 285, 40 300 C 65 315, 15 335, 40 350 C 65 365, 15 385, 40 400 C 65 415, 15 435, 40 450 C 65 465, 15 485, 40 500 C 65 515, 15 535, 40 550 C 65 565, 15 585, 40 600 C 65 615, 15 635, 40 650 C 65 665, 15 685, 40 700 C 65 715, 15 735, 40 750 C 65 765, 15 785, 40 800 C 65 815, 15 835, 40 850 C 65 865, 15 885, 40 900 C 65 915, 15 935, 40 950 C 65 965, 15 985, 40 1000 C 65 1015, 15 1035, 40 1050 L 0 1050 L 0 0 Z"
-            fill="#333333"
-          >
-            <animateTransform
-              attributeName="transform"
-              type="translate"
-              values="0 -150; 0 0"
-              dur="2s"
-              repeatCount="indefinite"
-            />
-          </path>
-          <path
-            d="M40 0 C 65 15, 15 35, 40 50 C 65 65, 15 85, 40 100 C 65 115, 15 135, 40 150 C 65 165, 15 185, 40 200 C 65 215, 15 235, 40 250 C 65 265, 15 285, 40 300 C 65 315, 15 335, 40 350 C 65 365, 15 385, 40 400 C 65 415, 15 435, 40 450 C 65 465, 15 485, 40 500 C 65 515, 15 535, 40 550 C 65 565, 15 585, 40 600 C 65 615, 15 635, 40 650 C 65 665, 15 685, 40 700 C 65 715, 15 735, 40 750 C 65 765, 15 785, 40 800 C 65 815, 15 835, 40 850 C 65 865, 15 885, 40 900 C 65 915, 15 935, 40 950 C 65 965, 15 985, 40 1000 C 65 1015, 15 1035, 40 1050"
-            fill="none"
-            stroke="#DC7F41"
-            strokeWidth="2.5"
-          >
-            <animateTransform
-              attributeName="transform"
-              type="translate"
-              values="0 -150; 0 0"
-              dur="2s"
-              repeatCount="indefinite"
-            />
-          </path>
-        </svg>
-      </div>
+      <WaveDivider />
 
-      {/* Right Side */}
-      <div className="w-full md:w-1/2 bg-[#E8E4E0] flex items-center justify-center p-8 relative z-10">
-        <div className="w-full max-w-md">
-          <h2 className="text-graphite text-3xl font-bold mb-2">Welcome Back</h2>
-          <p className="text-charcoal mb-6">Log in to your Drum Up account</p>
+      {/* RIGHT — form panel */}
+      <div
+        className="w-full md:w-1/2 flex items-center justify-center p-8 relative z-10 overflow-hidden"
+        style={{ background: LIGHT_PANEL_BG }}
+      >
+        <div className="w-full max-w-md relative z-10">
+
+          {/* Top tag */}
+          <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.35em] mb-3">— Step Inside</p>
+
+          {/* Big bold headline using existing text */}
+          <h2 className="text-graphite text-5xl md:text-6xl font-black leading-[0.9] tracking-tight mb-3">
+            Welcome <span className="text-chestnut italic">Back.</span>
+          </h2>
+          <p className="text-charcoal mb-8 text-lg">Log in to your Drum Up account</p>
 
           {error && (
-            <p className="bg-red-100 text-red-600 p-3 rounded-xl mb-4">{error}</p>
+            <p className="bg-red-100 text-red-600 p-3 rounded-xl mb-4 text-sm">{error}</p>
           )}
 
-          <label className="block text-charcoal font-medium mb-2">Email</label>
+          <button
+            onClick={handleGoogleLogin}
+            disabled={googleLoading}
+            className="w-full flex items-center justify-center gap-3 bg-white py-3.5 rounded-xl font-bold shadow-sm hover:shadow-md transition-all disabled:opacity-50 text-graphite mb-4"
+          >
+            <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+            </svg>
+            {googleLoading ? 'Redirecting...' : 'Continue with Google'}
+          </button>
+
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex-1 h-px bg-charcoal/20" />
+            <span className="text-charcoal/60 text-xs uppercase tracking-widest font-bold">or</span>
+            <div className="flex-1 h-px bg-charcoal/20" />
+          </div>
+
+          <label className="block text-charcoal font-semibold text-sm mb-2">Email</label>
           <input
             type="email"
             placeholder="you@example.com"
             value={email}
             onChange={e => setEmail(e.target.value)}
-            className="w-full bg-white rounded-xl px-4 py-3 mb-4 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none"
+            className="w-full bg-white rounded-xl px-4 py-3.5 mb-4 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none"
           />
 
-          <label className="block text-charcoal font-medium mb-2">Password</label>
+          <label className="block text-charcoal font-semibold text-sm mb-2">Password</label>
           <input
             type="password"
             placeholder="Your password"
             value={password}
             onChange={e => setPassword(e.target.value)}
-            className="w-full bg-white rounded-xl px-4 py-3 mb-6 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none"
+            className="w-full bg-white rounded-xl px-4 py-3.5 mb-6 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none"
           />
 
           <button
             onClick={handleLogin}
             disabled={loading}
-            className="w-full bg-chestnut text-snow py-3 rounded-xl font-bold shadow-md hover:shadow-lg hover:opacity-90 transition-all disabled:opacity-50"
+            className="w-full bg-chestnut text-snow py-3.5 rounded-xl font-bold shadow-md hover:shadow-lg hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2 group"
           >
-            {loading ? 'Logging in...' : 'Log In'}
+            {loading ? 'Logging in...' : (<>Log In <span className="group-hover:translate-x-1 transition-transform">→</span></>)}
           </button>
 
-          <p className="text-center text-charcoal mt-6">
+          <p className="text-center text-charcoal mt-6 text-sm">
             Don't have an account?{' '}
-            <a href="/auth/signup" className="text-chestnut font-medium hover:underline">
+            <a href="/auth/signup" className="text-chestnut font-bold hover:underline">
               Sign up
             </a>
           </p>

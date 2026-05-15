@@ -1,241 +1,272 @@
 import Link from 'next/link'
+import { eqBarStyle } from '@/lib/eq'
+
+const EQ_BARS = 36
+const MARQUEE_WORDS = [
+  'ACOUSTIC SETS', 'JAZZ NIGHTS', 'BRUNCH SESSIONS', 'OPEN MIC',
+  'INDIE BANDS', 'SOLO ARTISTS', 'ROOFTOP SHOWS', 'SUNDAY BLUES',
+  'WINE & WAX', 'CAFE TUNES', 'SOUL DUOS', 'LATE-NIGHT KEYS',
+]
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-snow">
+    <div className="min-h-screen bg-snow overflow-x-hidden">
 
-      {/* Navbar */}
-      <nav className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-8 py-6">
-        <div className="flex items-center gap-2.5">
-          <div className="bg-white rounded-lg p-1">
-            <img src="/orange-drum-up.png" alt="Drum Up" className="w-7 h-7 object-contain" />
+      {/* NAV — sticky/blurred over hero */}
+      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md bg-graphite/85 border-b border-charcoal/20">
+        <div className="flex items-center justify-between px-6 md:px-8 py-4 max-w-7xl mx-auto">
+          <Link href="/" className="flex items-center gap-2.5">
+            <div className="bg-white rounded-lg p-1">
+              <img src="/orange-drum-up.png" alt="Drum Up" className="w-7 h-7 object-contain" />
+            </div>
+            <h1 className="text-snow text-xl font-black tracking-tight">Drum Up</h1>
+          </Link>
+          <div className="flex items-center gap-4 md:gap-6">
+            <Link href="#how" className="text-snow hover:text-chestnut transition-colors font-medium hidden md:inline">How It Works</Link>
+            <Link href="#features" className="text-snow hover:text-chestnut transition-colors font-medium hidden md:inline">Features</Link>
+            <Link href="#pricing" className="text-snow hover:text-chestnut transition-colors font-medium hidden md:inline">Pricing</Link>
+            <Link href="/auth/login" className="text-snow hover:text-chestnut transition-colors font-medium">Log In</Link>
+            <Link href="/auth/signup" className="bg-chestnut text-snow px-5 py-2 rounded-xl font-bold hover:opacity-90 transition-opacity shadow-md">Sign Up</Link>
           </div>
-          <h1 className="text-snow text-xl font-black tracking-tight">Drum Up</h1>
-        </div>
-        <div className="flex items-center gap-6">
-          <Link href="#how-it-works" className="text-snow hover:text-chestnut transition-colors font-medium hidden md:inline">
-            How It Works
-          </Link>
-          <Link href="#features" className="text-snow hover:text-chestnut transition-colors font-medium hidden md:inline">
-            Features
-          </Link>
-          <Link href="#pricing" className="text-snow hover:text-chestnut transition-colors font-medium hidden md:inline">
-            Pricing
-          </Link>
-          <Link href="/auth/login" className="text-snow hover:text-chestnut transition-colors font-medium">
-            Log In
-          </Link>
-          <Link href="/auth/signup" className="bg-chestnut text-snow px-5 py-2 rounded-xl font-bold hover:opacity-90 transition-opacity shadow-md">
-            Sign Up
-          </Link>
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <div className="relative min-h-screen bg-graphite flex items-center justify-center overflow-hidden">
-        
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute inset-0" style={{
-            backgroundImage: `radial-gradient(circle at 25% 50%, #DC7F41 0%, transparent 50%), 
-                             radial-gradient(circle at 75% 50%, #6C9A8B 0%, transparent 50%)`,
-          }} />
+      {/* HERO */}
+      <section className="relative min-h-screen bg-graphite overflow-hidden pt-32 pb-12 flex flex-col justify-center">
+
+        {/* Animated equalizer bars across the floor of the hero */}
+        <div className="absolute inset-x-0 bottom-0 top-1/3 flex items-end justify-around opacity-[0.12] pointer-events-none">
+          {Array.from({ length: EQ_BARS }).map((_, i) => (
+            <div
+              key={i}
+              className="eq-bar w-2 md:w-3 bg-chestnut rounded-t"
+              style={eqBarStyle(i, 11)}
+            />
+          ))}
         </div>
 
-        <div className="absolute top-20 left-20 w-64 h-64 rounded-full bg-chestnut opacity-5 blur-3xl" />
-        <div className="absolute bottom-20 right-20 w-96 h-96 rounded-full bg-teal opacity-5 blur-3xl" />
+        {/* Stage glows */}
+        <div className="absolute top-[20%] left-1/2 -translate-x-1/2 w-[900px] h-[900px] rounded-full bg-chestnut opacity-10 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-32 -left-32 w-[500px] h-[500px] rounded-full bg-teal opacity-10 blur-3xl pointer-events-none" />
+        <div className="absolute -top-20 -right-20 w-[500px] h-[500px] rounded-full bg-chestnut opacity-10 blur-3xl pointer-events-none" />
 
-        <div className="relative z-10 text-center px-8 max-w-4xl">
-          <p className="text-teal text-sm font-semibold uppercase tracking-widest mb-4">
-            The Live Music Booking Platform
+        <div className="relative z-10 px-6 md:px-8 max-w-7xl mx-auto w-full">
+
+          {/* Live indicator */}
+          <div className="flex items-center justify-center gap-3 mb-8">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-chestnut opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-chestnut" />
+            </span>
+            <p className="text-teal text-xs md:text-sm font-semibold uppercase tracking-[0.35em]">Live Music Booking, Reimagined</p>
+          </div>
+
+          {/* Marquee-style headline */}
+          <h2 className="text-center text-snow font-black leading-[0.85] tracking-tight">
+            <span className="block text-[16vw] md:text-[11vw]">BOOK THE</span>
+            <span className="block text-[16vw] md:text-[11vw] text-chestnut italic">SOUND</span>
+            <span className="block text-[16vw] md:text-[11vw]">OF TONIGHT.</span>
+          </h2>
+
+          <p className="text-snow/70 text-lg md:text-2xl mt-10 max-w-2xl mx-auto text-center">
+            Restaurants, musicians, fans — one app, one stage.
+            Drum Up is where local live music gets made.
           </p>
-          <h1 className="text-snow text-6xl md:text-7xl font-bold mb-6 leading-tight">
-            Where Restaurants
-            <span className="text-chestnut block">Meet Live Music</span>
-          </h1>
-          <p className="text-snow opacity-70 text-xl mb-10 max-w-2xl mx-auto">
-            Drum Up connects restaurants seeking live entertainment with talented musicians and bands — all in one place.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-            <Link href="/auth/signup" className="bg-chestnut text-snow px-8 py-4 rounded-xl font-bold text-lg hover:opacity-90 transition-opacity shadow-lg">
-              Get Started Free
+
+          <div className="flex flex-col sm:flex-row gap-4 justify-center mt-10">
+            <Link href="/auth/signup" className="bg-chestnut text-snow px-10 py-5 rounded-xl font-bold text-lg hover:opacity-90 transition-opacity shadow-lg inline-flex items-center justify-center gap-2 group">
+              Get on the Bill
+              <span className="group-hover:translate-x-1 transition-transform">→</span>
             </Link>
-            <Link href="#how-it-works" className="border border-snow border-opacity-30 text-snow px-8 py-4 rounded-xl font-bold text-lg hover:border-chestnut hover:text-chestnut transition-colors">
-              Learn More
+            <Link href="#how" className="border border-snow/30 text-snow px-10 py-5 rounded-xl font-bold text-lg hover:border-chestnut hover:text-chestnut transition-colors text-center">
+              See How It Works
             </Link>
           </div>
-
-          {/* Quick Stats */}
-          <div className="grid grid-cols-3 gap-8 max-w-2xl mx-auto pt-8 border-t border-charcoal border-opacity-30">
-            <div>
-              <p className="text-chestnut text-3xl font-bold">500+</p>
-              <p className="text-snow opacity-60 text-sm">Active Musicians</p>
-            </div>
-            <div>
-              <p className="text-chestnut text-3xl font-bold">200+</p>
-              <p className="text-snow opacity-60 text-sm">Partner Venues</p>
-            </div>
-            <div>
-              <p className="text-chestnut text-3xl font-bold">1,000+</p>
-              <p className="text-snow opacity-60 text-sm">Bookings Made</p>
-            </div>
-          </div>
         </div>
 
-        <div className="absolute bottom-0 left-0 right-0">
-          <svg viewBox="0 0 1440 80" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
-            <path d="M0 80 C 360 0, 1080 0, 1440 80 L1440 80 L0 80 Z" fill="#FCFAF9" />
-          </svg>
+        {/* Scroll hint */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-snow/40 text-xs uppercase tracking-[0.3em] font-semibold">
+          Scroll
+        </div>
+      </section>
+
+      {/* MARQUEE BAND */}
+      <div className="bg-chestnut py-5 overflow-hidden border-y-4 border-graphite">
+        <div className="marquee-track flex">
+          {Array.from({ length: 2 }).map((_, group) => (
+            <div key={group} className="flex shrink-0">
+              {MARQUEE_WORDS.map((t, i) => (
+                <span key={`${group}-${i}`} className="flex items-center gap-10 pr-10 text-snow font-black text-2xl md:text-3xl tracking-wider whitespace-nowrap">
+                  {t}
+                  <span className="text-graphite text-base">●</span>
+                </span>
+              ))}
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* How It Works */}
-      <div id="how-it-works" className="bg-snow py-24 px-8">
+      {/* HOW IT WORKS — tilted poster cards */}
+      <section id="how" className="bg-snow py-28 md:py-36 px-6 md:px-8 relative">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16 md:mb-20">
+            <p className="text-chestnut text-xs md:text-sm font-semibold uppercase tracking-[0.35em] mb-4">Three Sides of the Stage</p>
+            <h2 className="text-graphite text-4xl md:text-6xl font-black leading-tight">
+              Built for everyone <span className="text-chestnut italic">in the room.</span>
+            </h2>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8 md:gap-6">
+
+            {/* Restaurant */}
+            <div className="bg-graphite text-snow rounded-3xl p-8 md:p-10 shadow-xl md:rotate-[-2deg] hover:rotate-0 transition-transform duration-500">
+              <div className="text-chestnut text-6xl md:text-7xl font-black mb-4 leading-none">01</div>
+              <p className="text-teal text-[11px] uppercase tracking-[0.25em] font-bold mb-2">For Restaurants</p>
+              <h3 className="text-3xl font-black mb-3">Stage your venue.</h3>
+              <p className="opacity-75 mb-6">Post your open dates, browse profiles, lock in talent that fits your room.</p>
+              <ul className="text-sm space-y-2.5">
+                <li className="flex gap-2"><span className="text-chestnut">→</span> Post availability in minutes</li>
+                <li className="flex gap-2"><span className="text-chestnut">→</span> Verified musician profiles</li>
+                <li className="flex gap-2"><span className="text-chestnut">→</span> Pay securely in-app</li>
+                <li className="flex gap-2"><span className="text-chestnut">→</span> Build a trusted roster</li>
+              </ul>
+            </div>
+
+            {/* Musician — popped */}
+            <div className="bg-chestnut text-snow rounded-3xl p-8 md:p-10 shadow-2xl md:-translate-y-6 hover:-translate-y-10 transition-transform duration-500 relative">
+              <div className="absolute -top-3 -right-3 bg-graphite text-snow text-[10px] font-bold tracking-widest px-4 py-2 rounded-full shadow-md">★ HEADLINER</div>
+              <div className="text-snow text-6xl md:text-7xl font-black mb-4 leading-none">02</div>
+              <p className="text-graphite text-[11px] uppercase tracking-[0.25em] font-bold mb-2">For Musicians & Bands</p>
+              <h3 className="text-3xl font-black mb-3">Get more gigs.</h3>
+              <p className="opacity-95 mb-6">Build your profile, share your sound, find rooms hungry for live music.</p>
+              <ul className="text-sm space-y-2.5">
+                <li className="flex gap-2"><span className="text-graphite font-bold">→</span> Showcase videos & social links</li>
+                <li className="flex gap-2"><span className="text-graphite font-bold">→</span> Match with local venues</li>
+                <li className="flex gap-2"><span className="text-graphite font-bold">→</span> Get paid directly</li>
+                <li className="flex gap-2"><span className="text-graphite font-bold">→</span> Fill your calendar</li>
+              </ul>
+            </div>
+
+            {/* Fan */}
+            <div className="bg-teal text-snow rounded-3xl p-8 md:p-10 shadow-xl md:rotate-[2deg] hover:rotate-0 transition-transform duration-500">
+              <div className="text-graphite text-6xl md:text-7xl font-black mb-4 leading-none">03</div>
+              <p className="text-graphite text-[11px] uppercase tracking-[0.25em] font-bold mb-2">For Fans</p>
+              <h3 className="text-3xl font-black mb-3">Find your sound.</h3>
+              <p className="opacity-95 mb-6">Follow the spots and artists you love. Always know who's playing tonight.</p>
+              <ul className="text-sm space-y-2.5">
+                <li className="flex gap-2"><span className="text-graphite font-bold">→</span> Follow venues & artists</li>
+                <li className="flex gap-2"><span className="text-graphite font-bold">→</span> Live music near you, tonight</li>
+                <li className="flex gap-2"><span className="text-graphite font-bold">→</span> Discover local talent</li>
+                <li className="flex gap-2"><span className="text-graphite font-bold">→</span> Alerts before doors open</li>
+              </ul>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      {/* FEATURES — bento grid */}
+      <section id="features" className="bg-graphite py-28 md:py-36 px-6 md:px-8 relative overflow-hidden">
+
+        {/* Subtle rotating vinyl-ish decoration */}
+        <div className="absolute -right-40 top-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full border-2 border-chestnut/10 spin-slow pointer-events-none" />
+        <div className="absolute -right-40 top-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full border border-chestnut/5 spin-slow pointer-events-none" style={{ animationDirection: 'reverse' }} />
+
+        <div className="relative max-w-7xl mx-auto">
+          <div className="text-center mb-16 md:mb-20">
+            <p className="text-chestnut text-xs md:text-sm font-semibold uppercase tracking-[0.35em] mb-4">What's Inside</p>
+            <h2 className="text-snow text-4xl md:text-6xl font-black leading-tight">
+              Everything the night <span className="text-chestnut italic">needs.</span>
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-5 auto-rows-[190px]">
+
+            {/* Big chat mockup feature */}
+            <div className="md:col-span-4 md:row-span-2 bg-chestnut rounded-3xl p-8 md:p-10 shadow-xl relative overflow-hidden flex flex-col justify-between">
+              <div>
+                <p className="text-graphite text-[11px] uppercase tracking-[0.25em] font-bold mb-3">Direct Messaging</p>
+                <h3 className="text-snow text-3xl md:text-5xl font-black mb-3 leading-[0.95]">No more email tag.</h3>
+                <p className="text-snow/90 text-base md:text-lg max-w-md">Chat directly in-app. Lock in the gig in minutes — not days of back-and-forth.</p>
+              </div>
+              <div className="flex flex-col gap-3 mt-8 max-w-sm">
+                <div className="bg-snow text-graphite rounded-2xl rounded-bl-sm px-4 py-3 self-start shadow-md">
+                  <p className="text-[10px] uppercase tracking-widest text-charcoal mb-0.5">Venue</p>
+                  <p className="text-sm">Friday 8pm — acoustic set, indoor patio. Interested?</p>
+                </div>
+                <div className="bg-graphite text-snow rounded-2xl rounded-br-sm px-4 py-3 self-end shadow-md">
+                  <p className="text-sm">In. Sending my setlist tonight.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="md:col-span-2 bg-snow text-graphite rounded-3xl p-7 shadow-md flex flex-col justify-between">
+              <p className="text-chestnut text-[11px] uppercase tracking-[0.25em] font-bold">Smart Calendar</p>
+              <div>
+                <h3 className="text-2xl font-black mb-1">One view.</h3>
+                <p className="text-charcoal text-sm">Availability, requests, confirmed gigs — all together.</p>
+              </div>
+            </div>
+
+            <div className="md:col-span-2 bg-teal text-snow rounded-3xl p-7 shadow-md flex flex-col justify-between">
+              <p className="text-graphite text-[11px] uppercase tracking-[0.25em] font-bold">Secure Pay</p>
+              <div>
+                <h3 className="text-2xl font-black mb-1">Stripe, sorted.</h3>
+                <p className="opacity-95 text-sm">No cash apps, no chasing checks. Just paid.</p>
+              </div>
+            </div>
+
+            <div className="md:col-span-3 bg-snow text-graphite rounded-3xl p-7 shadow-md flex flex-col justify-between">
+              <p className="text-chestnut text-[11px] uppercase tracking-[0.25em] font-bold">Video Portfolios</p>
+              <div>
+                <h3 className="text-2xl font-black mb-1">Show, don't tell.</h3>
+                <p className="text-charcoal text-sm">Embed clips from YouTube & Instagram. Let your sound speak first.</p>
+              </div>
+            </div>
+
+            <div className="md:col-span-3 bg-graphite border border-chestnut/30 rounded-3xl p-7 flex flex-col justify-between">
+              <p className="text-chestnut text-[11px] uppercase tracking-[0.25em] font-bold">Local Discovery</p>
+              <div>
+                <h3 className="text-snow text-2xl font-black mb-1">Your zip, your stage.</h3>
+                <p className="text-snow/70 text-sm">Find rooms and artists right in your neighborhood.</p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      {/* PRICING */}
+      <section id="pricing" className="bg-snow py-28 md:py-36 px-6 md:px-8">
         <div className="max-w-6xl mx-auto">
-          <p className="text-chestnut text-sm font-semibold uppercase tracking-widest text-center mb-3">
-            How It Works
-          </p>
-          <h2 className="text-graphite text-4xl font-bold text-center mb-4">
-            Something for everyone
-          </h2>
-          <p className="text-charcoal text-lg text-center mb-16 max-w-2xl mx-auto">
-            Whether you're a venue, a performer, or a music lover, Drum Up brings live music to life.
-          </p>
-
-          <div className="grid md:grid-cols-3 gap-8">
-
-            <div className="bg-white rounded-2xl p-8 shadow-sm hover:shadow-md transition-shadow">
-              <div className="w-16 h-16 bg-graphite rounded-2xl flex items-center justify-center mb-6 shadow-md">
-                <span className="text-2xl">🍽</span>
-              </div>
-              <h3 className="text-graphite text-2xl font-bold mb-3">Restaurants</h3>
-              <p className="text-charcoal mb-6">Post your open dates and times when you want live music. Browse musician profiles and book the perfect talent for your venue.</p>
-              <ul className="text-charcoal text-sm space-y-3">
-                <li className="flex items-start gap-2"><span className="text-teal">✓</span> Post availability in minutes</li>
-                <li className="flex items-start gap-2"><span className="text-teal">✓</span> Browse verified musician profiles</li>
-                <li className="flex items-start gap-2"><span className="text-teal">✓</span> Book and pay securely in-app</li>
-                <li className="flex items-start gap-2"><span className="text-teal">✓</span> Build a roster of trusted performers</li>
-              </ul>
-            </div>
-
-            <div className="bg-white rounded-2xl p-8 shadow-sm hover:shadow-md transition-shadow">
-              <div className="w-16 h-16 bg-chestnut rounded-2xl flex items-center justify-center mb-6 shadow-md">
-                <span className="text-2xl">♪</span>
-              </div>
-              <h3 className="text-graphite text-2xl font-bold mb-3">Musicians & Bands</h3>
-              <p className="text-charcoal mb-6">Build your profile, showcase your work, and find restaurants actively looking for live music near you.</p>
-              <ul className="text-charcoal text-sm space-y-3">
-                <li className="flex items-start gap-2"><span className="text-teal">✓</span> Create a professional profile</li>
-                <li className="flex items-start gap-2"><span className="text-teal">✓</span> Share videos and social links</li>
-                <li className="flex items-start gap-2"><span className="text-teal">✓</span> Get paid securely through the app</li>
-                <li className="flex items-start gap-2"><span className="text-teal">✓</span> Grow your gigging schedule</li>
-              </ul>
-            </div>
-
-            <div className="bg-white rounded-2xl p-8 shadow-sm hover:shadow-md transition-shadow">
-              <div className="w-16 h-16 bg-teal rounded-2xl flex items-center justify-center mb-6 shadow-md">
-                <span className="text-2xl">★</span>
-              </div>
-              <h3 className="text-graphite text-2xl font-bold mb-3">Fans</h3>
-              <p className="text-charcoal mb-6">Follow your favorite restaurants and musicians. Always know who is playing where tonight in your city.</p>
-              <ul className="text-charcoal text-sm space-y-3">
-                <li className="flex items-start gap-2"><span className="text-teal">✓</span> Follow restaurants and artists</li>
-                <li className="flex items-start gap-2"><span className="text-teal">✓</span> See live music near you</li>
-                <li className="flex items-start gap-2"><span className="text-teal">✓</span> Discover new local talent</li>
-                <li className="flex items-start gap-2"><span className="text-teal">✓</span> Get notified of upcoming gigs</li>
-              </ul>
-            </div>
-
+          <div className="text-center mb-16">
+            <p className="text-chestnut text-xs md:text-sm font-semibold uppercase tracking-[0.35em] mb-4">Pricing</p>
+            <h2 className="text-graphite text-4xl md:text-6xl font-black mb-4 leading-tight">
+              Free to <span className="text-chestnut italic">play.</span>
+            </h2>
+            <p className="text-charcoal text-lg max-w-xl mx-auto">We only make money when you do. Upgrade only if you want the spotlight.</p>
           </div>
-        </div>
-      </div>
-
-      {/* Features Section */}
-      <div id="features" className="bg-[#E8E4E0] py-24 px-8">
-        <div className="max-w-6xl mx-auto">
-          <p className="text-chestnut text-sm font-semibold uppercase tracking-widest text-center mb-3">
-            Why Drum Up
-          </p>
-          <h2 className="text-graphite text-4xl font-bold text-center mb-16">
-            Built for the live music community
-          </h2>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
-              <div className="text-3xl mb-3">⚡</div>
-              <h3 className="text-graphite font-bold mb-2">Fast Booking</h3>
-              <p className="text-charcoal text-sm">Confirm gigs in minutes, not days. Skip the back-and-forth emails.</p>
-            </div>
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
-              <div className="text-3xl mb-3">💬</div>
-              <h3 className="text-graphite font-bold mb-2">Direct Messaging</h3>
-              <p className="text-charcoal text-sm">Chat directly with venues or musicians right in the app.</p>
-            </div>
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
-              <div className="text-3xl mb-3">🔒</div>
-              <h3 className="text-graphite font-bold mb-2">Secure Payments</h3>
-              <p className="text-charcoal text-sm">All transactions are protected through Stripe.</p>
-            </div>
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
-              <div className="text-3xl mb-3">📍</div>
-              <h3 className="text-graphite font-bold mb-2">Local Discovery</h3>
-              <p className="text-charcoal text-sm">Find venues and talent right in your neighborhood.</p>
-            </div>
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
-              <div className="text-3xl mb-3">⭐</div>
-              <h3 className="text-graphite font-bold mb-2">Reviews & Ratings</h3>
-              <p className="text-charcoal text-sm">Build trust with reviews from past gigs and venues.</p>
-            </div>
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
-              <div className="text-3xl mb-3">🎬</div>
-              <h3 className="text-graphite font-bold mb-2">Video Portfolios</h3>
-              <p className="text-charcoal text-sm">Musicians showcase their sound with embedded videos.</p>
-            </div>
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
-              <div className="text-3xl mb-3">📅</div>
-              <h3 className="text-graphite font-bold mb-2">Smart Calendar</h3>
-              <p className="text-charcoal text-sm">Manage availability and bookings all in one place.</p>
-            </div>
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
-              <div className="text-3xl mb-3">📱</div>
-              <h3 className="text-graphite font-bold mb-2">Mobile Friendly</h3>
-              <p className="text-charcoal text-sm">Manage your gigs on the go from any device.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Pricing Section */}
-      <div id="pricing" className="bg-snow py-24 px-8">
-        <div className="max-w-5xl mx-auto">
-          <p className="text-chestnut text-sm font-semibold uppercase tracking-widest text-center mb-3">
-            Pricing
-          </p>
-          <h2 className="text-graphite text-4xl font-bold text-center mb-4">
-            Simple, fair pricing
-          </h2>
-          <p className="text-charcoal text-lg text-center mb-16 max-w-2xl mx-auto">
-            Free to join, free to use. We only make money when you do.
-          </p>
 
           <div className="grid md:grid-cols-3 gap-6">
-            <div className="bg-white rounded-2xl p-8 shadow-sm">
-              <h3 className="text-graphite text-2xl font-bold mb-2">Free</h3>
-              <p className="text-chestnut text-4xl font-bold mb-1">$0</p>
-              <p className="text-charcoal text-sm mb-6">Forever</p>
+
+            <div className="bg-white rounded-3xl p-10 shadow-sm hover:shadow-md transition-shadow border-t-4 border-charcoal">
+              <p className="text-charcoal text-[11px] uppercase tracking-[0.25em] font-bold mb-2">Free</p>
+              <h3 className="text-graphite text-5xl font-black mb-1">$0</h3>
+              <p className="text-charcoal text-sm mb-8">Forever. No card.</p>
               <ul className="text-charcoal text-sm space-y-3">
                 <li className="flex items-start gap-2"><span className="text-teal">✓</span> Full profile creation</li>
                 <li className="flex items-start gap-2"><span className="text-teal">✓</span> Browse and message</li>
                 <li className="flex items-start gap-2"><span className="text-teal">✓</span> Book through the app</li>
-                <li className="flex items-start gap-2"><span className="text-charcoal opacity-50">×</span> Featured placement</li>
+                <li className="flex items-start gap-2 opacity-40"><span>×</span> Featured placement</li>
               </ul>
             </div>
 
-            <div className="bg-graphite rounded-2xl p-8 shadow-lg relative">
-              <span className="absolute top-4 right-4 bg-chestnut text-snow text-xs font-bold px-3 py-1 rounded-full">POPULAR</span>
-              <h3 className="text-snow text-2xl font-bold mb-2">Pro Musician</h3>
-              <p className="text-chestnut text-4xl font-bold mb-1">$12<span className="text-lg">/mo</span></p>
-              <p className="text-snow opacity-60 text-sm mb-6">Cancel anytime</p>
-              <ul className="text-snow opacity-90 text-sm space-y-3">
+            <div className="bg-graphite text-snow rounded-3xl p-10 shadow-2xl relative md:-translate-y-4 border-t-4 border-chestnut">
+              <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-chestnut text-snow text-[10px] font-bold tracking-widest px-4 py-1.5 rounded-full">MOST POPULAR</span>
+              <p className="text-chestnut text-[11px] uppercase tracking-[0.25em] font-bold mb-2">Pro Musician</p>
+              <h3 className="text-5xl font-black mb-1">$12<span className="text-xl opacity-60">/mo</span></h3>
+              <p className="opacity-60 text-sm mb-8">Cancel anytime.</p>
+              <ul className="text-sm space-y-3 opacity-95">
                 <li className="flex items-start gap-2"><span className="text-teal">✓</span> Everything in Free</li>
                 <li className="flex items-start gap-2"><span className="text-teal">✓</span> Unlimited video uploads</li>
                 <li className="flex items-start gap-2"><span className="text-teal">✓</span> Featured in search</li>
@@ -243,10 +274,10 @@ export default function HomePage() {
               </ul>
             </div>
 
-            <div className="bg-white rounded-2xl p-8 shadow-sm">
-              <h3 className="text-graphite text-2xl font-bold mb-2">Pro Venue</h3>
-              <p className="text-chestnut text-4xl font-bold mb-1">$25<span className="text-lg">/mo</span></p>
-              <p className="text-charcoal text-sm mb-6">Cancel anytime</p>
+            <div className="bg-white rounded-3xl p-10 shadow-sm hover:shadow-md transition-shadow border-t-4 border-teal">
+              <p className="text-teal text-[11px] uppercase tracking-[0.25em] font-bold mb-2">Pro Venue</p>
+              <h3 className="text-graphite text-5xl font-black mb-1">$25<span className="text-xl opacity-60">/mo</span></h3>
+              <p className="text-charcoal text-sm mb-8">Cancel anytime.</p>
               <ul className="text-charcoal text-sm space-y-3">
                 <li className="flex items-start gap-2"><span className="text-teal">✓</span> Everything in Free</li>
                 <li className="flex items-start gap-2"><span className="text-teal">✓</span> Unlimited postings</li>
@@ -256,64 +287,37 @@ export default function HomePage() {
             </div>
           </div>
 
-          <p className="text-center text-charcoal text-sm mt-8">
-            We also take a small 8% fee on bookings made through the platform.
-          </p>
+          <p className="text-center text-charcoal text-sm mt-10">+ 8% platform fee on bookings, paid by the venue at confirmation.</p>
         </div>
-      </div>
+      </section>
 
-      {/* Testimonials */}
-      <div className="bg-[#E8E4E0] py-24 px-8">
-        <div className="max-w-5xl mx-auto">
-          <p className="text-chestnut text-sm font-semibold uppercase tracking-widest text-center mb-3">
-            Testimonials
-          </p>
-          <h2 className="text-graphite text-4xl font-bold text-center mb-16">
-            Loved by the music community
-          </h2>
-
-          <div className="grid md:grid-cols-3 gap-6">
-            <div className="bg-white rounded-2xl p-8 shadow-sm">
-              <p className="text-chestnut text-2xl mb-3">"</p>
-              <p className="text-charcoal mb-6 italic">Drum Up has completely changed how we book live music. We've found incredible musicians we never would have discovered otherwise.</p>
-              <p className="text-graphite font-bold">Sarah M.</p>
-              <p className="text-charcoal text-sm">Restaurant Owner</p>
-            </div>
-            <div className="bg-white rounded-2xl p-8 shadow-sm">
-              <p className="text-chestnut text-2xl mb-3">"</p>
-              <p className="text-charcoal mb-6 italic">As a working musician, this app has been a game changer. I've doubled my gigs since signing up.</p>
-              <p className="text-graphite font-bold">James K.</p>
-              <p className="text-charcoal text-sm">Jazz Pianist</p>
-            </div>
-            <div className="bg-white rounded-2xl p-8 shadow-sm">
-              <p className="text-chestnut text-2xl mb-3">"</p>
-              <p className="text-charcoal mb-6 italic">Love being able to see who is playing where tonight. It's how I discover all my new favorite local artists.</p>
-              <p className="text-graphite font-bold">Mike R.</p>
-              <p className="text-charcoal text-sm">Live Music Fan</p>
-            </div>
-          </div>
+      {/* FINAL CTA */}
+      <section className="bg-graphite py-28 md:py-36 px-6 md:px-8 relative overflow-hidden">
+        <div className="absolute inset-x-0 bottom-0 top-1/4 flex items-end justify-around opacity-[0.10] pointer-events-none">
+          {Array.from({ length: EQ_BARS }).map((_, i) => (
+            <div
+              key={i}
+              className="eq-bar w-2 md:w-3 bg-teal rounded-t"
+              style={eqBarStyle(i, 29)}
+            />
+          ))}
         </div>
-      </div>
+        <div className="absolute -bottom-20 left-1/2 -translate-x-1/2 w-[700px] h-[700px] rounded-full bg-chestnut opacity-10 blur-3xl pointer-events-none" />
 
-      {/* CTA Section */}
-      <div className="bg-graphite py-24 px-8 text-center relative overflow-hidden">
-        <div className="absolute top-0 left-1/4 w-64 h-64 rounded-full bg-chestnut opacity-5 blur-3xl" />
-        <div className="absolute bottom-0 right-1/4 w-64 h-64 rounded-full bg-teal opacity-5 blur-3xl" />
-        <div className="relative z-10">
-          <h2 className="text-snow text-4xl md:text-5xl font-bold mb-4">
-            Ready to <span className="text-chestnut">Drum Up</span> some business?
+        <div className="relative z-10 text-center max-w-3xl mx-auto">
+          <h2 className="text-snow text-4xl md:text-7xl font-black leading-[0.95] mb-6">
+            The night is <span className="text-chestnut italic">waiting.</span>
           </h2>
-          <p className="text-snow opacity-70 text-lg mb-10 max-w-xl mx-auto">
-            Join hundreds of restaurants and musicians already connecting on Drum Up. Free to start, no credit card required.
-          </p>
-          <Link href="/auth/signup" className="bg-chestnut text-snow px-10 py-4 rounded-xl font-bold text-lg hover:opacity-90 transition-opacity shadow-lg inline-block">
-            Create Your Free Account
+          <p className="text-snow/70 text-lg md:text-xl mb-10">Sign up free. No card. No catch. Just music.</p>
+          <Link href="/auth/signup" className="bg-chestnut text-snow px-12 py-5 rounded-xl font-black text-lg hover:opacity-90 transition-opacity shadow-2xl inline-flex items-center gap-3 group">
+            Get on the Bill
+            <span className="group-hover:translate-x-1 transition-transform">→</span>
           </Link>
         </div>
-      </div>
+      </section>
 
-      {/* Footer */}
-      <footer className="bg-graphite border-t border-charcoal border-opacity-30 py-12 px-8">
+      {/* FOOTER */}
+      <footer className="bg-graphite border-t border-charcoal/30 py-12 px-6 md:px-8">
         <div className="max-w-6xl mx-auto grid md:grid-cols-4 gap-8">
           <div>
             <div className="flex items-center gap-2 mb-3">
@@ -322,12 +326,12 @@ export default function HomePage() {
               </div>
               <h3 className="text-snow text-lg font-black tracking-tight">Drum Up</h3>
             </div>
-            <p className="text-charcoal text-sm">Connecting restaurants and live music, one gig at a time.</p>
+            <p className="text-charcoal text-sm">Where Restaurants meet Live Music.</p>
           </div>
           <div>
             <h4 className="text-snow font-bold mb-3">Product</h4>
             <ul className="text-charcoal text-sm space-y-2">
-              <li><Link href="#how-it-works" className="hover:text-chestnut transition-colors">How It Works</Link></li>
+              <li><Link href="#how" className="hover:text-chestnut transition-colors">How It Works</Link></li>
               <li><Link href="#features" className="hover:text-chestnut transition-colors">Features</Link></li>
               <li><Link href="#pricing" className="hover:text-chestnut transition-colors">Pricing</Link></li>
             </ul>
@@ -335,9 +339,8 @@ export default function HomePage() {
           <div>
             <h4 className="text-snow font-bold mb-3">Company</h4>
             <ul className="text-charcoal text-sm space-y-2">
-              <li><Link href="#" className="hover:text-chestnut transition-colors">About Us</Link></li>
+              <li><Link href="#" className="hover:text-chestnut transition-colors">About</Link></li>
               <li><Link href="#" className="hover:text-chestnut transition-colors">Contact</Link></li>
-              <li><Link href="#" className="hover:text-chestnut transition-colors">Blog</Link></li>
             </ul>
           </div>
           <div>
@@ -348,8 +351,8 @@ export default function HomePage() {
             </ul>
           </div>
         </div>
-        <div className="max-w-6xl mx-auto mt-8 pt-8 border-t border-charcoal border-opacity-30 text-center">
-          <p className="text-charcoal text-sm">© 2025 Drum Up. All rights reserved.</p>
+        <div className="max-w-6xl mx-auto mt-8 pt-8 border-t border-charcoal/30 text-center">
+          <p className="text-charcoal text-sm">© 2026 Drum Up. All rights reserved.</p>
         </div>
       </footer>
 
