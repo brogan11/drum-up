@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { eqBarStyle } from '@/lib/eq'
 
 // ---- Types ----
 
@@ -226,17 +227,25 @@ export default function RestaurantDashboard() {
     <div className="min-h-screen bg-snow pb-24">
 
       {/* HEADER */}
-      <header className="sticky top-0 z-40 bg-snow/95 backdrop-blur-md border-b border-charcoal/10 px-5 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <img src="/orange-drum-up.png" alt="Drum Up" className="w-9 h-9 object-contain" />
-          <h1 className="text-graphite text-lg font-black tracking-tight">Drum Up</h1>
+      <header className="sticky top-0 z-40 backdrop-blur-md bg-graphite/95 border-b border-charcoal/30">
+        <div className="max-w-2xl mx-auto px-5 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="bg-white rounded-lg p-1">
+              <img src="/orange-drum-up.png" alt="Drum Up" className="w-6 h-6 object-contain" />
+            </div>
+            <h1 className="text-snow text-lg font-black tracking-tight">Drum Up</h1>
+            <span className="relative flex h-2 w-2 ml-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-chestnut opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-chestnut" />
+            </span>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="text-[11px] font-semibold uppercase tracking-[0.15em] text-snow/60 hover:text-chestnut transition-colors"
+          >
+            Log Out
+          </button>
         </div>
-        <button
-          onClick={handleLogout}
-          className="text-xs font-semibold text-charcoal hover:text-chestnut transition-colors bg-white border border-charcoal/10 px-3 py-1.5 rounded-lg"
-        >
-          Log Out
-        </button>
       </header>
 
       <main className="max-w-2xl mx-auto px-4 py-5">
@@ -244,35 +253,44 @@ export default function RestaurantDashboard() {
         {/* ---- HOME TAB ---- */}
         {activeTab === 'home' && (
           <>
-            {/* Profile strip */}
-            <div className="bg-graphite rounded-2xl p-5 shadow-md mb-5 flex items-center gap-4 relative overflow-hidden">
-              <div className="absolute -right-4 -top-4 w-20 h-20 bg-white/5 rounded-full pointer-events-none" />
-              <div className="absolute right-8 -bottom-6 w-14 h-14 bg-white/5 rounded-full pointer-events-none" />
-              <div className="w-14 h-14 rounded-xl bg-chestnut/20 border border-chestnut/20 flex items-center justify-center text-2xl shrink-0 relative z-10">🍽</div>
-              <div className="flex-1 min-w-0 relative z-10">
-                <p className="text-snow font-bold truncate">{profile.name}</p>
-                <p className="text-snow/50 text-xs truncate mt-0.5">{profile.type} · {profile.address}</p>
+            {/* Profile hero — mini stage */}
+            <div className="relative bg-graphite rounded-3xl overflow-hidden mb-6 shadow-xl">
+              <div className="absolute inset-x-0 bottom-0 top-1/2 flex items-end justify-around opacity-[0.10] pointer-events-none">
+                {Array.from({ length: 18 }).map((_, i) => (
+                  <div key={i} className="eq-bar w-1.5 bg-chestnut rounded-t" style={eqBarStyle(i, 7)} />
+                ))}
               </div>
-              <button
-                onClick={() => setPostSlotOpen(true)}
-                className="bg-chestnut text-snow px-4 py-2 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity shrink-0 relative z-10"
-              >
-                + Post Slot
-              </button>
+              <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-chestnut opacity-25 blur-2xl pointer-events-none" />
+              <div className="absolute -bottom-14 -left-10 w-36 h-36 rounded-full bg-teal opacity-15 blur-2xl pointer-events-none" />
+
+              <div className="relative z-10 p-5 flex items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-chestnut/20 border border-chestnut/30 flex items-center justify-center text-2xl shrink-0 shadow-inner">🍽</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">For Restaurants</p>
+                  <p className="text-snow font-black text-lg leading-tight truncate">{profile.name}</p>
+                  <p className="text-snow/50 text-xs truncate mt-0.5">{profile.type} · {profile.address}</p>
+                </div>
+                <button
+                  onClick={() => setPostSlotOpen(true)}
+                  className="bg-chestnut text-snow px-4 py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity shrink-0 shadow-lg"
+                >
+                  + Post Slot
+                </button>
+              </div>
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-4 gap-2.5 mb-6">
-              <StatCard value={openSlots} label="Open" color="text-teal" icon="🎵" bgColor="bg-teal/10" />
-              <StatCard value={pendingApps} label="Pending" color="text-chestnut" icon="📬" bgColor="bg-chestnut/10" />
-              <StatCard value={upcomingGigs} label="Booked" color="text-graphite" icon="✅" bgColor="bg-graphite/10" />
-              <StatCard value={pastGigs} label="Past" color="text-charcoal" icon="🕐" bgColor="bg-charcoal/10" />
+            {/* Stats — bigger, bolder */}
+            <div className="grid grid-cols-4 gap-2.5 mb-7">
+              <StatCard value={openSlots} label="Open" color="text-teal" icon="🎵" />
+              <StatCard value={pendingApps} label="Pending" color="text-chestnut" icon="📬" highlight />
+              <StatCard value={upcomingGigs} label="Booked" color="text-graphite" icon="✅" />
+              <StatCard value={pastGigs} label="Past" color="text-charcoal" icon="🕐" />
             </div>
 
             {/* Upcoming gigs */}
             {upcomingGigs > 0 && (
               <>
-                <SectionHeader title="Upcoming Gigs" />
+                <SectionHeader eyebrow="The Calendar" title="Upcoming" accent="Gigs." />
                 <div className="space-y-3 mb-6">
                   {slots.filter(s => s.status === 'booked').map(slot => {
                     const [, datePart] = slot.date.split(', ')
@@ -305,7 +323,7 @@ export default function RestaurantDashboard() {
             )}
 
             {/* Recent applications */}
-            <SectionHeader title="Recent Applications" />
+            <SectionHeader eyebrow="Inbox" title="Recent" accent="Applications." />
             {pendingApps === 0 ? (
               <EmptyState
                 icon="🎵"
@@ -355,8 +373,13 @@ export default function RestaurantDashboard() {
         {/* ---- SLOTS TAB ---- */}
         {activeTab === 'slots' && (
           <>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-graphite text-xl font-black">Your Slots</h2>
+            <div className="flex items-end justify-between mb-5 gap-3">
+              <div>
+                <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">Manage</p>
+                <h2 className="text-graphite text-3xl font-black tracking-tight leading-none">
+                  Your <span className="text-chestnut italic">Slots.</span>
+                </h2>
+              </div>
               <div className="flex items-center gap-2">
                 <div className="flex bg-white rounded-xl shadow-sm overflow-hidden border border-charcoal/10">
                   <button
@@ -413,7 +436,12 @@ export default function RestaurantDashboard() {
         {/* ---- BROWSE TAB: LIST ---- */}
         {activeTab === 'browse' && !selectedMusician && (
           <>
-            <h2 className="text-graphite text-xl font-black mb-4">Browse Musicians</h2>
+            <div className="mb-5">
+              <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">Talent Pool</p>
+              <h2 className="text-graphite text-3xl font-black tracking-tight leading-none">
+                Browse <span className="text-chestnut italic">Musicians.</span>
+              </h2>
+            </div>
             <div className="relative mb-4">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-charcoal/40 text-sm pointer-events-none">🔍</span>
               <input
@@ -494,7 +522,12 @@ export default function RestaurantDashboard() {
         {/* ---- MESSAGES TAB: CONVERSATION LIST ---- */}
         {activeTab === 'messages' && !selectedConv && (
           <>
-            <h2 className="text-graphite text-xl font-black mb-4">Messages</h2>
+            <div className="mb-5">
+              <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">Inbox</p>
+              <h2 className="text-graphite text-3xl font-black tracking-tight leading-none">
+                Your <span className="text-chestnut italic">Messages.</span>
+              </h2>
+            </div>
             {conversations.length === 0 ? (
               <EmptyState icon="💬" title="No messages yet" body="Browse musicians and reach out to start a conversation." />
             ) : (
@@ -563,27 +596,40 @@ export default function RestaurantDashboard() {
         {/* ---- PROFILE TAB ---- */}
         {activeTab === 'profile' && (
           <>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-graphite text-xl font-black">Venue Profile</h2>
+            <div className="flex items-end justify-between mb-5 gap-3">
+              <div>
+                <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">The Room</p>
+                <h2 className="text-graphite text-3xl font-black tracking-tight leading-none">
+                  Venue <span className="text-chestnut italic">Profile.</span>
+                </h2>
+              </div>
               {!editingProfile ? (
-                <button onClick={() => { setEditingProfile(true); setProfileDraft(profile) }} className="text-chestnut text-sm font-bold hover:underline">Edit</button>
+                <button onClick={() => { setEditingProfile(true); setProfileDraft(profile) }} className="text-chestnut text-sm font-bold hover:underline shrink-0">Edit</button>
               ) : (
-                <div className="flex gap-3">
+                <div className="flex gap-3 shrink-0">
                   <button onClick={() => setEditingProfile(false)} className="text-charcoal text-sm font-medium hover:underline">Cancel</button>
                   <button onClick={() => { setProfile(profileDraft); setEditingProfile(false) }} className="bg-chestnut text-snow px-4 py-1.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">Save</button>
                 </div>
               )}
             </div>
 
-            <div className="bg-graphite rounded-2xl p-6 shadow-md mb-4 flex flex-col items-center relative overflow-hidden">
-              <div className="absolute -right-4 -top-4 w-20 h-20 bg-white/5 rounded-full pointer-events-none" />
-              <div className="absolute right-10 -bottom-6 w-14 h-14 bg-white/5 rounded-full pointer-events-none" />
-              <div className="w-24 h-24 bg-chestnut/20 border-2 border-chestnut/20 rounded-2xl flex items-center justify-center text-5xl mb-3 relative z-10">🍽</div>
-              <p className="text-snow font-bold text-lg relative z-10">{profile.name}</p>
-              <p className="text-snow/50 text-sm relative z-10">{profile.type}</p>
-              {editingProfile && (
-                <button className="text-chestnut text-sm font-medium hover:underline mt-2 relative z-10">Change Photo</button>
-              )}
+            <div className="relative bg-graphite rounded-3xl overflow-hidden mb-4 shadow-xl">
+              <div className="absolute inset-x-0 bottom-0 top-1/2 flex items-end justify-around opacity-[0.10] pointer-events-none">
+                {Array.from({ length: 16 }).map((_, i) => (
+                  <div key={i} className="eq-bar w-1.5 bg-chestnut rounded-t" style={eqBarStyle(i, 31)} />
+                ))}
+              </div>
+              <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-72 h-72 rounded-full bg-chestnut opacity-15 blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-20 -right-10 w-40 h-40 rounded-full bg-teal opacity-15 blur-2xl pointer-events-none" />
+
+              <div className="relative z-10 p-8 flex flex-col items-center text-center">
+                <div className="w-24 h-24 bg-chestnut/20 border-2 border-chestnut/30 rounded-2xl flex items-center justify-center text-5xl mb-4 shadow-inner">🍽</div>
+                <p className="text-snow font-black text-2xl tracking-tight">{profile.name}</p>
+                <p className="text-snow/50 text-sm mt-1">{profile.type}</p>
+                {editingProfile && (
+                  <button className="text-chestnut text-xs font-bold uppercase tracking-[0.2em] mt-3 hover:underline">Change Photo</button>
+                )}
+              </div>
             </div>
 
             <div className="bg-white rounded-2xl p-5 shadow-sm space-y-4 mb-4">
@@ -606,8 +652,8 @@ export default function RestaurantDashboard() {
       </main>
 
       {/* ---- BOTTOM TAB BAR ---- */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-snow/95 backdrop-blur-md border-t border-charcoal/10 z-40">
-        <div className="max-w-2xl mx-auto grid grid-cols-5">
+      <nav className="fixed bottom-0 left-0 right-0 bg-graphite/95 backdrop-blur-md border-t border-charcoal/30 z-40">
+        <div className="max-w-2xl mx-auto grid grid-cols-5 px-2 py-2">
           <TabButton icon="🏠" label="Home" active={activeTab === 'home'} onClick={() => setActiveTab('home')} />
           <TabButton icon="📅" label="Slots" active={activeTab === 'slots'} onClick={() => setActiveTab('slots')} />
           <TabButton icon="🔍" label="Browse" active={activeTab === 'browse'} onClick={() => setActiveTab('browse')} />
@@ -619,10 +665,14 @@ export default function RestaurantDashboard() {
       {/* ---- POST SLOT MODAL ---- */}
       {postSlotOpen && (
         <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
-          <div className="bg-snow w-full max-w-md rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="bg-graphite rounded-t-2xl px-6 py-4 flex items-center justify-between">
-              <h3 className="text-snow text-lg font-black">Post a Slot</h3>
-              <button onClick={() => setPostSlotOpen(false)} className="text-snow/60 hover:text-snow transition-colors text-xl leading-none">✕</button>
+          <div className="bg-snow w-full max-w-md rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="bg-graphite rounded-t-3xl px-6 py-4 flex items-center justify-between relative overflow-hidden">
+              <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-chestnut opacity-25 blur-2xl pointer-events-none" />
+              <div className="relative z-10">
+                <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em]">New Listing</p>
+                <h3 className="text-snow text-xl font-black tracking-tight">Post a <span className="text-chestnut italic">Slot.</span></h3>
+              </div>
+              <button onClick={() => setPostSlotOpen(false)} className="text-snow/60 hover:text-snow transition-colors text-xl leading-none relative z-10">✕</button>
             </div>
             <div className="p-6">
               <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Date</label>
@@ -695,11 +745,14 @@ export default function RestaurantDashboard() {
 
 // ---- Sub-components ----
 
-function SectionHeader({ title }: { title: string }) {
+function SectionHeader({ title, eyebrow, accent }: { title: string; eyebrow?: string; accent?: string }) {
   return (
-    <div className="flex items-center gap-2.5 mb-3">
-      <div className="w-1 h-5 bg-chestnut rounded-full" />
-      <h3 className="text-graphite font-bold">{title}</h3>
+    <div className="mb-4 mt-2">
+      {eyebrow && <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">{eyebrow}</p>}
+      <h3 className="text-graphite text-2xl font-black tracking-tight leading-none">
+        {title}
+        {accent && <span className="text-chestnut italic"> {accent}</span>}
+      </h3>
     </div>
   )
 }
@@ -711,38 +764,57 @@ function EmptyState({ icon, title, body, action }: {
   action?: { label: string; onClick: () => void }
 }) {
   return (
-    <div className="bg-white rounded-2xl p-8 shadow-sm text-center">
-      <div className="w-16 h-16 bg-chestnut/10 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4">{icon}</div>
-      <p className="text-graphite font-bold mb-2">{title}</p>
-      <p className="text-charcoal text-sm leading-relaxed mb-4">{body}</p>
-      {action && (
-        <button onClick={action.onClick} className="bg-chestnut text-snow px-6 py-2.5 rounded-xl font-bold text-sm shadow-sm hover:opacity-90 transition-opacity">
-          {action.label}
-        </button>
-      )}
+    <div className="relative bg-graphite rounded-3xl overflow-hidden shadow-md">
+      <div className="absolute inset-x-0 bottom-0 top-2/3 flex items-end justify-around opacity-[0.08] pointer-events-none">
+        {Array.from({ length: 14 }).map((_, i) => (
+          <div key={i} className="eq-bar w-1.5 bg-chestnut rounded-t" style={eqBarStyle(i, 17)} />
+        ))}
+      </div>
+      <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-chestnut opacity-15 blur-2xl pointer-events-none" />
+
+      <div className="relative z-10 p-8 text-center">
+        <div className="w-16 h-16 bg-chestnut/20 border border-chestnut/30 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 shadow-inner">{icon}</div>
+        <p className="text-snow font-black text-lg mb-1.5 tracking-tight">{title}</p>
+        <p className="text-snow/60 text-sm leading-relaxed mb-5 max-w-xs mx-auto">{body}</p>
+        {action && (
+          <button onClick={action.onClick} className="bg-chestnut text-snow px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:opacity-90 transition-opacity">
+            {action.label} →
+          </button>
+        )}
+      </div>
     </div>
   )
 }
 
-function StatCard({ value, label, color, icon, bgColor }: { value: number; label: string; color: string; icon: string; bgColor: string }) {
+function StatCard({ value, label, color, icon, highlight }: { value: number | string; label: string; color: string; icon: string; highlight?: boolean }) {
+  if (highlight) {
+    return (
+      <div className="relative bg-chestnut rounded-2xl p-3 shadow-md overflow-hidden">
+        <span className="absolute -bottom-2 -right-1 text-4xl opacity-25 pointer-events-none select-none">{icon}</span>
+        <p className="text-snow text-2xl font-black tracking-tight leading-none">{value}</p>
+        <p className="text-snow/70 text-[9px] font-bold uppercase tracking-[0.2em] mt-2">{label}</p>
+      </div>
+    )
+  }
   return (
-    <div className="bg-white rounded-2xl p-3 shadow-sm text-center">
-      <div className={`w-9 h-9 ${bgColor} rounded-xl flex items-center justify-center mx-auto mb-2 text-lg`}>{icon}</div>
-      <p className={`text-xl font-black ${color}`}>{value}</p>
-      <p className="text-charcoal text-[10px] font-medium mt-0.5">{label}</p>
+    <div className="relative bg-white rounded-2xl p-3 shadow-sm overflow-hidden">
+      <span className="absolute -bottom-2 -right-1 text-4xl opacity-10 pointer-events-none select-none">{icon}</span>
+      <p className={`text-2xl font-black tracking-tight leading-none ${color}`}>{value}</p>
+      <p className="text-charcoal text-[9px] font-bold uppercase tracking-[0.2em] mt-2">{label}</p>
     </div>
   )
 }
 
 function TabButton({ icon, label, active, onClick, badge }: { icon: string; label: string; active: boolean; onClick: () => void; badge?: number }) {
   return (
-    <button onClick={onClick} className="py-3 flex flex-col items-center gap-0.5 transition-colors relative">
-      {active && <div className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 bg-chestnut rounded-full" />}
-      <span className="text-xl">{icon}</span>
-      <span className={`text-[10px] font-semibold ${active ? 'text-chestnut' : 'text-charcoal'}`}>{label}</span>
-      {badge != null && badge > 0 && (
-        <span className="absolute top-2 right-[calc(50%-14px)] w-4 h-4 bg-chestnut rounded-full text-[10px] text-snow font-bold flex items-center justify-center">{badge}</span>
-      )}
+    <button onClick={onClick} className="py-1 flex flex-col items-center gap-1 transition-colors relative">
+      <div className={`relative w-11 h-9 rounded-xl flex items-center justify-center transition-all ${active ? 'bg-chestnut shadow-md' : ''}`}>
+        <span className="text-lg leading-none">{icon}</span>
+        {badge != null && badge > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-chestnut border-2 border-graphite rounded-full text-[9px] text-snow font-bold flex items-center justify-center">{badge}</span>
+        )}
+      </div>
+      <span className={`text-[10px] font-semibold tracking-wide ${active ? 'text-chestnut' : 'text-snow/50'}`}>{label}</span>
     </button>
   )
 }

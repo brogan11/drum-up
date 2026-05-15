@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { eqBarStyle } from '@/lib/eq'
 
 // ---- Types ----
 
@@ -113,17 +114,25 @@ export default function FanDashboard() {
     <div className="min-h-screen bg-snow pb-24">
 
       {/* HEADER */}
-      <header className="sticky top-0 z-40 bg-snow/95 backdrop-blur-md border-b border-charcoal/10 px-5 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <img src="/orange-drum-up.png" alt="Drum Up" className="w-9 h-9 object-contain" />
-          <h1 className="text-graphite text-lg font-black tracking-tight">Drum Up</h1>
+      <header className="sticky top-0 z-40 backdrop-blur-md bg-graphite/95 border-b border-charcoal/30">
+        <div className="max-w-2xl mx-auto px-5 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="bg-white rounded-lg p-1">
+              <img src="/orange-drum-up.png" alt="Drum Up" className="w-6 h-6 object-contain" />
+            </div>
+            <h1 className="text-snow text-lg font-black tracking-tight">Drum Up</h1>
+            <span className="relative flex h-2 w-2 ml-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-chestnut opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-chestnut" />
+            </span>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="text-[11px] font-semibold uppercase tracking-[0.15em] text-snow/60 hover:text-chestnut transition-colors"
+          >
+            Log Out
+          </button>
         </div>
-        <button
-          onClick={handleLogout}
-          className="text-xs font-semibold text-charcoal hover:text-chestnut transition-colors bg-white border border-charcoal/10 px-3 py-1.5 rounded-lg"
-        >
-          Log Out
-        </button>
       </header>
 
       <main className="max-w-2xl mx-auto px-4 py-5">
@@ -131,36 +140,45 @@ export default function FanDashboard() {
         {/* ---- FEED TAB ---- */}
         {activeTab === 'feed' && (
           <>
-            {/* Profile strip */}
-            <div className="bg-graphite rounded-2xl p-5 shadow-md mb-5 flex items-center gap-4 relative overflow-hidden">
-              <div className="absolute -right-4 -top-4 w-20 h-20 bg-white/5 rounded-full pointer-events-none" />
-              <div className="absolute right-8 -bottom-6 w-14 h-14 bg-white/5 rounded-full pointer-events-none" />
-              <div className="w-14 h-14 rounded-xl bg-chestnut/20 border border-chestnut/20 flex items-center justify-center text-2xl shrink-0 relative z-10">★</div>
-              <div className="flex-1 min-w-0 relative z-10">
-                <p className="text-snow font-bold truncate">{profile.name}</p>
-                <p className="text-snow/50 text-xs mt-0.5 truncate">
-                  {profile.location || 'Set your location in Profile'}
-                </p>
+            {/* Profile hero — front row */}
+            <div className="relative bg-graphite rounded-3xl overflow-hidden mb-6 shadow-xl">
+              <div className="absolute inset-x-0 bottom-0 top-1/2 flex items-end justify-around opacity-[0.10] pointer-events-none">
+                {Array.from({ length: 18 }).map((_, i) => (
+                  <div key={i} className="eq-bar w-1.5 bg-teal rounded-t" style={eqBarStyle(i, 19)} />
+                ))}
               </div>
-              <button
-                onClick={() => setActiveTab('discover')}
-                className="bg-chestnut text-snow px-4 py-2 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity shrink-0 relative z-10"
-              >
-                Discover
-              </button>
+              <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-teal opacity-20 blur-2xl pointer-events-none" />
+              <div className="absolute -bottom-14 -left-10 w-36 h-36 rounded-full bg-chestnut opacity-20 blur-2xl pointer-events-none" />
+
+              <div className="relative z-10 p-5 flex items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-chestnut/20 border border-chestnut/30 flex items-center justify-center text-2xl shrink-0 shadow-inner">★</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">For Fans</p>
+                  <p className="text-snow font-black text-lg leading-tight truncate">{profile.name}</p>
+                  <p className="text-snow/50 text-xs mt-0.5 truncate">
+                    {profile.location || 'Set your location in Profile'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setActiveTab('discover')}
+                  className="bg-chestnut text-snow px-4 py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity shrink-0 shadow-lg"
+                >
+                  Discover
+                </button>
+              </div>
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-3 gap-2.5 mb-6">
-              <StatCard value={followingCount} label="Following" color="text-chestnut" icon="❤️" bgColor="bg-chestnut/10" />
-              <StatCard value={tonightShows.length} label="Tonight" color="text-teal" icon="🎶" bgColor="bg-teal/10" />
-              <StatCard value={upcomingShows.length} label="This Week" color="text-graphite" icon="📅" bgColor="bg-graphite/10" />
+            {/* Stats — tonight is the hero */}
+            <div className="grid grid-cols-3 gap-2.5 mb-7">
+              <StatCard value={followingCount} label="Following" color="text-chestnut" icon="❤️" />
+              <StatCard value={tonightShows.length} label="Tonight" color="text-teal" icon="🎶" highlight />
+              <StatCard value={upcomingShows.length} label="This Week" color="text-graphite" icon="📅" />
             </div>
 
             {/* Tonight */}
             {tonightShows.length > 0 && (
               <>
-                <SectionHeader title="Tonight" accent />
+                <SectionHeader eyebrow="Live" title="Playing" accent="Tonight." live />
                 <div className="space-y-3 mb-6">
                   {tonightShows.map(show => (
                     <ShowCard key={show.id} show={show} />
@@ -170,7 +188,7 @@ export default function FanDashboard() {
             )}
 
             {/* Upcoming this week */}
-            <SectionHeader title="Upcoming Shows" />
+            <SectionHeader eyebrow="The Feed" title="Upcoming" accent="Shows." />
             {feedShows.length === 0 ? (
               <EmptyState
                 icon="🎵"
@@ -197,7 +215,12 @@ export default function FanDashboard() {
         {/* ---- DISCOVER TAB ---- */}
         {activeTab === 'discover' && (
           <>
-            <h2 className="text-graphite text-xl font-black mb-4">Discover</h2>
+            <div className="mb-5">
+              <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">Local Scene</p>
+              <h2 className="text-graphite text-3xl font-black tracking-tight leading-none">
+                Find Your <span className="text-chestnut italic">Sound.</span>
+              </h2>
+            </div>
 
             {/* Segmented control */}
             <div className="flex bg-white rounded-xl shadow-sm overflow-hidden border border-charcoal/10 mb-4">
@@ -309,7 +332,12 @@ export default function FanDashboard() {
         {/* ---- FOLLOWING TAB ---- */}
         {activeTab === 'following' && (
           <>
-            <h2 className="text-graphite text-xl font-black mb-4">Following</h2>
+            <div className="mb-5">
+              <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">Your Lineup</p>
+              <h2 className="text-graphite text-3xl font-black tracking-tight leading-none">
+                You're <span className="text-chestnut italic">Following.</span>
+              </h2>
+            </div>
 
             {followingCount === 0 ? (
               <EmptyState
@@ -375,12 +403,17 @@ export default function FanDashboard() {
         {/* ---- PROFILE TAB ---- */}
         {activeTab === 'profile' && (
           <>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-graphite text-xl font-black">Your Profile</h2>
+            <div className="flex items-end justify-between mb-5 gap-3">
+              <div>
+                <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">Your Seat</p>
+                <h2 className="text-graphite text-3xl font-black tracking-tight leading-none">
+                  Your <span className="text-chestnut italic">Profile.</span>
+                </h2>
+              </div>
               {!editingProfile ? (
-                <button onClick={() => { setEditingProfile(true); setProfileDraft(profile) }} className="text-chestnut text-sm font-bold hover:underline">Edit</button>
+                <button onClick={() => { setEditingProfile(true); setProfileDraft(profile) }} className="text-chestnut text-sm font-bold hover:underline shrink-0">Edit</button>
               ) : (
-                <div className="flex gap-3">
+                <div className="flex gap-3 shrink-0">
                   <button onClick={() => setEditingProfile(false)} className="text-charcoal text-sm font-medium hover:underline">Cancel</button>
                   <button onClick={() => { setProfile(profileDraft); setEditingProfile(false) }} className="bg-chestnut text-snow px-4 py-1.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">Save</button>
                 </div>
@@ -388,25 +421,35 @@ export default function FanDashboard() {
             </div>
 
             {/* Hero card */}
-            <div className="bg-graphite rounded-2xl p-6 shadow-md mb-4 flex flex-col items-center relative overflow-hidden">
-              <div className="absolute -right-4 -top-4 w-20 h-20 bg-white/5 rounded-full pointer-events-none" />
-              <div className="absolute right-10 -bottom-6 w-14 h-14 bg-white/5 rounded-full pointer-events-none" />
-              <div className="w-24 h-24 bg-chestnut/20 border-2 border-chestnut/20 rounded-2xl flex items-center justify-center text-5xl mb-3 relative z-10">★</div>
-              <p className="text-snow font-bold text-lg relative z-10">{profile.name}</p>
-              {profile.location && (
-                <p className="text-snow/50 text-sm relative z-10 mt-0.5">📍 {profile.location}</p>
-              )}
+            <div className="relative bg-graphite rounded-3xl overflow-hidden mb-4 shadow-xl">
+              <div className="absolute inset-x-0 bottom-0 top-1/2 flex items-end justify-around opacity-[0.10] pointer-events-none">
+                {Array.from({ length: 16 }).map((_, i) => (
+                  <div key={i} className="eq-bar w-1.5 bg-teal rounded-t" style={eqBarStyle(i, 47)} />
+                ))}
+              </div>
+              <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-72 h-72 rounded-full bg-chestnut opacity-15 blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-20 -right-10 w-40 h-40 rounded-full bg-teal opacity-15 blur-2xl pointer-events-none" />
+
+              <div className="relative z-10 p-8 flex flex-col items-center text-center">
+                <div className="w-24 h-24 bg-chestnut/20 border-2 border-chestnut/30 rounded-2xl flex items-center justify-center text-5xl mb-4 shadow-inner">★</div>
+                <p className="text-snow font-black text-2xl tracking-tight">{profile.name}</p>
+                {profile.location && (
+                  <p className="text-snow/50 text-sm mt-1">📍 {profile.location}</p>
+                )}
+              </div>
             </div>
 
             {/* Stats summary */}
             <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className="bg-white rounded-2xl p-4 shadow-sm text-center">
-                <p className="text-chestnut text-2xl font-black">{followedVenueIds.size}</p>
-                <p className="text-charcoal text-xs font-medium mt-0.5">Venues Following</p>
+              <div className="relative bg-white rounded-2xl p-4 shadow-sm text-center overflow-hidden">
+                <span className="absolute -bottom-2 -right-1 text-4xl opacity-10 pointer-events-none select-none">🍽</span>
+                <p className="text-chestnut text-3xl font-black tracking-tight leading-none">{followedVenueIds.size}</p>
+                <p className="text-charcoal text-[10px] font-bold uppercase tracking-[0.2em] mt-2">Venues</p>
               </div>
-              <div className="bg-white rounded-2xl p-4 shadow-sm text-center">
-                <p className="text-chestnut text-2xl font-black">{followedMusicianIds.size}</p>
-                <p className="text-charcoal text-xs font-medium mt-0.5">Musicians Following</p>
+              <div className="relative bg-white rounded-2xl p-4 shadow-sm text-center overflow-hidden">
+                <span className="absolute -bottom-2 -right-1 text-4xl opacity-10 pointer-events-none select-none">♪</span>
+                <p className="text-chestnut text-3xl font-black tracking-tight leading-none">{followedMusicianIds.size}</p>
+                <p className="text-charcoal text-[10px] font-bold uppercase tracking-[0.2em] mt-2">Musicians</p>
               </div>
             </div>
 
@@ -447,8 +490,8 @@ export default function FanDashboard() {
       </main>
 
       {/* ---- BOTTOM TAB BAR ---- */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-snow/95 backdrop-blur-md border-t border-charcoal/10 z-40">
-        <div className="max-w-2xl mx-auto grid grid-cols-4">
+      <nav className="fixed bottom-0 left-0 right-0 bg-graphite/95 backdrop-blur-md border-t border-charcoal/30 z-40">
+        <div className="max-w-2xl mx-auto grid grid-cols-4 px-2 py-2">
           <TabButton icon="🎶" label="Feed"      active={activeTab === 'feed'}      onClick={() => setActiveTab('feed')} />
           <TabButton icon="🔍" label="Discover"  active={activeTab === 'discover'}  onClick={() => setActiveTab('discover')} />
           <TabButton icon="❤️" label="Following" active={activeTab === 'following'} onClick={() => setActiveTab('following')} badge={followingCount} />
@@ -494,14 +537,24 @@ function ShowCard({ show }: { show: Show }) {
   )
 }
 
-function SectionHeader({ title, accent }: { title: string; accent?: boolean }) {
+function SectionHeader({ title, eyebrow, accent, live }: { title: string; eyebrow?: string; accent?: string; live?: boolean }) {
   return (
-    <div className="flex items-center gap-2.5 mb-3">
-      <div className={`w-1 h-5 rounded-full ${accent ? 'bg-teal' : 'bg-chestnut'}`} />
-      <h3 className="text-graphite font-bold">{title}</h3>
-      {accent && (
-        <span className="bg-teal/10 text-teal text-[10px] font-black px-2 py-0.5 rounded-full tracking-widest uppercase">Live</span>
+    <div className="mb-4 mt-2">
+      {(eyebrow || live) && (
+        <div className="flex items-center gap-2 mb-1">
+          {live && (
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-teal" />
+            </span>
+          )}
+          {eyebrow && <p className={`text-[10px] font-semibold uppercase tracking-[0.3em] ${live ? 'text-teal' : 'text-chestnut'}`}>{eyebrow}</p>}
+        </div>
       )}
+      <h3 className="text-graphite text-2xl font-black tracking-tight leading-none">
+        {title}
+        {accent && <span className={`italic ${live ? 'text-teal' : 'text-chestnut'}`}> {accent}</span>}
+      </h3>
     </div>
   )
 }
@@ -513,31 +566,49 @@ function EmptyState({ icon, title, body, action }: {
   action?: { label: string; onClick: () => void }
 }) {
   return (
-    <div className="bg-white rounded-2xl p-8 shadow-sm text-center">
-      <div className="w-16 h-16 bg-chestnut/10 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4">{icon}</div>
-      <p className="text-graphite font-bold mb-2">{title}</p>
-      <p className="text-charcoal text-sm leading-relaxed mb-4">{body}</p>
-      {action && (
-        <button onClick={action.onClick} className="bg-chestnut text-snow px-6 py-2.5 rounded-xl font-bold text-sm shadow-sm hover:opacity-90 transition-opacity">
-          {action.label}
-        </button>
-      )}
+    <div className="relative bg-graphite rounded-3xl overflow-hidden shadow-md">
+      <div className="absolute inset-x-0 bottom-0 top-2/3 flex items-end justify-around opacity-[0.08] pointer-events-none">
+        {Array.from({ length: 14 }).map((_, i) => (
+          <div key={i} className="eq-bar w-1.5 bg-chestnut rounded-t" style={eqBarStyle(i, 29)} />
+        ))}
+      </div>
+      <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-chestnut opacity-15 blur-2xl pointer-events-none" />
+
+      <div className="relative z-10 p-8 text-center">
+        <div className="w-16 h-16 bg-chestnut/20 border border-chestnut/30 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 shadow-inner">{icon}</div>
+        <p className="text-snow font-black text-lg mb-1.5 tracking-tight">{title}</p>
+        <p className="text-snow/60 text-sm leading-relaxed mb-5 max-w-xs mx-auto">{body}</p>
+        {action && (
+          <button onClick={action.onClick} className="bg-chestnut text-snow px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:opacity-90 transition-opacity">
+            {action.label} →
+          </button>
+        )}
+      </div>
     </div>
   )
 }
 
-function StatCard({ value, label, color, icon, bgColor }: {
+function StatCard({ value, label, color, icon, highlight }: {
   value: number
   label: string
   color: string
   icon: string
-  bgColor: string
+  highlight?: boolean
 }) {
+  if (highlight) {
+    return (
+      <div className="relative bg-teal rounded-2xl p-3 shadow-md overflow-hidden">
+        <span className="absolute -bottom-2 -right-1 text-4xl opacity-25 pointer-events-none select-none">{icon}</span>
+        <p className="text-snow text-2xl font-black tracking-tight leading-none">{value}</p>
+        <p className="text-snow/80 text-[9px] font-bold uppercase tracking-[0.2em] mt-2">{label}</p>
+      </div>
+    )
+  }
   return (
-    <div className="bg-white rounded-2xl p-3 shadow-sm text-center">
-      <div className={`w-9 h-9 ${bgColor} rounded-xl flex items-center justify-center mx-auto mb-2 text-lg`}>{icon}</div>
-      <p className={`text-xl font-black ${color}`}>{value}</p>
-      <p className="text-charcoal text-[10px] font-medium mt-0.5">{label}</p>
+    <div className="relative bg-white rounded-2xl p-3 shadow-sm overflow-hidden">
+      <span className="absolute -bottom-2 -right-1 text-4xl opacity-10 pointer-events-none select-none">{icon}</span>
+      <p className={`text-2xl font-black tracking-tight leading-none ${color}`}>{value}</p>
+      <p className="text-charcoal text-[9px] font-bold uppercase tracking-[0.2em] mt-2">{label}</p>
     </div>
   )
 }
@@ -550,15 +621,16 @@ function TabButton({ icon, label, active, onClick, badge }: {
   badge?: number
 }) {
   return (
-    <button onClick={onClick} className="py-3 flex flex-col items-center gap-0.5 transition-colors relative">
-      {active && <div className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-0.5 bg-chestnut rounded-full" />}
-      <span className="text-xl">{icon}</span>
-      <span className={`text-[10px] font-semibold ${active ? 'text-chestnut' : 'text-charcoal'}`}>{label}</span>
-      {badge != null && badge > 0 && (
-        <span className="absolute top-2 right-[calc(50%-14px)] w-4 h-4 bg-chestnut rounded-full text-[10px] text-snow font-bold flex items-center justify-center">
-          {badge}
-        </span>
-      )}
+    <button onClick={onClick} className="py-1 flex flex-col items-center gap-1 transition-colors relative">
+      <div className={`relative w-11 h-9 rounded-xl flex items-center justify-center transition-all ${active ? 'bg-chestnut shadow-md' : ''}`}>
+        <span className="text-lg leading-none">{icon}</span>
+        {badge != null && badge > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-chestnut border-2 border-graphite rounded-full text-[9px] text-snow font-bold flex items-center justify-center">
+            {badge}
+          </span>
+        )}
+      </div>
+      <span className={`text-[10px] font-semibold tracking-wide ${active ? 'text-chestnut' : 'text-snow/50'}`}>{label}</span>
     </button>
   )
 }
