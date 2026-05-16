@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { eqBarStyle } from '@/lib/eq'
+import { milesBetween } from '@/lib/distance'
 import { Avatar } from '@/components/Avatar'
 
 // ---- Types ----
@@ -17,6 +18,7 @@ interface DiscoverVenue {
   location: string
   avatar: string
   nextShow: string | null
+  distance: string
 }
 
 interface DiscoverMusician {
@@ -25,6 +27,7 @@ interface DiscoverMusician {
   genres: string[]
   avatar: string
   bio: string
+  distance: string
 }
 
 interface Show {
@@ -47,11 +50,7 @@ interface FanProfile {
   avatar: string
 }
 
-// ---- Initial data ----
-
-const INITIAL_VENUES: DiscoverVenue[] = []
-const INITIAL_MUSICIANS: DiscoverMusician[] = []
-const INITIAL_SHOWS: Show[] = []
+const RADIUS_OPTIONS = [10, 25, 50, 100]
 const INITIAL_PROFILE: FanProfile = { name: 'Your Name', bio: '', location: '', avatar: '' }
 
 // ---- Main Component ----
@@ -60,21 +59,136 @@ export default function FanDashboard() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('feed')
 
-  const [venues] = useState<DiscoverVenue[]>(INITIAL_VENUES)
-  const [musicians] = useState<DiscoverMusician[]>(INITIAL_MUSICIANS)
-  const [shows] = useState<Show[]>(INITIAL_SHOWS)
+  const [venues, setVenues] = useState<DiscoverVenue[]>([])
+  const [musicians, setMusicians] = useState<DiscoverMusician[]>([])
+  const [shows, setShows] = useState<Show[]>([])
 
-  const [followedVenueIds, setFollowedVenueIds] = useState<Set<string>>(new Set())
-  const [followedMusicianIds, setFollowedMusicianIds] = useState<Set<string>>(new Set())
+  const [followedIds, setFollowedIds] = useState<Set<string>>(new Set())
 
   const [discoverView, setDiscoverView] = useState<DiscoverView>('venues')
   const [discoverSearch, setDiscoverSearch] = useState('')
+  const [discoverRadius, setDiscoverRadius] = useState(25)
+  const [discoverLoading, setDiscoverLoading] = useState(false)
+  const [fanCoords, setFanCoords] = useState<{ lat: number | null; lon: number | null }>({ lat: null, lon: null })
 
   const [profile, setProfile] = useState<FanProfile>(INITIAL_PROFILE)
   const [editingProfile, setEditingProfile] = useState(false)
   const [profileDraft, setProfileDraft] = useState<FanProfile>(INITIAL_PROFILE)
   const [userId, setUserId] = useState('')
   const [savingProfile, setSavingProfile] = useState(false)
+
+  const loadShows = useCallback(async () => {
+    const today = new Date().toISOString().slice(0, 10)
+
+    // Step 1: confirmed bookings (needs bk_select_confirmed_public RLS policy)
+    const { data: bookingsData, error: bookingsErr } = await supabase
+      .from('bookings')
+      .select('id, restaurant_id, musician_id, availability_id')
+      .eq('status', 'confirmed')
+    if (bookingsErr) { console.error('[Feed] bookings error:', bookingsErr.message); return }
+    if (!bookingsData || bookingsData.length === 0) return
+
+    // Step 2: fetch availability rows directly (avoids FK-join dependency)
+    const availIds = [...new Set(bookingsData.map(b => b.availability_id))]
+    const { data: availData, error: availErr } = await supabase
+      .from('availability')
+      .select('id, date, start_time, end_time, genres')
+      .in('id', availIds)
+      .gte('date', today)
+    if (availErr) { console.error('[Feed] availability error:', availErr.message); return }
+    if (!availData || availData.length === 0) return
+
+    const availById = new Map(availData.map(a => [a.id, a]))
+    const upcoming = bookingsData.filter(b => availById.has(b.availability_id))
+    if (upcoming.length === 0) return
+
+    // Step 3: venue + musician profiles
+    const venueIds = [...new Set(upcoming.map(b => b.restaurant_id))]
+    const musicianIds = [...new Set(upcoming.map(b => b.musician_id))]
+    const [{ data: venueProfiles }, { data: musicianProfiles }] = await Promise.all([
+      supabase.from('profiles').select('id, full_name, avatar_url, role_metadata').in('id', venueIds),
+      supabase.from('profiles').select('id, full_name').in('id', musicianIds),
+    ])
+    const venueById = new Map((venueProfiles ?? []).map(v => [v.id, v]))
+    const musicianById = new Map((musicianProfiles ?? []).map(m => [m.id, m]))
+
+    const fmtTime = (t: string) => {
+      if (!t) return ''
+      const [h, m] = t.split(':').map(Number)
+      return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
+    }
+
+    const mapped: Show[] = upcoming.map(b => {
+      const a = availById.get(b.availability_id)!
+      const venue = venueById.get(b.restaurant_id)
+      const musician = musicianById.get(b.musician_id)
+      const meta = (venue?.role_metadata ?? {}) as Record<string, unknown>
+      const rawDate = a.date ?? ''
+      const dateLabel = rawDate
+        ? new Date(rawDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+        : ''
+      return {
+        id: b.id,
+        venueId: b.restaurant_id,
+        venueName: (meta.venue_name as string | undefined) ?? venue?.full_name ?? 'Venue',
+        venueAvatar: venue?.avatar_url ?? '',
+        musicianName: musician?.full_name ?? 'Musician',
+        date: dateLabel,
+        rawDate,
+        time: `${fmtTime(a.start_time?.slice(0, 5) ?? '')} – ${fmtTime(a.end_time?.slice(0, 5) ?? '')}`,
+        genres: Array.isArray(a.genres) ? (a.genres as string[]) : [],
+        isTonight: rawDate === today,
+      }
+    }).sort((a, b) => a.rawDate.localeCompare(b.rawDate))
+
+    setShows(mapped)
+  }, [])
+
+  const loadDiscover = useCallback(async (lat: number, lon: number, radius: number, uid: string) => {
+    setDiscoverLoading(true)
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, full_name, user_type, avatar_url, bio, location_text, latitude, longitude, role_metadata')
+      .in('user_type', ['restaurant', 'musician'])
+      .neq('id', uid)
+
+    if (!profiles) { setDiscoverLoading(false); return }
+
+    const inRange = profiles
+      .filter(p => p.latitude != null && p.longitude != null)
+      .map(p => ({ ...p, dist: milesBetween(lat, lon, p.latitude as number, p.longitude as number) }))
+      .filter(p => p.dist <= radius)
+      .sort((a, b) => a.dist - b.dist)
+
+    const newVenues: DiscoverVenue[] = []
+    const newMusicians: DiscoverMusician[] = []
+    for (const p of inRange) {
+      const meta = (p.role_metadata ?? {}) as Record<string, unknown>
+      if (p.user_type === 'restaurant') {
+        newVenues.push({
+          id: p.id,
+          name: (meta.venue_name as string | undefined) ?? p.full_name ?? 'Venue',
+          type: (meta.cuisine_type as string | undefined) ?? '',
+          location: p.location_text ?? '',
+          avatar: p.avatar_url ?? '',
+          nextShow: null,
+          distance: `${p.dist.toFixed(1)} mi`,
+        })
+      } else {
+        newMusicians.push({
+          id: p.id,
+          name: p.full_name ?? 'Musician',
+          genres: Array.isArray(meta.genres) ? (meta.genres as string[]) : [],
+          avatar: p.avatar_url ?? '',
+          bio: p.bio ?? '',
+          distance: `${p.dist.toFixed(1)} mi`,
+        })
+      }
+    }
+    setVenues(newVenues)
+    setMusicians(newMusicians)
+    setDiscoverLoading(false)
+  }, [])
 
   useEffect(() => {
     const load = async () => {
@@ -90,9 +204,24 @@ export default function FanDashboard() {
         location: data.location_text ?? '',
         avatar: data.avatar_url ?? '',
       })
+      const lat = data.latitude as number | null
+      const lon = data.longitude as number | null
+      setFanCoords({ lat, lon })
+
+      const { data: followsData } = await supabase
+        .from('follows').select('following_id').eq('follower_id', user.id)
+      if (followsData) setFollowedIds(new Set(followsData.map(f => f.following_id)))
+
+      await loadShows()
+      if (lat != null && lon != null) loadDiscover(lat, lon, 25, user.id)
     }
     load()
-  }, [])
+  }, [loadDiscover, loadShows])
+
+  useEffect(() => {
+    if (fanCoords.lat == null || fanCoords.lon == null || !userId) return
+    loadDiscover(fanCoords.lat, fanCoords.lon, discoverRadius, userId)
+  }, [discoverRadius, fanCoords, userId, loadDiscover])
 
   const saveProfile = async () => {
     if (!userId) return
@@ -116,29 +245,24 @@ export default function FanDashboard() {
     router.push('/')
   }
 
-  const toggleFollowVenue = (id: string) => {
-    setFollowedVenueIds(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
-  }
-
-  const toggleFollowMusician = (id: string) => {
-    setFollowedMusicianIds(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
+  const toggleFollow = async (id: string) => {
+    if (!userId) return
+    if (followedIds.has(id)) {
+      await supabase.from('follows').delete().eq('follower_id', userId).eq('following_id', id)
+      setFollowedIds(prev => { const next = new Set(prev); next.delete(id); return next })
+    } else {
+      await supabase.from('follows').insert({ follower_id: userId, following_id: id })
+      setFollowedIds(prev => new Set([...prev, id]))
+    }
   }
 
   // Derived
-  const followingCount = followedVenueIds.size + followedMusicianIds.size
-  const feedShows = shows.filter(s => followedVenueIds.has(s.venueId))
+  const followingCount = followedIds.size
+  const feedShows = shows.filter(s => followedIds.has(s.venueId))
   const tonightShows = feedShows.filter(s => s.isTonight)
   const upcomingShows = feedShows.filter(s => !s.isTonight)
-  const followedVenues = venues.filter(v => followedVenueIds.has(v.id))
-  const followedMusicians = musicians.filter(m => followedMusicianIds.has(m.id))
+  const followedVenues = venues.filter(v => followedIds.has(v.id))
+  const followedMusicians = musicians.filter(m => followedIds.has(m.id))
 
   const filteredVenues = venues.filter(v => {
     const q = discoverSearch.toLowerCase()
@@ -150,7 +274,7 @@ export default function FanDashboard() {
   })
 
   return (
-    <div className="min-h-screen bg-snow pb-24">
+    <div className="min-h-screen pb-24" style={{ background: 'radial-gradient(ellipse 50% 40% at 12% 8%, rgba(108,154,139,0.10), transparent 70%), radial-gradient(ellipse 50% 40% at 88% 92%, rgba(220,127,65,0.12), transparent 70%), #E8E4E0' }}>
 
       {/* HEADER */}
       <header className="sticky top-0 z-40 backdrop-blur-md bg-graphite/95 border-b border-charcoal/30">
@@ -271,20 +395,47 @@ export default function FanDashboard() {
               </h2>
             </div>
 
+            {/* No location warning */}
+            {fanCoords.lat == null && (
+              <div className="bg-chestnut/10 border border-chestnut/20 rounded-2xl p-4 mb-5 text-sm text-chestnut font-medium">
+                📍 Set your location in Profile to discover nearby venues and musicians.
+              </div>
+            )}
+
             {/* Segmented control */}
             <div className="flex bg-white rounded-xl shadow-sm overflow-hidden border border-charcoal/10 mb-4">
               <button
                 onClick={() => { setDiscoverView('venues'); setDiscoverSearch('') }}
                 className={`flex-1 py-2.5 text-sm font-bold transition-all ${discoverView === 'venues' ? 'bg-graphite text-snow' : 'text-charcoal hover:bg-snow'}`}
               >
-                🍽 Venues
+                🍽 Venues {discoverView === 'venues' && !discoverLoading && `(${filteredVenues.length})`}
               </button>
               <button
                 onClick={() => { setDiscoverView('musicians'); setDiscoverSearch('') }}
                 className={`flex-1 py-2.5 text-sm font-bold transition-all ${discoverView === 'musicians' ? 'bg-graphite text-snow' : 'text-charcoal hover:bg-snow'}`}
               >
-                ♪ Musicians
+                ♪ Musicians {discoverView === 'musicians' && !discoverLoading && `(${filteredMusicians.length})`}
               </button>
+            </div>
+
+            {/* Radius picker */}
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-charcoal text-xs font-semibold uppercase tracking-wide shrink-0">Within</span>
+              <div className="flex gap-1.5 flex-wrap">
+                {RADIUS_OPTIONS.map(r => (
+                  <button
+                    key={r}
+                    onClick={() => setDiscoverRadius(r)}
+                    className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                      discoverRadius === r
+                        ? 'bg-teal text-snow shadow-sm'
+                        : 'bg-white text-charcoal shadow-sm hover:bg-snow'
+                    }`}
+                  >
+                    {r} mi
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Search */}
@@ -298,82 +449,94 @@ export default function FanDashboard() {
               />
             </div>
 
-            {/* Venues list */}
-            {discoverView === 'venues' && (
-              filteredVenues.length === 0 ? (
-                <EmptyState
-                  icon="🍽"
-                  title="No venues yet"
-                  body="Venues join Drum Up to post live music nights. Check back as the community grows."
-                />
-              ) : (
-                <div className="space-y-3">
-                  {filteredVenues.map(v => {
-                    const isFollowing = followedVenueIds.has(v.id)
-                    return (
-                      <div key={v.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-4">
-                        <Avatar src={v.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-graphite font-bold text-sm">{v.name}</p>
-                          <p className="text-charcoal text-xs">{v.type} · {v.location}</p>
-                          {v.nextShow && (
-                            <p className="text-chestnut text-xs font-semibold mt-0.5">Next show: {v.nextShow}</p>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => toggleFollowVenue(v.id)}
-                          className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                            isFollowing
-                              ? 'bg-chestnut/10 text-chestnut hover:bg-red-50 hover:text-red-500'
-                              : 'bg-chestnut text-snow hover:opacity-90'
-                          }`}
-                        >
-                          {isFollowing ? 'Following' : '+ Follow'}
-                        </button>
-                      </div>
-                    )
-                  })}
+            {discoverLoading ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <div className="flex gap-1">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="eq-bar w-2 bg-chestnut rounded-t" style={eqBarStyle(i, 7)} />
+                  ))}
                 </div>
-              )
-            )}
-
-            {/* Musicians list */}
-            {discoverView === 'musicians' && (
-              filteredMusicians.length === 0 ? (
-                <EmptyState
-                  icon="♪"
-                  title="No musicians yet"
-                  body="Musicians join Drum Up to book gigs. They'll appear here as the community grows."
-                />
-              ) : (
-                <div className="space-y-3">
-                  {filteredMusicians.map(m => {
-                    const isFollowing = followedMusicianIds.has(m.id)
-                    return (
-                      <div key={m.id} className="bg-white rounded-2xl p-4 shadow-sm">
-                        <div className="flex items-center gap-4 mb-2">
-                          <Avatar src={m.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" bg="bg-chestnut/10" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-graphite font-bold text-sm">{m.name}</p>
-                            <p className="text-charcoal text-xs">{m.genres.join(' · ')}</p>
+                <p className="text-charcoal text-sm font-medium">Finding local music…</p>
+              </div>
+            ) : (
+              <>
+                {/* Venues list */}
+                {discoverView === 'venues' && (
+                  filteredVenues.length === 0 ? (
+                    <EmptyState
+                      icon="🍽"
+                      title="No venues nearby"
+                      body={fanCoords.lat == null ? 'Set your location in Profile to find venues.' : `No venues found within ${discoverRadius} miles. Try a larger radius.`}
+                    />
+                  ) : (
+                    <div className="space-y-3">
+                      {filteredVenues.map(v => {
+                        const isFollowing = followedIds.has(v.id)
+                        return (
+                          <div key={v.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-4">
+                            <Avatar src={v.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-graphite font-bold text-sm">{v.name}</p>
+                              <p className="text-charcoal text-xs">{[v.type, v.location].filter(Boolean).join(' · ')}</p>
+                              <p className="text-teal text-xs font-semibold mt-0.5">📍 {v.distance}</p>
+                            </div>
+                            <button
+                              onClick={() => toggleFollow(v.id)}
+                              className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                                isFollowing
+                                  ? 'bg-chestnut/10 text-chestnut hover:bg-red-50 hover:text-red-500'
+                                  : 'bg-chestnut text-snow hover:opacity-90'
+                              }`}
+                            >
+                              {isFollowing ? 'Following' : '+ Follow'}
+                            </button>
                           </div>
-                          <button
-                            onClick={() => toggleFollowMusician(m.id)}
-                            className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                              isFollowing
-                                ? 'bg-chestnut/10 text-chestnut hover:bg-red-50 hover:text-red-500'
-                                : 'bg-chestnut text-snow hover:opacity-90'
-                            }`}
-                          >
-                            {isFollowing ? 'Following' : '+ Follow'}
-                          </button>
-                        </div>
-                        {m.bio && <p className="text-charcoal text-xs leading-relaxed pl-16">{m.bio}</p>}
-                      </div>
-                    )
-                  })}
-                </div>
-              )
+                        )
+                      })}
+                    </div>
+                  )
+                )}
+
+                {/* Musicians list */}
+                {discoverView === 'musicians' && (
+                  filteredMusicians.length === 0 ? (
+                    <EmptyState
+                      icon="♪"
+                      title="No musicians nearby"
+                      body={fanCoords.lat == null ? 'Set your location in Profile to find musicians.' : `No musicians found within ${discoverRadius} miles. Try a larger radius.`}
+                    />
+                  ) : (
+                    <div className="space-y-3">
+                      {filteredMusicians.map(m => {
+                        const isFollowing = followedIds.has(m.id)
+                        return (
+                          <div key={m.id} className="bg-white rounded-2xl p-4 shadow-sm">
+                            <div className="flex items-center gap-4 mb-2">
+                              <Avatar src={m.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" bg="bg-chestnut/10" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-graphite font-bold text-sm">{m.name}</p>
+                                <p className="text-charcoal text-xs">{m.genres.join(' · ')}</p>
+                                <p className="text-teal text-xs font-semibold mt-0.5">📍 {m.distance}</p>
+                              </div>
+                              <button
+                                onClick={() => toggleFollow(m.id)}
+                                className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                                  isFollowing
+                                    ? 'bg-chestnut/10 text-chestnut hover:bg-red-50 hover:text-red-500'
+                                    : 'bg-chestnut text-snow hover:opacity-90'
+                                }`}
+                              >
+                                {isFollowing ? 'Following' : '+ Follow'}
+                              </button>
+                            </div>
+                            {m.bio && <p className="text-charcoal text-xs leading-relaxed pl-16">{m.bio}</p>}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                )}
+              </>
             )}
           </>
         )}
@@ -410,7 +573,7 @@ export default function FanDashboard() {
                             <p className="text-charcoal text-xs">{v.type} · {v.location}</p>
                           </div>
                           <button
-                            onClick={() => toggleFollowVenue(v.id)}
+                            onClick={() => toggleFollow(v.id)}
                             className="shrink-0 px-3 py-1.5 rounded-full text-xs font-bold bg-charcoal/10 text-charcoal hover:bg-red-50 hover:text-red-500 transition-all"
                           >
                             Unfollow
@@ -434,7 +597,7 @@ export default function FanDashboard() {
                             <p className="text-charcoal text-xs">{m.genres.join(' · ')}</p>
                           </div>
                           <button
-                            onClick={() => toggleFollowMusician(m.id)}
+                            onClick={() => toggleFollow(m.id)}
                             className="shrink-0 px-3 py-1.5 rounded-full text-xs font-bold bg-charcoal/10 text-charcoal hover:bg-red-50 hover:text-red-500 transition-all"
                           >
                             Unfollow
@@ -494,12 +657,12 @@ export default function FanDashboard() {
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div className="relative bg-white rounded-2xl p-4 shadow-sm text-center overflow-hidden">
                 <span className="absolute -bottom-2 -right-1 text-4xl opacity-10 pointer-events-none select-none">🍽</span>
-                <p className="text-chestnut text-3xl font-black tracking-tight leading-none">{followedVenueIds.size}</p>
+                <p className="text-chestnut text-3xl font-black tracking-tight leading-none">{followedVenues.length}</p>
                 <p className="text-charcoal text-[10px] font-bold uppercase tracking-[0.2em] mt-2">Venues</p>
               </div>
               <div className="relative bg-white rounded-2xl p-4 shadow-sm text-center overflow-hidden">
                 <span className="absolute -bottom-2 -right-1 text-4xl opacity-10 pointer-events-none select-none">♪</span>
-                <p className="text-chestnut text-3xl font-black tracking-tight leading-none">{followedMusicianIds.size}</p>
+                <p className="text-chestnut text-3xl font-black tracking-tight leading-none">{followedMusicians.length}</p>
                 <p className="text-charcoal text-[10px] font-bold uppercase tracking-[0.2em] mt-2">Musicians</p>
               </div>
             </div>
@@ -583,7 +746,7 @@ function ShowCard({ show }: { show: Show }) {
           ))}
         </div>
       </div>
-      <div className="w-10 h-10 bg-teal/10 rounded-full flex items-center justify-center text-xl shrink-0">{show.venueAvatar}</div>
+      <Avatar src={show.venueAvatar} className="w-10 h-10 rounded-full shrink-0" textSize="text-xl" />
     </div>
   )
 }

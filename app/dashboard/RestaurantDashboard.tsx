@@ -316,6 +316,29 @@ export default function RestaurantDashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Realtime: new booking applications on any of this restaurant's slots
+  useEffect(() => {
+    if (!userId) return
+    const sub = supabase
+      .channel(`bookings-restaurant-${userId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'bookings',
+        filter: `restaurant_id=eq.${userId}`,
+      }, () => {
+        // Re-fetch all slots so the new application is reflected immediately
+        loadSlots(userId)
+      })
+      .subscribe()
+    return () => { void supabase.removeChannel(sub) }
+  }, [userId])
+
+  // Refresh slots whenever the restaurant switches to the slots tab
+  useEffect(() => {
+    if (activeTab === 'slots' && userId) loadSlots(userId)
+  }, [activeTab, userId])
+
   // Realtime: incoming messages on the open conversation
   useEffect(() => {
     if (!userId || !selectedConvId) return
@@ -523,7 +546,7 @@ export default function RestaurantDashboard() {
   const unreadCount = conversations.filter(c => c.unread).length
 
   return (
-    <div className="min-h-screen bg-snow pb-24">
+    <div className="min-h-screen pb-24" style={{ background: 'radial-gradient(ellipse 50% 40% at 12% 8%, rgba(108,154,139,0.10), transparent 70%), radial-gradient(ellipse 50% 40% at 88% 92%, rgba(220,127,65,0.12), transparent 70%), #E8E4E0' }}>
 
       {/* HEADER */}
       <header className="sticky top-0 z-40 backdrop-blur-md bg-graphite/95 border-b border-charcoal/30">
