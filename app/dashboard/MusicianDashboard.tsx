@@ -1,9 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { eqBarStyle } from '@/lib/eq'
+import { milesBetween } from '@/lib/distance'
+import { Avatar } from '@/components/Avatar'
 
 // ---- Types ----
 
@@ -57,6 +59,7 @@ interface Conversation {
 interface MusicianProfile {
   name: string
   bio: string
+  avatar: string
   genres: string[]
   instagram: string
   youtube: string
@@ -76,6 +79,7 @@ const INITIAL_CONVERSATIONS: Conversation[] = []
 const INITIAL_PROFILE: MusicianProfile = {
   name: 'Your Name',
   bio: '',
+  avatar: '',
   genres: [],
   instagram: '',
   youtube: '',
@@ -98,7 +102,7 @@ function BookingBadge({ status }: { status: BookingStatus }) {
 export default function MusicianDashboard() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('home')
-  const [gigs] = useState<Gig[]>(INITIAL_GIGS)
+  const [gigs, setGigs] = useState<Gig[]>(INITIAL_GIGS)
   const [bookings, setBookings] = useState<Booking[]>(INITIAL_BOOKINGS)
   const [conversations, setConversations] = useState<Conversation[]>(INITIAL_CONVERSATIONS)
   const [profile, setProfile] = useState<MusicianProfile>(INITIAL_PROFILE)
@@ -123,16 +127,168 @@ export default function MusicianDashboard() {
   // Profile
   const [editingProfile, setEditingProfile] = useState(false)
   const [profileDraft, setProfileDraft] = useState<MusicianProfile>(INITIAL_PROFILE)
+  const [userId, setUserId] = useState('')
+  const [savingProfile, setSavingProfile] = useState(false)
+
+  useEffect(() => {
+    const load = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      setUserId(user.id)
+      const { data } = await supabase
+        .from('profiles').select('*').eq('id', user.id).maybeSingle()
+      if (!data) return
+      const meta = data.role_metadata ?? {}
+      setProfile({
+        name: data.full_name ?? '',
+        bio: data.bio ?? '',
+        avatar: data.avatar_url ?? '',
+        genres: Array.isArray(meta.genres) ? meta.genres : [],
+        instagram: data.instagram_url ?? '',
+        youtube: data.youtube_url ?? '',
+        spotify: data.spotify_url ?? '',
+        website: data.website ?? '',
+      })
+
+      // Load open gigs, filter by distance against musician's coords
+      const myLat = data.latitude as number | null
+      const myLon = data.longitude as number | null
+      const maxMiles = (data.max_distance_miles as number | null) ?? 20
+      if (myLat == null || myLon == null) return // no coords → no gigs to show
+
+      const today = new Date().toISOString().slice(0, 10)
+
+      // Find availability_ids the musician has already applied to (any status)
+      const { data: existingBookings } = await supabase
+        .from('bookings')
+        .select('availability_id')
+        .eq('musician_id', user.id)
+      const appliedIds = new Set((existingBookings ?? []).map(b => b.availability_id))
+
+      const { data: slots } = await supabase
+        .from('availability')
+        .select('id, restaurant_id, date, start_time, end_time, description, pay, genres, latitude, longitude')
+        .eq('status', 'open')
+        .gte('date', today)
+        .order('date', { ascending: true })
+
+      if (!slots || slots.length === 0) return
+
+      const unappliedSlots = slots.filter(s => !appliedIds.has(s.id))
+      if (unappliedSlots.length === 0) {
+        setGigs([])
+        return
+      }
+
+      // Compute distance + filter before fetching venue profiles (saves a roundtrip when far)
+      const inRange = unappliedSlots
+        .filter(s => s.latitude != null && s.longitude != null)
+        .map(s => ({
+          slot: s,
+          distance: milesBetween(myLat, myLon, s.latitude as number, s.longitude as number),
+        }))
+        .filter(x => x.distance <= maxMiles)
+        .sort((a, b) => a.distance - b.distance)
+
+      if (inRange.length === 0) {
+        setGigs([])
+        return
+      }
+
+      const venueIds = Array.from(new Set(inRange.map(x => x.slot.restaurant_id)))
+      const { data: venues } = await supabase
+        .from('profiles')
+        .select('id, full_name, role_metadata, avatar_url')
+        .in('id', venueIds)
+      const venueById = new Map((venues ?? []).map(v => [v.id, v]))
+
+      const fmt = (t: string) => {
+        if (!t) return ''
+        const [h, m] = t.split(':').map(Number)
+        const period = h >= 12 ? 'PM' : 'AM'
+        return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${period}`
+      }
+
+      const nearby: Gig[] = inRange.map(({ slot: s, distance }) => {
+        const v = venueById.get(s.restaurant_id)
+        const meta = v?.role_metadata ?? {}
+        const name = meta.venue_name ?? v?.full_name ?? 'Venue'
+        const dateLabel = new Date(s.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+        return {
+          id: s.id,
+          venue: {
+            id: s.restaurant_id,
+            name,
+            type: meta.cuisine_type ?? '',
+            distance: `${distance.toFixed(1)} mi`,
+            avatar: v?.avatar_url || '🍽',
+          },
+          date: dateLabel,
+          rawDate: s.date,
+          time: `${fmt(s.start_time?.slice(0, 5) ?? '')} – ${fmt(s.end_time?.slice(0, 5) ?? '')}`,
+          genres: Array.isArray(s.genres) ? s.genres : [],
+          budget: Number(s.pay) || 0,
+          description: s.description ?? '',
+        }
+      })
+      setGigs(nearby)
+    }
+    load()
+  }, [])
+
+  const saveProfile = async () => {
+    if (!userId) return
+    setSavingProfile(true)
+    const { data: existing } = await supabase
+      .from('profiles').select('role_metadata').eq('id', userId).maybeSingle()
+    const meta = { ...(existing?.role_metadata ?? {}), genres: profileDraft.genres }
+    const { error: upErr } = await supabase.from('profiles').update({
+      full_name: profileDraft.name || null,
+      bio: profileDraft.bio || null,
+      instagram_url: profileDraft.instagram || null,
+      youtube_url: profileDraft.youtube || null,
+      spotify_url: profileDraft.spotify || null,
+      website: profileDraft.website || null,
+      role_metadata: meta,
+    }).eq('id', userId)
+    setSavingProfile(false)
+    if (upErr) {
+      console.error('Profile save failed', upErr)
+      return
+    }
+    setProfile(profileDraft)
+    setEditingProfile(false)
+  }
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/')
   }
 
-  const handleApply = () => {
-    if (!applyGigId || !applyPrice) return
+  const [applying, setApplying] = useState(false)
+  const [applyError, setApplyError] = useState('')
+
+  const handleApply = async () => {
+    if (!applyGigId || !applyPrice || !userId) return
     const gig = gigs.find(g => g.id === applyGigId)
     if (!gig) return
+    setApplying(true)
+    setApplyError('')
+    const { error: insertErr } = await supabase.from('bookings').insert({
+      availability_id: gig.id,
+      restaurant_id: gig.venue.id,
+      musician_id: userId,
+      status: 'pending',
+      pay_amount: parseInt(applyPrice),
+      note: applyNote || null,
+    })
+    setApplying(false)
+    if (insertErr) {
+      console.error('Apply failed', insertErr)
+      setApplyError(insertErr.message)
+      return
+    }
+
     const booking: Booking = {
       id: Date.now().toString(),
       gig,
@@ -141,6 +297,8 @@ export default function MusicianDashboard() {
       note: applyNote,
     }
     setBookings(prev => [booking, ...prev])
+    // Drop the gig from Browse Gigs so it disappears immediately
+    setGigs(prev => prev.filter(g => g.id !== gig.id))
     setApplyGigId(null)
     setApplyPrice('')
     setApplyNote('')
@@ -214,12 +372,20 @@ export default function MusicianDashboard() {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-chestnut" />
             </span>
           </div>
-          <button
-            onClick={handleLogout}
-            className="text-[11px] font-semibold uppercase tracking-[0.15em] text-snow/60 hover:text-chestnut transition-colors"
-          >
-            Log Out
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => router.push('/settings')}
+              className="text-[11px] font-semibold uppercase tracking-[0.15em] text-snow/60 hover:text-chestnut transition-colors"
+            >
+              Settings
+            </button>
+            <button
+              onClick={handleLogout}
+              className="text-[11px] font-semibold uppercase tracking-[0.15em] text-snow/60 hover:text-chestnut transition-colors"
+            >
+              Log Out
+            </button>
+          </div>
         </div>
       </header>
 
@@ -240,7 +406,9 @@ export default function MusicianDashboard() {
               <span className="absolute top-3 right-3 bg-chestnut text-snow text-[9px] font-bold tracking-[0.2em] px-2.5 py-1 rounded-full shadow-md uppercase z-20">★ Headliner</span>
 
               <div className="relative z-10 p-5 flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-chestnut/20 border border-chestnut/30 flex items-center justify-center text-2xl shrink-0 shadow-inner">♪</div>
+                {profile.avatar
+                  ? <img src={profile.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover shrink-0 shadow-inner border border-chestnut/30" />
+                  : <div className="w-14 h-14 rounded-2xl bg-chestnut/20 border border-chestnut/30 flex items-center justify-center text-2xl shrink-0 shadow-inner">♪</div>}
                 <div className="flex-1 min-w-0">
                   <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">For Musicians</p>
                   <p className="text-snow font-black text-lg leading-tight truncate">{profile.name}</p>
@@ -316,7 +484,7 @@ export default function MusicianDashboard() {
                   <div key={b.id} className="bg-white rounded-2xl p-4 shadow-sm">
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-teal/10 rounded-full flex items-center justify-center text-xl shrink-0">{b.gig.venue.avatar}</div>
+                        <Avatar src={b.gig.venue.avatar} className="w-10 h-10 rounded-full" textSize="text-xl" />
                         <div>
                           <p className="text-graphite font-bold text-sm">{b.gig.venue.name}</p>
                           <p className="text-charcoal text-xs">{b.gig.date} · {b.gig.time}</p>
@@ -387,7 +555,7 @@ export default function MusicianDashboard() {
                   <div key={gig.id} className="bg-white rounded-2xl p-4 shadow-sm border-l-4 border-l-[#6C9A8B]">
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-11 h-11 bg-teal/10 rounded-full flex items-center justify-center text-xl shrink-0">{gig.venue.avatar}</div>
+                        <Avatar src={gig.venue.avatar} className="w-11 h-11 rounded-full" textSize="text-xl" />
                         <div>
                           <p className="text-graphite font-bold text-sm">{gig.venue.name}</p>
                           <p className="text-charcoal text-xs">{gig.venue.type} · {gig.venue.distance}</p>
@@ -439,7 +607,7 @@ export default function MusicianDashboard() {
             </button>
             <div className="bg-white rounded-2xl p-6 shadow-sm mb-4">
               <div className="flex items-center gap-4 mb-5">
-                <div className="w-16 h-16 bg-teal/10 rounded-2xl flex items-center justify-center text-3xl shrink-0">{selectedGig.venue.avatar}</div>
+                <Avatar src={selectedGig.venue.avatar} className="w-16 h-16 rounded-2xl" textSize="text-3xl" />
                 <div>
                   <h2 className="text-graphite text-xl font-black">{selectedGig.venue.name}</h2>
                   <p className="text-charcoal text-sm mt-0.5">{selectedGig.venue.type} · {selectedGig.venue.distance}</p>
@@ -529,7 +697,7 @@ export default function MusicianDashboard() {
                       <div className="p-4">
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex items-center gap-3">
-                            <div className="w-11 h-11 bg-teal/10 rounded-full flex items-center justify-center text-xl shrink-0">{b.gig.venue.avatar}</div>
+                            <Avatar src={b.gig.venue.avatar} className="w-11 h-11 rounded-full" textSize="text-xl" />
                             <div>
                               <p className="text-graphite font-bold text-sm">{b.gig.venue.name}</p>
                               <p className="text-charcoal text-xs mt-0.5">{b.gig.date} · {b.gig.time}</p>
@@ -581,7 +749,7 @@ export default function MusicianDashboard() {
                     }}
                     className="w-full bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3 hover:shadow-md transition-shadow text-left"
                   >
-                    <div className="w-12 h-12 bg-teal/10 rounded-full flex items-center justify-center text-2xl shrink-0">{conv.avatar}</div>
+                    <Avatar src={conv.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-0.5">
                         <p className={`text-sm font-bold ${conv.unread ? 'text-graphite' : 'text-charcoal'}`}>{conv.venue}</p>
@@ -604,7 +772,7 @@ export default function MusicianDashboard() {
           <div className="flex flex-col" style={{ height: 'calc(100vh - 160px)' }}>
             <div className="flex items-center gap-3 mb-4 shrink-0">
               <button onClick={() => setSelectedConvId(null)} className="text-charcoal hover:text-chestnut transition-colors text-sm font-medium">← Back</button>
-              <div className="w-9 h-9 bg-teal/10 rounded-full flex items-center justify-center text-lg">{selectedConv.avatar}</div>
+              <Avatar src={selectedConv.avatar} className="w-9 h-9 rounded-full" textSize="text-lg" />
               <p className="text-graphite font-bold">{selectedConv.venue}</p>
             </div>
             <div className="flex-1 overflow-y-auto space-y-3 mb-4">
@@ -649,8 +817,8 @@ export default function MusicianDashboard() {
                 <button onClick={() => { setEditingProfile(true); setProfileDraft(profile) }} className="text-chestnut text-sm font-bold hover:underline shrink-0">Edit</button>
               ) : (
                 <div className="flex gap-3 shrink-0">
-                  <button onClick={() => setEditingProfile(false)} className="text-charcoal text-sm font-medium hover:underline">Cancel</button>
-                  <button onClick={() => { setProfile(profileDraft); setEditingProfile(false) }} className="bg-chestnut text-snow px-4 py-1.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">Save</button>
+                  <button onClick={() => setEditingProfile(false)} disabled={savingProfile} className="text-charcoal text-sm font-medium hover:underline disabled:opacity-50">Cancel</button>
+                  <button onClick={saveProfile} disabled={savingProfile} className="bg-chestnut text-snow px-4 py-1.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50">{savingProfile ? 'Saving…' : 'Save'}</button>
                 </div>
               )}
             </div>
@@ -666,7 +834,9 @@ export default function MusicianDashboard() {
               <span className="absolute top-3 right-3 bg-chestnut text-snow text-[9px] font-bold tracking-[0.2em] px-2.5 py-1 rounded-full shadow-md uppercase z-20">★ Headliner</span>
 
               <div className="relative z-10 p-8 flex flex-col items-center text-center">
-                <div className="w-24 h-24 bg-chestnut/20 border-2 border-chestnut/30 rounded-2xl flex items-center justify-center text-5xl mb-4 shadow-inner">♪</div>
+                {profile.avatar
+                  ? <img src={profile.avatar} alt="" className="w-24 h-24 rounded-2xl object-cover mb-4 shadow-inner border-2 border-chestnut/30" />
+                  : <div className="w-24 h-24 bg-chestnut/20 border-2 border-chestnut/30 rounded-2xl flex items-center justify-center text-5xl mb-4 shadow-inner">♪</div>}
                 <p className="text-snow font-black text-2xl tracking-tight">{profile.name}</p>
                 {profile.genres.length > 0 && (
                   <p className="text-snow/50 text-sm mt-1">{profile.genres.slice(0, 3).join(' · ')}</p>
@@ -770,7 +940,7 @@ export default function MusicianDashboard() {
             </div>
             <div className="p-6">
               <div className="flex items-center gap-3 mb-5 p-3 bg-white rounded-xl">
-                <div className="w-10 h-10 bg-teal/10 rounded-full flex items-center justify-center text-xl shrink-0">{applyGig.venue.avatar}</div>
+                <Avatar src={applyGig.venue.avatar} className="w-10 h-10 rounded-full" textSize="text-xl" />
                 <div className="flex-1 min-w-0">
                   <p className="text-graphite font-bold text-sm truncate">{applyGig.venue.name}</p>
                   <p className="text-charcoal text-xs">{applyGig.date} · {applyGig.time}</p>
@@ -798,12 +968,15 @@ export default function MusicianDashboard() {
                 className="w-full bg-white rounded-xl px-4 py-2.5 mb-5 shadow-sm focus:outline-none text-sm resize-none border border-charcoal/10"
               />
 
+              {applyError && (
+                <p className="bg-red-100 text-red-600 p-3 rounded-xl mb-3 text-xs">{applyError}</p>
+              )}
               <button
                 onClick={handleApply}
-                disabled={!applyPrice}
+                disabled={!applyPrice || applying}
                 className="w-full bg-chestnut text-snow py-3.5 rounded-xl font-black text-sm shadow-md hover:opacity-90 transition-opacity disabled:opacity-40"
               >
-                Send Application →
+                {applying ? 'Sending…' : 'Send Application →'}
               </button>
             </div>
           </div>

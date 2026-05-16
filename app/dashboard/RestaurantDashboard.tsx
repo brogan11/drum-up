@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { eqBarStyle } from '@/lib/eq'
+import { Avatar } from '@/components/Avatar'
 
 // ---- Types ----
 
@@ -70,6 +71,7 @@ interface VenueProfile {
   address: string
   description: string
   website: string
+  avatar: string
 }
 
 // ---- Constants ----
@@ -88,6 +90,7 @@ const INITIAL_PROFILE: VenueProfile = {
   address: '123 Main St, City, State',
   description: 'A warm and welcoming dining experience with a passion for live music.',
   website: '',
+  avatar: '',
 }
 
 // ---- Helpers ----
@@ -133,28 +136,123 @@ export default function RestaurantDashboard() {
 
   const [editingProfile, setEditingProfile] = useState(false)
   const [profileDraft, setProfileDraft] = useState<VenueProfile>(INITIAL_PROFILE)
+  const [userId, setUserId] = useState('')
+  const [savingProfile, setSavingProfile] = useState(false)
+  const [restaurantCoords, setRestaurantCoords] = useState<{ lat: number | null; lon: number | null }>({ lat: null, lon: null })
+
+  const loadSlots = async (rid: string) => {
+    const { data } = await supabase
+      .from('availability')
+      .select('*')
+      .eq('restaurant_id', rid)
+      .order('date', { ascending: true })
+    if (!data) return
+    const today = new Date().toISOString().slice(0, 10)
+    const mapped: Slot[] = data.map(row => {
+      const dateLabel = new Date(row.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+      const dbStatus = row.status as string
+      const isPast = row.date < today
+      const status: SlotStatus = isPast ? 'past' : dbStatus === 'filled' ? 'booked' : 'open'
+      return {
+        id: row.id,
+        date: dateLabel,
+        rawDate: row.date,
+        time: `${formatTime(row.start_time?.slice(0, 5) ?? '')} – ${formatTime(row.end_time?.slice(0, 5) ?? '')}`,
+        genres: Array.isArray(row.genres) ? row.genres : [],
+        budget: Number(row.pay) || 0,
+        status,
+        applications: [],
+      }
+    })
+    setSlots(mapped)
+  }
+
+  useEffect(() => {
+    const load = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      setUserId(user.id)
+      const { data } = await supabase
+        .from('profiles').select('*').eq('id', user.id).maybeSingle()
+      if (!data) return
+      const meta = data.role_metadata ?? {}
+      setProfile({
+        name: meta.venue_name ?? data.full_name ?? '',
+        type: meta.cuisine_type ?? '',
+        address: data.location_text ?? '',
+        description: data.bio ?? '',
+        website: data.website ?? '',
+        avatar: data.avatar_url ?? '',
+      })
+      setRestaurantCoords({ lat: data.latitude ?? null, lon: data.longitude ?? null })
+      await loadSlots(user.id)
+    }
+    load()
+  }, [])
+
+  const saveProfile = async () => {
+    if (!userId) return
+    setSavingProfile(true)
+    const { data: existing } = await supabase
+      .from('profiles').select('role_metadata').eq('id', userId).maybeSingle()
+    const meta = {
+      ...(existing?.role_metadata ?? {}),
+      venue_name: profileDraft.name || null,
+      cuisine_type: profileDraft.type || null,
+    }
+    const { error: upErr } = await supabase.from('profiles').update({
+      bio: profileDraft.description || null,
+      location_text: profileDraft.address || null,
+      website: profileDraft.website || null,
+      role_metadata: meta,
+    }).eq('id', userId)
+    setSavingProfile(false)
+    if (upErr) {
+      console.error('Profile save failed', upErr)
+      return
+    }
+    setProfile(profileDraft)
+    setEditingProfile(false)
+  }
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/')
   }
 
-  const handlePostSlot = () => {
+  const [postingSlot, setPostingSlot] = useState(false)
+  const [postSlotError, setPostSlotError] = useState('')
+
+  const handlePostSlot = async () => {
     if (!newSlot.date || !newSlot.startTime || !newSlot.endTime || !newSlot.budget) return
-    const dateLabel = new Date(newSlot.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-    const slot: Slot = {
-      id: Date.now().toString(),
-      date: dateLabel,
-      rawDate: newSlot.date,
-      time: `${formatTime(newSlot.startTime)} – ${formatTime(newSlot.endTime)}`,
-      genres: newSlot.genres,
-      budget: parseInt(newSlot.budget),
-      status: 'open',
-      applications: [],
+    if (!userId) return
+    if (restaurantCoords.lat == null || restaurantCoords.lon == null) {
+      setPostSlotError('Add a location to your profile (Settings) before posting slots — musicians can\'t see slots without coordinates.')
+      return
     }
-    setSlots(prev => [slot, ...prev])
+    setPostingSlot(true)
+    setPostSlotError('')
+    const { error: insertErr } = await supabase.from('availability').insert({
+      restaurant_id: userId,
+      date: newSlot.date,
+      start_time: newSlot.startTime,
+      end_time: newSlot.endTime,
+      description: newSlot.notes || null,
+      pay: parseInt(newSlot.budget),
+      status: 'open',
+      genres: newSlot.genres,
+      latitude: restaurantCoords.lat,
+      longitude: restaurantCoords.lon,
+    })
+    setPostingSlot(false)
+    if (insertErr) {
+      console.error('Slot insert failed', insertErr)
+      setPostSlotError(insertErr.message)
+      return
+    }
     setPostSlotOpen(false)
     setNewSlot({ date: '', startTime: '', endTime: '', genres: [], budget: '', notes: '' })
+    await loadSlots(userId)
     setActiveTab('slots')
   }
 
@@ -239,12 +337,20 @@ export default function RestaurantDashboard() {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-chestnut" />
             </span>
           </div>
-          <button
-            onClick={handleLogout}
-            className="text-[11px] font-semibold uppercase tracking-[0.15em] text-snow/60 hover:text-chestnut transition-colors"
-          >
-            Log Out
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => router.push('/settings')}
+              className="text-[11px] font-semibold uppercase tracking-[0.15em] text-snow/60 hover:text-chestnut transition-colors"
+            >
+              Settings
+            </button>
+            <button
+              onClick={handleLogout}
+              className="text-[11px] font-semibold uppercase tracking-[0.15em] text-snow/60 hover:text-chestnut transition-colors"
+            >
+              Log Out
+            </button>
+          </div>
         </div>
       </header>
 
@@ -264,7 +370,9 @@ export default function RestaurantDashboard() {
               <div className="absolute -bottom-14 -left-10 w-36 h-36 rounded-full bg-teal opacity-15 blur-2xl pointer-events-none" />
 
               <div className="relative z-10 p-5 flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-chestnut/20 border border-chestnut/30 flex items-center justify-center text-2xl shrink-0 shadow-inner">🍽</div>
+                {profile.avatar
+                  ? <img src={profile.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover shrink-0 shadow-inner border border-chestnut/30" />
+                  : <div className="w-14 h-14 rounded-2xl bg-chestnut/20 border border-chestnut/30 flex items-center justify-center text-2xl shrink-0 shadow-inner">🍽</div>}
                 <div className="flex-1 min-w-0">
                   <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">For Restaurants</p>
                   <p className="text-snow font-black text-lg leading-tight truncate">{profile.name}</p>
@@ -339,7 +447,7 @@ export default function RestaurantDashboard() {
                     .map(app => (
                       <div key={app.id} className="bg-white rounded-2xl p-4 shadow-sm">
                         <div className="flex items-start gap-3 mb-3">
-                          <div className="w-11 h-11 bg-chestnut/10 rounded-full flex items-center justify-center text-xl shrink-0">{app.avatar}</div>
+                          <Avatar src={app.avatar} className="w-11 h-11 rounded-full" textSize="text-xl" bg="bg-chestnut/10" />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
                               <p className="text-graphite font-bold text-sm truncate">{app.musicianName}</p>
@@ -467,7 +575,7 @@ export default function RestaurantDashboard() {
               <div className="space-y-3">
                 {filteredMusicians.map(m => (
                   <div key={m.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-4">
-                    <div className="w-12 h-12 bg-chestnut/10 rounded-full flex items-center justify-center text-2xl shrink-0">{m.avatar}</div>
+                    <Avatar src={m.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" bg="bg-chestnut/10" />
                     <div className="flex-1 min-w-0">
                       <p className="text-graphite font-bold text-sm">{m.name}</p>
                       <p className="text-charcoal text-xs">{m.genres.join(' · ')}</p>
@@ -489,7 +597,7 @@ export default function RestaurantDashboard() {
             </button>
             <div className="bg-white rounded-2xl p-6 shadow-sm mb-4">
               <div className="flex items-center gap-4 mb-5">
-                <div className="w-20 h-20 bg-chestnut/10 rounded-2xl flex items-center justify-center text-4xl shrink-0">{selectedMusician.avatar}</div>
+                <Avatar src={selectedMusician.avatar} className="w-20 h-20 rounded-2xl" textSize="text-4xl" bg="bg-chestnut/10" />
                 <div>
                   <h2 className="text-graphite text-xl font-black">{selectedMusician.name}</h2>
                   <p className="text-charcoal text-sm mt-0.5">{selectedMusician.genres.join(' · ')}</p>
@@ -541,7 +649,7 @@ export default function RestaurantDashboard() {
                     }}
                     className="w-full bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3 hover:shadow-md transition-shadow text-left"
                   >
-                    <div className="w-12 h-12 bg-chestnut/10 rounded-full flex items-center justify-center text-2xl shrink-0">{conv.avatar}</div>
+                    <Avatar src={conv.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" bg="bg-chestnut/10" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-0.5">
                         <p className={`text-sm font-bold ${conv.unread ? 'text-graphite' : 'text-charcoal'}`}>{conv.musician}</p>
@@ -562,7 +670,7 @@ export default function RestaurantDashboard() {
           <div className="flex flex-col" style={{ height: 'calc(100vh - 160px)' }}>
             <div className="flex items-center gap-3 mb-4 shrink-0">
               <button onClick={() => setSelectedConvId(null)} className="text-charcoal hover:text-chestnut transition-colors text-sm font-medium">← Back</button>
-              <div className="w-9 h-9 bg-chestnut/10 rounded-full flex items-center justify-center text-lg">{selectedConv.avatar}</div>
+              <Avatar src={selectedConv.avatar} className="w-9 h-9 rounded-full" textSize="text-lg" bg="bg-chestnut/10" />
               <p className="text-graphite font-bold">{selectedConv.musician}</p>
             </div>
             <div className="flex-1 overflow-y-auto space-y-3 mb-4">
@@ -607,8 +715,8 @@ export default function RestaurantDashboard() {
                 <button onClick={() => { setEditingProfile(true); setProfileDraft(profile) }} className="text-chestnut text-sm font-bold hover:underline shrink-0">Edit</button>
               ) : (
                 <div className="flex gap-3 shrink-0">
-                  <button onClick={() => setEditingProfile(false)} className="text-charcoal text-sm font-medium hover:underline">Cancel</button>
-                  <button onClick={() => { setProfile(profileDraft); setEditingProfile(false) }} className="bg-chestnut text-snow px-4 py-1.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">Save</button>
+                  <button onClick={() => setEditingProfile(false)} disabled={savingProfile} className="text-charcoal text-sm font-medium hover:underline disabled:opacity-50">Cancel</button>
+                  <button onClick={saveProfile} disabled={savingProfile} className="bg-chestnut text-snow px-4 py-1.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50">{savingProfile ? 'Saving…' : 'Save'}</button>
                 </div>
               )}
             </div>
@@ -623,7 +731,9 @@ export default function RestaurantDashboard() {
               <div className="absolute -bottom-20 -right-10 w-40 h-40 rounded-full bg-teal opacity-15 blur-2xl pointer-events-none" />
 
               <div className="relative z-10 p-8 flex flex-col items-center text-center">
-                <div className="w-24 h-24 bg-chestnut/20 border-2 border-chestnut/30 rounded-2xl flex items-center justify-center text-5xl mb-4 shadow-inner">🍽</div>
+                {profile.avatar
+                  ? <img src={profile.avatar} alt="" className="w-24 h-24 rounded-2xl object-cover mb-4 shadow-inner border-2 border-chestnut/30" />
+                  : <div className="w-24 h-24 bg-chestnut/20 border-2 border-chestnut/30 rounded-2xl flex items-center justify-center text-5xl mb-4 shadow-inner">🍽</div>}
                 <p className="text-snow font-black text-2xl tracking-tight">{profile.name}</p>
                 <p className="text-snow/50 text-sm mt-1">{profile.type}</p>
                 {editingProfile && (
@@ -727,12 +837,15 @@ export default function RestaurantDashboard() {
                 className="w-full bg-white rounded-xl px-4 py-2.5 mb-5 shadow-sm focus:outline-none text-sm resize-none border border-charcoal/10"
               />
 
+              {postSlotError && (
+                <p className="bg-red-100 text-red-600 p-3 rounded-xl mb-3 text-xs">{postSlotError}</p>
+              )}
               <button
                 onClick={handlePostSlot}
-                disabled={!newSlot.date || !newSlot.startTime || !newSlot.endTime || !newSlot.budget}
+                disabled={postingSlot || !newSlot.date || !newSlot.startTime || !newSlot.endTime || !newSlot.budget}
                 className="w-full bg-chestnut text-snow py-3.5 rounded-xl font-black text-sm shadow-md hover:opacity-90 transition-opacity disabled:opacity-40"
               >
-                Post Slot
+                {postingSlot ? 'Posting…' : 'Post Slot'}
               </button>
             </div>
           </div>
@@ -864,7 +977,7 @@ function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAc
           {slot.applications.map(app => (
             <div key={app.id} className="bg-white rounded-xl p-3">
               <div className="flex items-start gap-3 mb-2">
-                <div className="w-9 h-9 bg-chestnut/10 rounded-full flex items-center justify-center text-base shrink-0">{app.avatar}</div>
+                <Avatar src={app.avatar} className="w-9 h-9 rounded-full" textSize="text-base" bg="bg-chestnut/10" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-graphite font-bold text-sm truncate">{app.musicianName}</p>

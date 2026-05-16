@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { eqBarStyle } from '@/lib/eq'
+import { Avatar } from '@/components/Avatar'
 
 // ---- Types ----
 
@@ -43,6 +44,7 @@ interface FanProfile {
   name: string
   bio: string
   location: string
+  avatar: string
 }
 
 // ---- Initial data ----
@@ -50,7 +52,7 @@ interface FanProfile {
 const INITIAL_VENUES: DiscoverVenue[] = []
 const INITIAL_MUSICIANS: DiscoverMusician[] = []
 const INITIAL_SHOWS: Show[] = []
-const INITIAL_PROFILE: FanProfile = { name: 'Your Name', bio: '', location: '' }
+const INITIAL_PROFILE: FanProfile = { name: 'Your Name', bio: '', location: '', avatar: '' }
 
 // ---- Main Component ----
 
@@ -71,6 +73,43 @@ export default function FanDashboard() {
   const [profile, setProfile] = useState<FanProfile>(INITIAL_PROFILE)
   const [editingProfile, setEditingProfile] = useState(false)
   const [profileDraft, setProfileDraft] = useState<FanProfile>(INITIAL_PROFILE)
+  const [userId, setUserId] = useState('')
+  const [savingProfile, setSavingProfile] = useState(false)
+
+  useEffect(() => {
+    const load = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      setUserId(user.id)
+      const { data } = await supabase
+        .from('profiles').select('*').eq('id', user.id).maybeSingle()
+      if (!data) return
+      setProfile({
+        name: data.full_name ?? '',
+        bio: data.bio ?? '',
+        location: data.location_text ?? '',
+        avatar: data.avatar_url ?? '',
+      })
+    }
+    load()
+  }, [])
+
+  const saveProfile = async () => {
+    if (!userId) return
+    setSavingProfile(true)
+    const { error: upErr } = await supabase.from('profiles').update({
+      full_name: profileDraft.name || null,
+      bio: profileDraft.bio || null,
+      location_text: profileDraft.location || null,
+    }).eq('id', userId)
+    setSavingProfile(false)
+    if (upErr) {
+      console.error('Profile save failed', upErr)
+      return
+    }
+    setProfile(profileDraft)
+    setEditingProfile(false)
+  }
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -126,12 +165,20 @@ export default function FanDashboard() {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-chestnut" />
             </span>
           </div>
-          <button
-            onClick={handleLogout}
-            className="text-[11px] font-semibold uppercase tracking-[0.15em] text-snow/60 hover:text-chestnut transition-colors"
-          >
-            Log Out
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => router.push('/settings')}
+              className="text-[11px] font-semibold uppercase tracking-[0.15em] text-snow/60 hover:text-chestnut transition-colors"
+            >
+              Settings
+            </button>
+            <button
+              onClick={handleLogout}
+              className="text-[11px] font-semibold uppercase tracking-[0.15em] text-snow/60 hover:text-chestnut transition-colors"
+            >
+              Log Out
+            </button>
+          </div>
         </div>
       </header>
 
@@ -151,7 +198,9 @@ export default function FanDashboard() {
               <div className="absolute -bottom-14 -left-10 w-36 h-36 rounded-full bg-chestnut opacity-20 blur-2xl pointer-events-none" />
 
               <div className="relative z-10 p-5 flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-chestnut/20 border border-chestnut/30 flex items-center justify-center text-2xl shrink-0 shadow-inner">★</div>
+                {profile.avatar
+                  ? <img src={profile.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover shrink-0 shadow-inner border border-chestnut/30" />
+                  : <div className="w-14 h-14 rounded-2xl bg-chestnut/20 border border-chestnut/30 flex items-center justify-center text-2xl shrink-0 shadow-inner">★</div>}
                 <div className="flex-1 min-w-0">
                   <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">For Fans</p>
                   <p className="text-snow font-black text-lg leading-tight truncate">{profile.name}</p>
@@ -263,7 +312,7 @@ export default function FanDashboard() {
                     const isFollowing = followedVenueIds.has(v.id)
                     return (
                       <div key={v.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-4">
-                        <div className="w-12 h-12 bg-teal/10 rounded-full flex items-center justify-center text-2xl shrink-0">{v.avatar}</div>
+                        <Avatar src={v.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" />
                         <div className="flex-1 min-w-0">
                           <p className="text-graphite font-bold text-sm">{v.name}</p>
                           <p className="text-charcoal text-xs">{v.type} · {v.location}</p>
@@ -303,7 +352,7 @@ export default function FanDashboard() {
                     return (
                       <div key={m.id} className="bg-white rounded-2xl p-4 shadow-sm">
                         <div className="flex items-center gap-4 mb-2">
-                          <div className="w-12 h-12 bg-chestnut/10 rounded-full flex items-center justify-center text-2xl shrink-0">{m.avatar}</div>
+                          <Avatar src={m.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" bg="bg-chestnut/10" />
                           <div className="flex-1 min-w-0">
                             <p className="text-graphite font-bold text-sm">{m.name}</p>
                             <p className="text-charcoal text-xs">{m.genres.join(' · ')}</p>
@@ -355,7 +404,7 @@ export default function FanDashboard() {
                     <div className="space-y-2 mb-6">
                       {followedVenues.map(v => (
                         <div key={v.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3">
-                          <div className="w-11 h-11 bg-teal/10 rounded-full flex items-center justify-center text-xl shrink-0">{v.avatar}</div>
+                          <Avatar src={v.avatar} className="w-11 h-11 rounded-full" textSize="text-xl" />
                           <div className="flex-1 min-w-0">
                             <p className="text-graphite font-bold text-sm truncate">{v.name}</p>
                             <p className="text-charcoal text-xs">{v.type} · {v.location}</p>
@@ -379,7 +428,7 @@ export default function FanDashboard() {
                     <div className="space-y-2">
                       {followedMusicians.map(m => (
                         <div key={m.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3">
-                          <div className="w-11 h-11 bg-chestnut/10 rounded-full flex items-center justify-center text-xl shrink-0">{m.avatar}</div>
+                          <Avatar src={m.avatar} className="w-11 h-11 rounded-full" textSize="text-xl" bg="bg-chestnut/10" />
                           <div className="flex-1 min-w-0">
                             <p className="text-graphite font-bold text-sm truncate">{m.name}</p>
                             <p className="text-charcoal text-xs">{m.genres.join(' · ')}</p>
@@ -414,8 +463,8 @@ export default function FanDashboard() {
                 <button onClick={() => { setEditingProfile(true); setProfileDraft(profile) }} className="text-chestnut text-sm font-bold hover:underline shrink-0">Edit</button>
               ) : (
                 <div className="flex gap-3 shrink-0">
-                  <button onClick={() => setEditingProfile(false)} className="text-charcoal text-sm font-medium hover:underline">Cancel</button>
-                  <button onClick={() => { setProfile(profileDraft); setEditingProfile(false) }} className="bg-chestnut text-snow px-4 py-1.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">Save</button>
+                  <button onClick={() => setEditingProfile(false)} disabled={savingProfile} className="text-charcoal text-sm font-medium hover:underline disabled:opacity-50">Cancel</button>
+                  <button onClick={saveProfile} disabled={savingProfile} className="bg-chestnut text-snow px-4 py-1.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50">{savingProfile ? 'Saving…' : 'Save'}</button>
                 </div>
               )}
             </div>
@@ -431,7 +480,9 @@ export default function FanDashboard() {
               <div className="absolute -bottom-20 -right-10 w-40 h-40 rounded-full bg-teal opacity-15 blur-2xl pointer-events-none" />
 
               <div className="relative z-10 p-8 flex flex-col items-center text-center">
-                <div className="w-24 h-24 bg-chestnut/20 border-2 border-chestnut/30 rounded-2xl flex items-center justify-center text-5xl mb-4 shadow-inner">★</div>
+                {profile.avatar
+                  ? <img src={profile.avatar} alt="" className="w-24 h-24 rounded-2xl object-cover mb-4 shadow-inner border-2 border-chestnut/30" />
+                  : <div className="w-24 h-24 bg-chestnut/20 border-2 border-chestnut/30 rounded-2xl flex items-center justify-center text-5xl mb-4 shadow-inner">★</div>}
                 <p className="text-snow font-black text-2xl tracking-tight">{profile.name}</p>
                 {profile.location && (
                   <p className="text-snow/50 text-sm mt-1">📍 {profile.location}</p>

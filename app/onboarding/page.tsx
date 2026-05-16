@@ -21,6 +21,23 @@ const GENRES = [
 const NIGHTS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const SOLO_BAND = ['Solo', 'Duo', 'Band']
 
+function formatError(e: unknown): string {
+  if (!e) return 'Something went wrong.'
+  if (typeof e === 'string') return e
+  if (typeof e === 'object') {
+    const err = e as { message?: string; error?: string; details?: string; hint?: string; code?: string; statusCode?: string | number }
+    const parts = [
+      err.message || err.error,
+      err.details,
+      err.hint,
+      err.code ? `(code: ${err.code})` : null,
+    ].filter(Boolean)
+    if (parts.length) return parts.join(' — ')
+    try { return JSON.stringify(e) } catch { /* noop */ }
+  }
+  return 'Something went wrong.'
+}
+
 const ROLE_LABELS: Record<UserType, { title: string; subtitle: string }> = {
   restaurant: { title: 'Tell us about your venue', subtitle: 'Help musicians know what kind of room they\'re walking into.' },
   musician:   { title: 'Tell us about your sound',  subtitle: 'Restaurants will use this to find a fit for their crowd.' },
@@ -181,8 +198,14 @@ export default function OnboardingPage() {
   const toggleArrayItem = (arr: string[], item: string) =>
     arr.includes(item) ? arr.filter(x => x !== item) : [...arr, item]
 
+  const step1Valid = basic.fullName.trim().length > 0 && basic.locationText.trim().length > 0
+
   const next = () => {
     setError('')
+    if (step === 1 && !step1Valid) {
+      setError('Please enter your name and location to continue.')
+      return
+    }
     if (step < TOTAL_STEPS) setStep(s => s + 1)
     else finish()
   }
@@ -195,14 +218,23 @@ export default function OnboardingPage() {
     setSubmitting(true)
     setError('')
     try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('You\'re no longer signed in. Please log in again.')
+      if (user.id !== userId) {
+        console.warn('Auth user id changed since mount', { mounted: userId, current: user.id })
+      }
+
       let avatarUrl = basic.avatarPreview.startsWith('blob:') ? '' : basic.avatarPreview
       if (basic.avatarFile) {
         const ext = basic.avatarFile.name.split('.').pop()?.toLowerCase() || 'jpg'
-        const path = `${userId}/avatar-${Date.now()}.${ext}`
+        const path = `${user.id}/avatar-${Date.now()}.${ext}`
         const { error: upErr } = await supabase.storage
           .from('avatars')
           .upload(path, basic.avatarFile, { upsert: true, contentType: basic.avatarFile.type })
-        if (upErr) throw upErr
+        if (upErr) {
+          console.error('Avatar upload failed', upErr)
+          throw upErr
+        }
         const { data } = supabase.storage.from('avatars').getPublicUrl(path)
         avatarUrl = data.publicUrl
       }
@@ -222,12 +254,11 @@ export default function OnboardingPage() {
         roleMetadata.favorite_genres = role.favoriteGenres
       }
 
-      const { error: upsertErr } = await supabase.from('profiles').upsert({
-        id: userId,
+      const profileRow = {
+        id: user.id,
         user_type: userType,
         full_name: basic.fullName || null,
         avatar_url: avatarUrl || null,
-        location: basic.locationText || null,
         location_text: basic.locationText || null,
         latitude: basic.latitude,
         longitude: basic.longitude,
@@ -238,11 +269,18 @@ export default function OnboardingPage() {
         youtube_url: social.youtube || null,
         website: social.website || null,
         role_metadata: roleMetadata,
-      })
-      if (upsertErr) throw upsertErr
+      }
+
+      console.log('Upserting profile', profileRow)
+      const { error: upsertErr } = await supabase.from('profiles').upsert(profileRow)
+      if (upsertErr) {
+        console.error('Profile upsert failed', upsertErr)
+        throw upsertErr
+      }
       router.push('/dashboard')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong saving your profile.')
+      console.error('Onboarding finish failed', e)
+      setError(formatError(e))
       setSubmitting(false)
     }
   }
@@ -318,7 +356,7 @@ export default function OnboardingPage() {
 
                 {/* Full name */}
                 <label className="block text-charcoal font-semibold text-sm mb-2">
-                  {userType === 'restaurant' ? 'Contact name' : 'Full name'}
+                  {userType === 'restaurant' ? 'Contact name' : 'Full name'} <span className="text-chestnut">*</span>
                 </label>
                 <input
                   type="text"
@@ -329,7 +367,7 @@ export default function OnboardingPage() {
                 />
 
                 {/* Location */}
-                <label className="block text-charcoal font-semibold text-sm mb-2">Location</label>
+                <label className="block text-charcoal font-semibold text-sm mb-2">Location <span className="text-chestnut">*</span></label>
                 <div className="flex flex-col sm:flex-row gap-2 mb-2">
                   <input
                     type="text"
@@ -561,19 +599,21 @@ export default function OnboardingPage() {
             </button>
 
             <div className="flex items-center gap-2">
+              {step !== 1 && (
+                <button
+                  type="button"
+                  onClick={next}
+                  disabled={submitting}
+                  className="text-charcoal font-bold text-sm px-4 py-2.5 rounded-xl hover:bg-white/60 transition-colors disabled:opacity-30"
+                >
+                  Skip
+                </button>
+              )}
               <button
                 type="button"
                 onClick={next}
-                disabled={submitting}
-                className="text-charcoal font-bold text-sm px-4 py-2.5 rounded-xl hover:bg-white/60 transition-colors disabled:opacity-30"
-              >
-                Skip
-              </button>
-              <button
-                type="button"
-                onClick={next}
-                disabled={submitting}
-                className="bg-chestnut text-snow font-bold text-sm px-6 py-2.5 rounded-xl shadow-md hover:shadow-lg hover:opacity-90 transition-all disabled:opacity-50 flex items-center gap-2 group"
+                disabled={submitting || (step === 1 && !step1Valid)}
+                className="bg-chestnut text-snow font-bold text-sm px-6 py-2.5 rounded-xl shadow-md hover:shadow-lg hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 group"
               >
                 {submitting
                   ? 'Saving...'
