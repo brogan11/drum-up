@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { eqBarStyle } from '@/lib/eq'
@@ -54,6 +54,7 @@ interface Conversation {
   time: string
   unread: boolean
   messages: ChatMessage[]
+  otherUserId: string
 }
 
 interface MusicianProfile {
@@ -71,11 +72,6 @@ interface MusicianProfile {
 
 const GENRES = ['Jazz', 'Blues', 'Acoustic', 'Folk', 'R&B', 'Soul', 'Rock', 'Country', 'Pop', 'Classical']
 
-// ---- Initial data ----
-
-const INITIAL_GIGS: Gig[] = []
-const INITIAL_BOOKINGS: Booking[] = []
-const INITIAL_CONVERSATIONS: Conversation[] = []
 const INITIAL_PROFILE: MusicianProfile = {
   name: 'Your Name',
   bio: '',
@@ -88,6 +84,31 @@ const INITIAL_PROFILE: MusicianProfile = {
 }
 
 // ---- Helpers ----
+
+function fmtMsgTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
+
+function fmt(t: string): string {
+  if (!t) return ''
+  const [h, m] = t.split(':').map(Number)
+  const period = h >= 12 ? 'PM' : 'AM'
+  return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${period}`
+}
+
+// Deterministic conversation UUID from two user UUIDs (XOR + valid v4 header)
+function getConversationId(uid1: string, uid2: string): string {
+  const [a, b] = [uid1, uid2].sort()
+  const aClean = a.replace(/-/g, '')
+  const bClean = b.replace(/-/g, '')
+  let xored = ''
+  for (let i = 0; i < 32; i++) {
+    xored += (parseInt(aClean[i], 16) ^ parseInt(bClean[i], 16)).toString(16)
+  }
+  xored = xored.slice(0, 12) + '4' + xored.slice(13, 16) +
+    ((parseInt(xored[16], 16) & 0x3) | 0x8).toString(16) + xored.slice(17)
+  return `${xored.slice(0, 8)}-${xored.slice(8, 12)}-${xored.slice(12, 16)}-${xored.slice(16, 20)}-${xored.slice(20)}`
+}
 
 function BookingBadge({ status }: { status: BookingStatus }) {
   if (status === 'confirmed')
@@ -102,9 +123,9 @@ function BookingBadge({ status }: { status: BookingStatus }) {
 export default function MusicianDashboard() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('home')
-  const [gigs, setGigs] = useState<Gig[]>(INITIAL_GIGS)
-  const [bookings, setBookings] = useState<Booking[]>(INITIAL_BOOKINGS)
-  const [conversations, setConversations] = useState<Conversation[]>(INITIAL_CONVERSATIONS)
+  const [gigs, setGigs] = useState<Gig[]>([])
+  const [bookings, setBookings] = useState<Booking[]>([])
+  const [conversations, setConversations] = useState<Conversation[]>([])
   const [profile, setProfile] = useState<MusicianProfile>(INITIAL_PROFILE)
 
   // Gig browsing
@@ -124,11 +145,137 @@ export default function MusicianDashboard() {
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null)
   const [chatInput, setChatInput] = useState('')
 
+  // Chat scroll
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
   // Profile
   const [editingProfile, setEditingProfile] = useState(false)
   const [profileDraft, setProfileDraft] = useState<MusicianProfile>(INITIAL_PROFILE)
   const [userId, setUserId] = useState('')
   const [savingProfile, setSavingProfile] = useState(false)
+
+  // ---- Data loading ----
+
+  const loadMyBookings = async (uid: string, myLat: number | null, myLon: number | null) => {
+    const { data: myBookings } = await supabase
+      .from('bookings')
+      .select('id, availability_id, restaurant_id, status, pay_amount, note, created_at')
+      .eq('musician_id', uid)
+      .order('created_at', { ascending: false })
+
+    if (!myBookings || myBookings.length === 0) { setBookings([]); return }
+
+    const availIds = myBookings.map(b => b.availability_id)
+    const restaurantIds = [...new Set(myBookings.map(b => b.restaurant_id))]
+
+    const [{ data: avails }, { data: restaurants }] = await Promise.all([
+      supabase.from('availability').select('id, date, start_time, end_time, genres, pay').in('id', availIds),
+      supabase.from('profiles').select('id, full_name, avatar_url, role_metadata, latitude, longitude').in('id', restaurantIds),
+    ])
+
+    const availById = new Map((avails ?? []).map(a => [a.id, a]))
+    const restaurantById = new Map((restaurants ?? []).map(r => [r.id, r]))
+
+    const mapped: Booking[] = myBookings.map(b => {
+      const avail = availById.get(b.availability_id)
+      const restaurant = restaurantById.get(b.restaurant_id)
+      const meta = (restaurant?.role_metadata ?? {}) as Record<string, unknown>
+      const venueName = (meta.venue_name as string | undefined) ?? restaurant?.full_name ?? 'Venue'
+      const dateLabel = avail
+        ? new Date(avail.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+        : '—'
+      const timeStr = avail
+        ? `${fmt(avail.start_time?.slice(0, 5) ?? '')} – ${fmt(avail.end_time?.slice(0, 5) ?? '')}`
+        : '—'
+
+      let distanceStr = '—'
+      if (myLat != null && myLon != null && restaurant?.latitude != null && restaurant?.longitude != null) {
+        distanceStr = `${milesBetween(myLat, myLon, restaurant.latitude, restaurant.longitude).toFixed(1)} mi`
+      }
+
+      return {
+        id: b.id,
+        gig: {
+          id: b.availability_id,
+          venue: {
+            id: b.restaurant_id,
+            name: venueName,
+            type: (meta.cuisine_type as string | undefined) ?? '',
+            distance: distanceStr,
+            avatar: restaurant?.avatar_url ?? '',
+          },
+          date: dateLabel,
+          rawDate: avail?.date ?? '',
+          time: timeStr,
+          genres: Array.isArray(avail?.genres) ? avail.genres : [],
+          budget: Number(avail?.pay) || 0,
+          description: '',
+        },
+        status: b.status as BookingStatus,
+        price: Number(b.pay_amount) || 0,
+        note: b.note ?? '',
+      }
+    })
+    setBookings(mapped)
+  }
+
+  const loadConversations = async (uid: string) => {
+    const { data: msgs } = await supabase
+      .from('messages')
+      .select('*')
+      .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)
+      .order('created_at', { ascending: true })
+
+    if (!msgs || msgs.length === 0) return
+
+    const convMap = new Map<string, typeof msgs>()
+    msgs.forEach(m => {
+      if (!convMap.has(m.conversation_id)) convMap.set(m.conversation_id, [])
+      convMap.get(m.conversation_id)!.push(m)
+    })
+
+    const otherIds = new Set<string>()
+    convMap.forEach(convMsgs => {
+      const first = convMsgs[0]
+      otherIds.add(first.sender_id === uid ? first.receiver_id : first.sender_id)
+    })
+
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, full_name, avatar_url, role_metadata')
+      .in('id', [...otherIds])
+
+    const profileById = new Map((profiles ?? []).map(p => [p.id, p]))
+
+    const convs: Conversation[] = []
+    convMap.forEach((convMsgs, convId) => {
+      const first = convMsgs[0]
+      const otherId = first.sender_id === uid ? first.receiver_id : first.sender_id
+      const other = profileById.get(otherId)
+      const meta = (other?.role_metadata ?? {}) as Record<string, unknown>
+      const lastMsg = convMsgs[convMsgs.length - 1]
+      const hasUnread = convMsgs.some(m => m.receiver_id === uid && !m.read)
+
+      convs.push({
+        id: convId,
+        venue: (meta.venue_name as string | undefined) ?? other?.full_name ?? 'Unknown',
+        avatar: other?.avatar_url ?? '',
+        lastMessage: lastMsg.content,
+        time: fmtMsgTime(lastMsg.created_at),
+        unread: hasUnread,
+        messages: convMsgs.map(m => ({
+          id: m.id,
+          text: m.content,
+          from: m.sender_id === uid ? 'me' : 'them',
+          time: fmtMsgTime(m.created_at),
+        })),
+        otherUserId: otherId,
+      })
+    })
+
+    const lastMsgAt = (convId: string) => convMap.get(convId)?.at(-1)?.created_at ?? ''
+    setConversations(convs.sort((a, b) => lastMsgAt(b.id).localeCompare(lastMsgAt(a.id))))
+  }
 
   useEffect(() => {
     const load = async () => {
@@ -138,27 +285,33 @@ export default function MusicianDashboard() {
       const { data } = await supabase
         .from('profiles').select('*').eq('id', user.id).maybeSingle()
       if (!data) return
-      const meta = data.role_metadata ?? {}
+      const meta = (data.role_metadata ?? {}) as Record<string, unknown>
       setProfile({
         name: data.full_name ?? '',
         bio: data.bio ?? '',
         avatar: data.avatar_url ?? '',
-        genres: Array.isArray(meta.genres) ? meta.genres : [],
+        genres: Array.isArray(meta.genres) ? meta.genres as string[] : [],
         instagram: data.instagram_url ?? '',
         youtube: data.youtube_url ?? '',
         spotify: data.spotify_url ?? '',
         website: data.website ?? '',
       })
 
-      // Load open gigs, filter by distance against musician's coords
       const myLat = data.latitude as number | null
       const myLon = data.longitude as number | null
       const maxMiles = (data.max_distance_miles as number | null) ?? 20
-      if (myLat == null || myLon == null) return // no coords → no gigs to show
+
+      // Load bookings and conversations in parallel with gig browsing
+      await Promise.all([
+        loadMyBookings(user.id, myLat, myLon),
+        loadConversations(user.id),
+      ])
+
+      if (myLat == null || myLon == null) return
 
       const today = new Date().toISOString().slice(0, 10)
 
-      // Find availability_ids the musician has already applied to (any status)
+      // Availability IDs the musician already applied to (any status)
       const { data: existingBookings } = await supabase
         .from('bookings')
         .select('availability_id')
@@ -174,14 +327,10 @@ export default function MusicianDashboard() {
 
       if (!slots || slots.length === 0) return
 
-      const unappliedSlots = slots.filter(s => !appliedIds.has(s.id))
-      if (unappliedSlots.length === 0) {
-        setGigs([])
-        return
-      }
+      const unapplied = slots.filter(s => !appliedIds.has(s.id))
+      if (unapplied.length === 0) { setGigs([]); return }
 
-      // Compute distance + filter before fetching venue profiles (saves a roundtrip when far)
-      const inRange = unappliedSlots
+      const inRange = unapplied
         .filter(s => s.latitude != null && s.longitude != null)
         .map(s => ({
           slot: s,
@@ -190,10 +339,7 @@ export default function MusicianDashboard() {
         .filter(x => x.distance <= maxMiles)
         .sort((a, b) => a.distance - b.distance)
 
-      if (inRange.length === 0) {
-        setGigs([])
-        return
-      }
+      if (inRange.length === 0) { setGigs([]); return }
 
       const venueIds = Array.from(new Set(inRange.map(x => x.slot.restaurant_id)))
       const { data: venues } = await supabase
@@ -202,24 +348,17 @@ export default function MusicianDashboard() {
         .in('id', venueIds)
       const venueById = new Map((venues ?? []).map(v => [v.id, v]))
 
-      const fmt = (t: string) => {
-        if (!t) return ''
-        const [h, m] = t.split(':').map(Number)
-        const period = h >= 12 ? 'PM' : 'AM'
-        return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${period}`
-      }
-
       const nearby: Gig[] = inRange.map(({ slot: s, distance }) => {
         const v = venueById.get(s.restaurant_id)
-        const meta = v?.role_metadata ?? {}
-        const name = meta.venue_name ?? v?.full_name ?? 'Venue'
+        const vMeta = (v?.role_metadata ?? {}) as Record<string, unknown>
+        const name = (vMeta.venue_name as string | undefined) ?? v?.full_name ?? 'Venue'
         const dateLabel = new Date(s.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
         return {
           id: s.id,
           venue: {
             id: s.restaurant_id,
             name,
-            type: meta.cuisine_type ?? '',
+            type: (vMeta.cuisine_type as string | undefined) ?? '',
             distance: `${distance.toFixed(1)} mi`,
             avatar: v?.avatar_url || '🍽',
           },
@@ -234,7 +373,45 @@ export default function MusicianDashboard() {
       setGigs(nearby)
     }
     load()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Realtime: incoming messages on the open conversation
+  useEffect(() => {
+    if (!userId || !selectedConvId) return
+    const sub = supabase
+      .channel(`conv-${selectedConvId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `conversation_id=eq.${selectedConvId}`,
+      }, (payload) => {
+        const msg = payload.new as { id: string; sender_id: string; content: string; created_at: string }
+        if (msg.sender_id === userId) return
+        setConversations(prev => prev.map(c =>
+          c.id !== selectedConvId ? c : {
+            ...c,
+            lastMessage: msg.content,
+            messages: [...c.messages, {
+              id: msg.id,
+              text: msg.content,
+              from: 'them' as const,
+              time: fmtMsgTime(msg.created_at),
+            }],
+          }
+        ))
+      })
+      .subscribe()
+    return () => { void supabase.removeChannel(sub) }
+  }, [userId, selectedConvId])
+
+  // Auto-scroll to bottom when messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [conversations, selectedConvId])
+
+  // ---- Actions ----
 
   const saveProfile = async () => {
     if (!userId) return
@@ -252,10 +429,7 @@ export default function MusicianDashboard() {
       role_metadata: meta,
     }).eq('id', userId)
     setSavingProfile(false)
-    if (upErr) {
-      console.error('Profile save failed', upErr)
-      return
-    }
+    if (upErr) { console.error('Profile save failed', upErr); return }
     setProfile(profileDraft)
     setEditingProfile(false)
   }
@@ -274,14 +448,18 @@ export default function MusicianDashboard() {
     if (!gig) return
     setApplying(true)
     setApplyError('')
-    const { error: insertErr } = await supabase.from('bookings').insert({
-      availability_id: gig.id,
-      restaurant_id: gig.venue.id,
-      musician_id: userId,
-      status: 'pending',
-      pay_amount: parseInt(applyPrice),
-      note: applyNote || null,
-    })
+    const { data: newBooking, error: insertErr } = await supabase
+      .from('bookings')
+      .insert({
+        availability_id: gig.id,
+        restaurant_id: gig.venue.id,
+        musician_id: userId,
+        status: 'pending',
+        pay_amount: parseInt(applyPrice),
+        note: applyNote || null,
+      })
+      .select()
+      .single()
     setApplying(false)
     if (insertErr) {
       console.error('Apply failed', insertErr)
@@ -290,14 +468,13 @@ export default function MusicianDashboard() {
     }
 
     const booking: Booking = {
-      id: Date.now().toString(),
+      id: newBooking.id,
       gig,
       status: 'pending',
       price: parseInt(applyPrice),
       note: applyNote,
     }
     setBookings(prev => [booking, ...prev])
-    // Drop the gig from Browse Gigs so it disappears immediately
     setGigs(prev => prev.filter(g => g.id !== gig.id))
     setApplyGigId(null)
     setApplyPrice('')
@@ -305,43 +482,94 @@ export default function MusicianDashboard() {
     setActiveTab('bookings')
   }
 
-  const handleSendMessage = () => {
-    if (!chatInput.trim() || !selectedConvId) return
-    const text = chatInput
-    setConversations(prev => prev.map(conv =>
-      conv.id !== selectedConvId ? conv : {
-        ...conv,
-        lastMessage: text,
-        time: 'now',
-        messages: [...conv.messages, { id: Date.now().toString(), text, from: 'me', time: 'now' }],
-      }
-    ))
-    setChatInput('')
+  const handleCancelApplication = async (bookingId: string) => {
+    const booking = bookings.find(b => b.id === bookingId)
+    const { error } = await supabase
+      .from('bookings')
+      .update({ status: 'cancelled' })
+      .eq('id', bookingId)
+      .eq('musician_id', userId)
+    if (error) { console.error('Failed to cancel application', error); return }
+    setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: 'cancelled' } : b))
+    if (booking) {
+      setGigs(prev => {
+        if (prev.some(g => g.id === booking.gig.id)) return prev
+        return [...prev, booking.gig].sort((a, b) => a.rawDate.localeCompare(b.rawDate))
+      })
+    }
   }
 
-  const openConversationWithVenue = (gig: Gig) => {
-    const existing = conversations.find(c => c.venue === gig.venue.name)
+  const handleSendMessage = async () => {
+    if (!chatInput.trim() || !selectedConvId || !userId) return
+    const text = chatInput.trim()
+    const conv = conversations.find(c => c.id === selectedConvId)
+    if (!conv) return
+    setChatInput('')
+
+    const { data: newMsg, error } = await supabase
+      .from('messages')
+      .insert({
+        sender_id: userId,
+        receiver_id: conv.otherUserId,
+        content: text,
+        conversation_id: selectedConvId,
+        read: false,
+      })
+      .select()
+      .single()
+
+    if (error) { console.error('Failed to send message', error); return }
+
+    setConversations(prev => prev.map(c =>
+      c.id !== selectedConvId ? c : {
+        ...c,
+        lastMessage: text,
+        time: 'now',
+        messages: [...c.messages, { id: newMsg.id, text, from: 'me', time: 'now' }],
+      }
+    ))
+  }
+
+  const openConversationWithVenue = async (gig: Gig) => {
+    if (!userId || !gig.venue.id) return
+    const convId = getConversationId(userId, gig.venue.id)
+    const existing = conversations.find(c => c.id === convId)
+
     if (existing) {
-      setSelectedConvId(existing.id)
-      setConversations(prev => prev.map(c => c.id === existing.id ? { ...c, unread: false } : c))
+      setSelectedConvId(convId)
+      await supabase.from('messages').update({ read: true })
+        .eq('conversation_id', convId).eq('receiver_id', userId)
+      setConversations(prev => prev.map(c => c.id === convId ? { ...c, unread: false } : c))
     } else {
+      const { data: existingMsgs } = await supabase
+        .from('messages').select('*')
+        .eq('conversation_id', convId).order('created_at', { ascending: true })
+
       const newConv: Conversation = {
-        id: Date.now().toString(),
+        id: convId,
         venue: gig.venue.name,
         avatar: gig.venue.avatar,
-        lastMessage: '',
-        time: 'now',
+        lastMessage: existingMsgs?.at(-1)?.content ?? '',
+        time: existingMsgs?.length ? fmtMsgTime(existingMsgs.at(-1)!.created_at) : '',
         unread: false,
-        messages: [],
+        messages: (existingMsgs ?? []).map(m => ({
+          id: m.id,
+          text: m.content,
+          from: m.sender_id === userId ? 'me' : 'them',
+          time: fmtMsgTime(m.created_at),
+        })),
+        otherUserId: gig.venue.id,
       }
-      setConversations(prev => [newConv, ...prev])
-      setSelectedConvId(newConv.id)
+      setConversations(prev => [newConv, ...prev.filter(c => c.id !== convId)])
+      setSelectedConvId(convId)
     }
+
     setSelectedGig(null)
     setActiveTab('messages')
   }
 
-  // Derived
+  // ---- Derived ----
+
   const upcomingGigs = bookings.filter(b => b.status === 'confirmed').length
   const pendingApps = bookings.filter(b => b.status === 'pending').length
   const totalEarned = bookings.filter(b => b.status === 'confirmed').reduce((sum, b) => sum + b.price, 0)
@@ -394,7 +622,7 @@ export default function MusicianDashboard() {
         {/* ---- HOME TAB ---- */}
         {activeTab === 'home' && (
           <>
-            {/* Profile hero — the headliner */}
+            {/* Profile hero */}
             <div className="relative bg-graphite rounded-3xl overflow-hidden mb-6 shadow-xl">
               <div className="absolute inset-x-0 bottom-0 top-1/2 flex items-end justify-around opacity-[0.10] pointer-events-none">
                 {Array.from({ length: 18 }).map((_, i) => (
@@ -404,7 +632,6 @@ export default function MusicianDashboard() {
               <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-chestnut opacity-25 blur-2xl pointer-events-none" />
               <div className="absolute -bottom-14 -left-10 w-36 h-36 rounded-full bg-teal opacity-15 blur-2xl pointer-events-none" />
               <span className="absolute top-3 right-3 bg-chestnut text-snow text-[9px] font-bold tracking-[0.2em] px-2.5 py-1 rounded-full shadow-md uppercase z-20">★ Headliner</span>
-
               <div className="relative z-10 p-5 flex items-center gap-4">
                 {profile.avatar
                   ? <img src={profile.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover shrink-0 shadow-inner border border-chestnut/30" />
@@ -425,7 +652,7 @@ export default function MusicianDashboard() {
               </div>
             </div>
 
-            {/* Stats — earnings highlighted */}
+            {/* Stats */}
             <div className="grid grid-cols-3 gap-2.5 mb-7">
               <StatCard value={upcomingGigs} label="Upcoming" color="text-teal" icon="✅" />
               <StatCard value={pendingApps} label="Pending" color="text-chestnut" icon="📬" />
@@ -496,10 +723,18 @@ export default function MusicianDashboard() {
                       </div>
                     </div>
                     {b.note && (
-                      <div className="bg-snow rounded-xl px-3 py-2">
+                      <div className="bg-snow rounded-xl px-3 py-2 mb-2">
                         <p className="text-charcoal text-xs italic">Your note: "{b.note}"</p>
                       </div>
                     )}
+                    <div className="flex justify-end mt-1">
+                      <button
+                        onClick={() => handleCancelApplication(b.id)}
+                        className="text-charcoal/60 text-xs font-medium hover:text-red-500 transition-colors"
+                      >
+                        Cancel Application
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -542,7 +777,6 @@ export default function MusicianDashboard() {
                 </button>
               ))}
             </div>
-
             {filteredGigs.length === 0 ? (
               <EmptyState
                 icon="🎵"
@@ -576,6 +810,13 @@ export default function MusicianDashboard() {
                       <p className="text-charcoal text-xs mb-3 italic">"{gig.description}"</p>
                     )}
                     <div className="flex gap-2">
+                      <button
+                        onClick={() => openConversationWithVenue(gig)}
+                        className="bg-snow text-charcoal px-3 py-2.5 rounded-xl text-sm hover:bg-[#E8E4E0] transition-colors border border-charcoal/10"
+                        title="Message Venue"
+                      >
+                        💬
+                      </button>
                       <button
                         onClick={() => setSelectedGig(gig)}
                         className="flex-1 bg-snow text-charcoal py-2.5 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10"
@@ -714,10 +955,26 @@ export default function MusicianDashboard() {
                           ))}
                         </div>
                         {b.note && (
-                          <div className="bg-snow rounded-xl px-3 py-2">
+                          <div className="bg-snow rounded-xl px-3 py-2 mb-2">
                             <p className="text-charcoal text-xs italic">Your note: "{b.note}"</p>
                           </div>
                         )}
+                        <div className="flex items-center justify-between mt-1">
+                          <button
+                            onClick={() => openConversationWithVenue(b.gig)}
+                            className="text-charcoal/60 text-xs font-medium hover:text-chestnut transition-colors"
+                          >
+                            💬 Message Venue
+                          </button>
+                          {b.status === 'pending' && (
+                            <button
+                              onClick={() => handleCancelApplication(b.id)}
+                              className="text-charcoal/60 text-xs font-medium hover:text-red-500 transition-colors"
+                            >
+                              Cancel Application
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )
@@ -739,27 +996,40 @@ export default function MusicianDashboard() {
             {conversations.length === 0 ? (
               <EmptyState icon="💬" title="No messages yet" body="Browse gigs and message a venue directly to start a conversation." />
             ) : (
-              <div className="space-y-2">
+              <div className="bg-white rounded-2xl shadow-sm overflow-hidden divide-y divide-charcoal/[0.06]">
                 {conversations.map(conv => (
                   <button
                     key={conv.id}
-                    onClick={() => {
+                    onClick={async () => {
                       setSelectedConvId(conv.id)
-                      setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread: false } : c))
+                      if (conv.unread) {
+                        await supabase.from('messages').update({ read: true })
+                          .eq('conversation_id', conv.id).eq('receiver_id', userId)
+                        setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread: false } : c))
+                      }
                     }}
-                    className="w-full bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3 hover:shadow-md transition-shadow text-left"
+                    className="w-full px-4 py-3.5 flex items-center gap-3.5 hover:bg-snow/80 transition-colors text-left"
                   >
-                    <Avatar src={conv.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" />
+                    <div className="relative shrink-0">
+                      <Avatar src={conv.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" />
+                      {conv.unread && (
+                        <span className="absolute top-0 right-0 w-3 h-3 bg-chestnut rounded-full border-2 border-white" />
+                      )}
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-0.5">
-                        <p className={`text-sm font-bold ${conv.unread ? 'text-graphite' : 'text-charcoal'}`}>{conv.venue}</p>
-                        <p className="text-charcoal text-xs">{conv.time}</p>
+                      <div className="flex items-baseline justify-between gap-2 mb-0.5">
+                        <p className={`text-sm truncate ${conv.unread ? 'font-bold text-graphite' : 'font-semibold text-charcoal'}`}>
+                          {conv.venue}
+                        </p>
+                        <p className="text-[11px] text-charcoal/40 shrink-0">{conv.time}</p>
                       </div>
-                      <p className={`text-xs truncate ${conv.unread ? 'text-graphite font-medium' : 'text-charcoal'}`}>
-                        {conv.lastMessage || 'No messages yet'}
+                      <p className={`text-xs truncate ${conv.unread ? 'font-medium text-graphite' : 'text-charcoal/55'}`}>
+                        {conv.lastMessage || 'Start a conversation'}
                       </p>
                     </div>
-                    {conv.unread && <div className="w-2.5 h-2.5 rounded-full bg-chestnut shrink-0" />}
+                    <svg className="w-3.5 h-3.5 text-charcoal/20 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
                   </button>
                 ))}
               </div>
@@ -769,35 +1039,75 @@ export default function MusicianDashboard() {
 
         {/* ---- MESSAGES TAB: CHAT ---- */}
         {activeTab === 'messages' && selectedConv && (
-          <div className="flex flex-col" style={{ height: 'calc(100vh - 160px)' }}>
-            <div className="flex items-center gap-3 mb-4 shrink-0">
-              <button onClick={() => setSelectedConvId(null)} className="text-charcoal hover:text-chestnut transition-colors text-sm font-medium">← Back</button>
-              <Avatar src={selectedConv.avatar} className="w-9 h-9 rounded-full" textSize="text-lg" />
-              <p className="text-graphite font-bold">{selectedConv.venue}</p>
+          <div className="-mx-4 -mt-5 flex flex-col" style={{ height: 'calc(100vh - 130px)' }}>
+            {/* Header */}
+            <div className="bg-white px-4 py-3 flex items-center gap-3 border-b border-charcoal/[0.08] shadow-sm shrink-0">
+              <button
+                onClick={() => setSelectedConvId(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-snow transition-colors text-charcoal hover:text-chestnut shrink-0"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <Avatar src={selectedConv.avatar} className="w-10 h-10 rounded-full" textSize="text-lg" />
+              <div className="flex-1 min-w-0">
+                <p className="text-graphite font-bold text-sm leading-tight truncate">{selectedConv.venue}</p>
+                <p className="text-charcoal/40 text-[11px] leading-tight">Venue</p>
+              </div>
             </div>
-            <div className="flex-1 overflow-y-auto space-y-3 mb-4">
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1" style={{ background: '#F5F0EC' }}>
               {selectedConv.messages.length === 0 && (
-                <p className="text-charcoal text-sm text-center mt-10">Say hello to {selectedConv.venue}! 👋</p>
-              )}
-              {selectedConv.messages.map(msg => (
-                <div key={msg.id} className={`flex ${msg.from === 'me' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm ${msg.from === 'me' ? 'bg-chestnut text-snow rounded-br-sm' : 'bg-white text-graphite shadow-sm rounded-bl-sm'}`}>
-                    <p>{msg.text}</p>
-                    <p className={`text-[10px] mt-1 ${msg.from === 'me' ? 'text-snow/60' : 'text-charcoal'}`}>{msg.time}</p>
-                  </div>
+                <div className="flex flex-col items-center justify-center h-full text-center gap-3 py-12">
+                  <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center text-3xl">👋</div>
+                  <p className="text-graphite font-bold">Say hello!</p>
+                  <p className="text-charcoal/60 text-sm max-w-[200px] leading-relaxed">
+                    Start a conversation with {selectedConv.venue}
+                  </p>
                 </div>
-              ))}
+              )}
+              {selectedConv.messages.map((msg, i) => {
+                const isMe = msg.from === 'me'
+                const prev = selectedConv.messages[i - 1]
+                const groupBreak = prev && prev.from !== msg.from
+                return (
+                  <div key={msg.id}>
+                    {groupBreak && <div className="h-2" />}
+                    <div className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[72%] px-4 py-2.5 text-sm shadow-sm ${
+                        isMe
+                          ? 'bg-chestnut text-snow rounded-2xl rounded-br-sm'
+                          : 'bg-white text-graphite rounded-2xl rounded-bl-sm'
+                      }`}>
+                        <p className="leading-relaxed">{msg.text}</p>
+                        <p className={`text-[10px] mt-1 ${isMe ? 'text-snow/50 text-right' : 'text-charcoal/40'}`}>{msg.time}</p>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+              <div ref={messagesEndRef} />
             </div>
-            <div className="flex gap-2 shrink-0">
+
+            {/* Input bar */}
+            <div className="bg-white border-t border-charcoal/[0.08] px-4 py-3 flex items-center gap-2.5 shrink-0">
               <input
                 value={chatInput}
                 onChange={e => setChatInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-                placeholder="Type a message..."
-                className="flex-1 bg-white rounded-xl px-4 py-3 shadow-sm focus:outline-none focus:shadow-md transition-shadow text-sm"
+                placeholder="Message..."
+                className="flex-1 bg-snow rounded-full px-4 py-2.5 text-sm focus:outline-none focus:shadow-md transition-shadow placeholder:text-charcoal/40"
               />
-              <button onClick={handleSendMessage} className="bg-chestnut text-snow px-5 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity">
-                Send
+              <button
+                onClick={handleSendMessage}
+                disabled={!chatInput.trim()}
+                className="w-10 h-10 bg-chestnut rounded-full flex items-center justify-center shrink-0 hover:opacity-90 transition-opacity disabled:opacity-30"
+              >
+                <svg className="w-4 h-4 text-white rotate-90" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                </svg>
               </button>
             </div>
           </div>
@@ -832,7 +1142,6 @@ export default function MusicianDashboard() {
               <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-72 h-72 rounded-full bg-chestnut opacity-15 blur-3xl pointer-events-none" />
               <div className="absolute -bottom-20 -right-10 w-40 h-40 rounded-full bg-teal opacity-15 blur-2xl pointer-events-none" />
               <span className="absolute top-3 right-3 bg-chestnut text-snow text-[9px] font-bold tracking-[0.2em] px-2.5 py-1 rounded-full shadow-md uppercase z-20">★ Headliner</span>
-
               <div className="relative z-10 p-8 flex flex-col items-center text-center">
                 {profile.avatar
                   ? <img src={profile.avatar} alt="" className="w-24 h-24 rounded-2xl object-cover mb-4 shadow-inner border-2 border-chestnut/30" />
@@ -1015,7 +1324,6 @@ function EmptyState({ icon, title, body, action }: {
         ))}
       </div>
       <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-chestnut opacity-15 blur-2xl pointer-events-none" />
-
       <div className="relative z-10 p-8 text-center">
         <div className="w-16 h-16 bg-chestnut/20 border border-chestnut/30 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 shadow-inner">{icon}</div>
         <p className="text-snow font-black text-lg mb-1.5 tracking-tight">{title}</p>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { eqBarStyle } from '@/lib/eq'
@@ -8,13 +8,14 @@ import { Avatar } from '@/components/Avatar'
 
 // ---- Types ----
 
-type AppStatus = 'pending' | 'accepted' | 'declined'
+type AppStatus = 'pending' | 'confirmed' | 'cancelled'
 type SlotStatus = 'open' | 'booked' | 'past'
 type SlotFilter = 'all' | 'open' | 'booked' | 'past'
 type SlotsView = 'list' | 'calendar'
 
 interface Application {
   id: string
+  musicianId: string
   musicianName: string
   musicianGenre: string
   rating: number
@@ -63,6 +64,7 @@ interface Conversation {
   time: string
   unread: boolean
   messages: ChatMessage[]
+  otherUserId: string
 }
 
 interface VenueProfile {
@@ -80,9 +82,7 @@ const GENRES = ['Jazz', 'Blues', 'Acoustic', 'Folk', 'R&B', 'Soul', 'Rock', 'Cou
 
 // ---- Mock Data ----
 
-const INITIAL_SLOTS: Slot[] = []
 const MUSICIANS: Musician[] = []
-const INITIAL_CONVERSATIONS: Conversation[] = []
 
 const INITIAL_PROFILE: VenueProfile = {
   name: 'Your Venue',
@@ -103,6 +103,25 @@ function formatTime(t: string): string {
   return `${hour}:${m.toString().padStart(2, '0')} ${period}`
 }
 
+function fmtMsgTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
+
+// Deterministic conversation UUID from two user UUIDs (XOR + valid v4 header)
+function getConversationId(uid1: string, uid2: string): string {
+  const [a, b] = [uid1, uid2].sort()
+  const aClean = a.replace(/-/g, '')
+  const bClean = b.replace(/-/g, '')
+  let xored = ''
+  for (let i = 0; i < 32; i++) {
+    xored += (parseInt(aClean[i], 16) ^ parseInt(bClean[i], 16)).toString(16)
+  }
+  // Force version 4 + variant bits
+  xored = xored.slice(0, 12) + '4' + xored.slice(13, 16) +
+    ((parseInt(xored[16], 16) & 0x3) | 0x8).toString(16) + xored.slice(17)
+  return `${xored.slice(0, 8)}-${xored.slice(8, 12)}-${xored.slice(12, 16)}-${xored.slice(16, 20)}-${xored.slice(20)}`
+}
+
 function StatusBadge({ status }: { status: SlotStatus }) {
   if (status === 'open') return <span className="bg-teal/10 text-teal text-[10px] font-black px-2.5 py-1 rounded-full tracking-widest uppercase">Open</span>
   if (status === 'booked') return <span className="bg-chestnut/10 text-chestnut text-[10px] font-black px-2.5 py-1 rounded-full tracking-widest uppercase">Booked</span>
@@ -114,8 +133,8 @@ function StatusBadge({ status }: { status: SlotStatus }) {
 export default function RestaurantDashboard() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('home')
-  const [slots, setSlots] = useState<Slot[]>(INITIAL_SLOTS)
-  const [conversations, setConversations] = useState<Conversation[]>(INITIAL_CONVERSATIONS)
+  const [slots, setSlots] = useState<Slot[]>([])
+  const [conversations, setConversations] = useState<Conversation[]>([])
   const [profile, setProfile] = useState<VenueProfile>(INITIAL_PROFILE)
 
   const [postSlotOpen, setPostSlotOpen] = useState(false)
@@ -133,12 +152,15 @@ export default function RestaurantDashboard() {
 
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null)
   const [chatInput, setChatInput] = useState('')
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const [editingProfile, setEditingProfile] = useState(false)
   const [profileDraft, setProfileDraft] = useState<VenueProfile>(INITIAL_PROFILE)
   const [userId, setUserId] = useState('')
   const [savingProfile, setSavingProfile] = useState(false)
   const [restaurantCoords, setRestaurantCoords] = useState<{ lat: number | null; lon: number | null }>({ lat: null, lon: null })
+
+  // ---- Data loading ----
 
   const loadSlots = async (rid: string) => {
     const { data } = await supabase
@@ -147,6 +169,7 @@ export default function RestaurantDashboard() {
       .eq('restaurant_id', rid)
       .order('date', { ascending: true })
     if (!data) return
+
     const today = new Date().toISOString().slice(0, 10)
     const mapped: Slot[] = data.map(row => {
       const dateLabel = new Date(row.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
@@ -164,7 +187,108 @@ export default function RestaurantDashboard() {
         applications: [],
       }
     })
+
+    // Attach pending/confirmed bookings as applications
+    const slotIds = mapped.map(s => s.id)
+    if (slotIds.length > 0) {
+      const { data: bookingsData } = await supabase
+        .from('bookings')
+        .select('id, availability_id, musician_id, status, pay_amount, note')
+        .eq('restaurant_id', rid)
+        .in('status', ['pending', 'confirmed'])
+        .in('availability_id', slotIds)
+
+      if (bookingsData && bookingsData.length > 0) {
+        const musicianIds = [...new Set(bookingsData.map(b => b.musician_id))]
+        const { data: musicianData } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url, role_metadata')
+          .in('id', musicianIds)
+        const musicianById = new Map((musicianData ?? []).map(m => [m.id, m]))
+
+        const slotsWithApps = mapped.map(slot => {
+          const slotBookings = bookingsData.filter(b => b.availability_id === slot.id)
+          const applications: Application[] = slotBookings.map(b => {
+            const musician = musicianById.get(b.musician_id)
+            const meta = (musician?.role_metadata ?? {}) as Record<string, unknown>
+            return {
+              id: b.id,
+              musicianId: b.musician_id,
+              musicianName: musician?.full_name ?? 'Unknown Musician',
+              musicianGenre: Array.isArray(meta.genres) ? (meta.genres as string[]).slice(0, 2).join(', ') : '',
+              rating: 0,
+              price: Number(b.pay_amount) || 0,
+              note: b.note ?? '',
+              avatar: musician?.avatar_url ?? '',
+              status: b.status as AppStatus,
+            }
+          })
+          return { ...slot, applications }
+        })
+        setSlots(slotsWithApps)
+        return
+      }
+    }
+
     setSlots(mapped)
+  }
+
+  const loadConversations = async (uid: string) => {
+    const { data: msgs } = await supabase
+      .from('messages')
+      .select('*')
+      .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)
+      .order('created_at', { ascending: true })
+
+    if (!msgs || msgs.length === 0) return
+
+    const convMap = new Map<string, typeof msgs>()
+    msgs.forEach(m => {
+      if (!convMap.has(m.conversation_id)) convMap.set(m.conversation_id, [])
+      convMap.get(m.conversation_id)!.push(m)
+    })
+
+    const otherIds = new Set<string>()
+    convMap.forEach(convMsgs => {
+      const first = convMsgs[0]
+      const otherId = first.sender_id === uid ? first.receiver_id : first.sender_id
+      otherIds.add(otherId)
+    })
+
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, full_name, avatar_url')
+      .in('id', [...otherIds])
+
+    const profileById = new Map((profiles ?? []).map(p => [p.id, p]))
+
+    const convs: Conversation[] = []
+    convMap.forEach((convMsgs, convId) => {
+      const first = convMsgs[0]
+      const otherId = first.sender_id === uid ? first.receiver_id : first.sender_id
+      const other = profileById.get(otherId)
+      const lastMsg = convMsgs[convMsgs.length - 1]
+      const hasUnread = convMsgs.some(m => m.receiver_id === uid && !m.read)
+
+      convs.push({
+        id: convId,
+        musician: other?.full_name ?? 'Unknown',
+        avatar: other?.avatar_url ?? '',
+        lastMessage: lastMsg.content,
+        time: fmtMsgTime(lastMsg.created_at),
+        unread: hasUnread,
+        messages: convMsgs.map(m => ({
+          id: m.id,
+          text: m.content,
+          from: m.sender_id === uid ? 'me' : 'them',
+          time: fmtMsgTime(m.created_at),
+        })),
+        otherUserId: otherId,
+      })
+    })
+
+    const lastMsgAt = (convId: string) => convMap.get(convId)?.at(-1)?.created_at ?? ''
+    setConversations(convs.sort((a, b) => lastMsgAt(b.id).localeCompare(lastMsgAt(a.id))))
   }
 
   useEffect(() => {
@@ -175,10 +299,10 @@ export default function RestaurantDashboard() {
       const { data } = await supabase
         .from('profiles').select('*').eq('id', user.id).maybeSingle()
       if (!data) return
-      const meta = data.role_metadata ?? {}
+      const meta = (data.role_metadata ?? {}) as Record<string, unknown>
       setProfile({
-        name: meta.venue_name ?? data.full_name ?? '',
-        type: meta.cuisine_type ?? '',
+        name: (meta.venue_name as string | undefined) ?? data.full_name ?? '',
+        type: (meta.cuisine_type as string | undefined) ?? '',
         address: data.location_text ?? '',
         description: data.bio ?? '',
         website: data.website ?? '',
@@ -186,9 +310,47 @@ export default function RestaurantDashboard() {
       })
       setRestaurantCoords({ lat: data.latitude ?? null, lon: data.longitude ?? null })
       await loadSlots(user.id)
+      await loadConversations(user.id)
     }
     load()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Realtime: incoming messages on the open conversation
+  useEffect(() => {
+    if (!userId || !selectedConvId) return
+    const sub = supabase
+      .channel(`conv-${selectedConvId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `conversation_id=eq.${selectedConvId}`,
+      }, (payload) => {
+        const msg = payload.new as { id: string; sender_id: string; content: string; created_at: string }
+        if (msg.sender_id === userId) return
+        setConversations(prev => prev.map(c =>
+          c.id !== selectedConvId ? c : {
+            ...c,
+            lastMessage: msg.content,
+            messages: [...c.messages, {
+              id: msg.id,
+              text: msg.content,
+              from: 'them' as const,
+              time: fmtMsgTime(msg.created_at),
+            }],
+          }
+        ))
+      })
+      .subscribe()
+    return () => { void supabase.removeChannel(sub) }
+  }, [userId, selectedConvId])
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [conversations, selectedConvId])
+
+  // ---- Actions ----
 
   const saveProfile = async () => {
     if (!userId) return
@@ -207,10 +369,7 @@ export default function RestaurantDashboard() {
       role_metadata: meta,
     }).eq('id', userId)
     setSavingProfile(false)
-    if (upErr) {
-      console.error('Profile save failed', upErr)
-      return
-    }
+    if (upErr) { console.error('Profile save failed', upErr); return }
     setProfile(profileDraft)
     setEditingProfile(false)
   }
@@ -245,18 +404,25 @@ export default function RestaurantDashboard() {
       longitude: restaurantCoords.lon,
     })
     setPostingSlot(false)
-    if (insertErr) {
-      console.error('Slot insert failed', insertErr)
-      setPostSlotError(insertErr.message)
-      return
-    }
+    if (insertErr) { console.error('Slot insert failed', insertErr); setPostSlotError(insertErr.message); return }
     setPostSlotOpen(false)
     setNewSlot({ date: '', startTime: '', endTime: '', genres: [], budget: '', notes: '' })
     await loadSlots(userId)
     setActiveTab('slots')
   }
 
-  const handleApplicationAction = (slotId: string, appId: string, action: 'accept' | 'decline') => {
+  const handleApplicationAction = async (slotId: string, appId: string, action: 'accept' | 'decline') => {
+    const newStatus = action === 'accept' ? 'confirmed' : 'cancelled'
+    const { error } = await supabase
+      .from('bookings')
+      .update({ status: newStatus })
+      .eq('id', appId)
+    if (error) { console.error('Failed to update booking', error); return }
+
+    if (action === 'accept') {
+      await supabase.from('availability').update({ status: 'filled' }).eq('id', slotId)
+    }
+
     setSlots(prev => prev.map(slot => {
       if (slot.id !== slotId) return slot
       const app = slot.applications.find(a => a.id === appId)
@@ -265,47 +431,82 @@ export default function RestaurantDashboard() {
         status: action === 'accept' ? 'booked' : slot.status,
         bookedMusician: action === 'accept' ? app?.musicianName : slot.bookedMusician,
         applications: slot.applications.map(a =>
-          a.id === appId ? { ...a, status: action === 'accept' ? 'accepted' : 'declined' } : a
+          a.id === appId ? { ...a, status: action === 'accept' ? 'confirmed' : 'cancelled' } : a
         ),
       }
     }))
   }
 
-  const handleSendMessage = () => {
-    if (!chatInput.trim() || !selectedConvId) return
-    const text = chatInput
-    setConversations(prev => prev.map(conv =>
-      conv.id !== selectedConvId ? conv : {
-        ...conv,
+  const handleSendMessage = async () => {
+    if (!chatInput.trim() || !selectedConvId || !userId) return
+    const text = chatInput.trim()
+    const conv = conversations.find(c => c.id === selectedConvId)
+    if (!conv) return
+    setChatInput('')
+
+    const { data: newMsg, error } = await supabase
+      .from('messages')
+      .insert({
+        sender_id: userId,
+        receiver_id: conv.otherUserId,
+        content: text,
+        conversation_id: selectedConvId,
+        read: false,
+      })
+      .select()
+      .single()
+
+    if (error) { console.error('Failed to send message', error); return }
+
+    setConversations(prev => prev.map(c =>
+      c.id !== selectedConvId ? c : {
+        ...c,
         lastMessage: text,
         time: 'now',
-        messages: [...conv.messages, { id: Date.now().toString(), text, from: 'me', time: 'now' }],
+        messages: [...c.messages, { id: newMsg.id, text, from: 'me', time: 'now' }],
       }
     ))
-    setChatInput('')
   }
 
-  const openConversation = (musician: Musician) => {
-    const existing = conversations.find(c => c.musician === musician.name)
+  const openConversation = async (musician: { id: string; name: string; avatar: string }) => {
+    if (!userId || !musician.id) return
+    const convId = getConversationId(userId, musician.id)
+    const existing = conversations.find(c => c.id === convId)
+
     if (existing) {
-      setSelectedConvId(existing.id)
-      setConversations(prev => prev.map(c => c.id === existing.id ? { ...c, unread: false } : c))
+      setSelectedConvId(convId)
+      await supabase.from('messages').update({ read: true })
+        .eq('conversation_id', convId).eq('receiver_id', userId)
+      setConversations(prev => prev.map(c => c.id === convId ? { ...c, unread: false } : c))
     } else {
+      const { data: existingMsgs } = await supabase
+        .from('messages').select('*')
+        .eq('conversation_id', convId).order('created_at', { ascending: true })
+
       const newConv: Conversation = {
-        id: Date.now().toString(),
+        id: convId,
         musician: musician.name,
         avatar: musician.avatar,
-        lastMessage: '',
-        time: 'now',
+        lastMessage: existingMsgs?.at(-1)?.content ?? '',
+        time: existingMsgs?.length ? fmtMsgTime(existingMsgs.at(-1)!.created_at) : '',
         unread: false,
-        messages: [],
+        messages: (existingMsgs ?? []).map(m => ({
+          id: m.id,
+          text: m.content,
+          from: m.sender_id === userId ? 'me' : 'them',
+          time: fmtMsgTime(m.created_at),
+        })),
+        otherUserId: musician.id,
       }
-      setConversations(prev => [newConv, ...prev])
-      setSelectedConvId(newConv.id)
+      setConversations(prev => [newConv, ...prev.filter(c => c.id !== convId)])
+      setSelectedConvId(convId)
     }
+
     setSelectedMusician(null)
     setActiveTab('messages')
   }
+
+  // ---- Derived ----
 
   const openSlots = slots.filter(s => s.status === 'open').length
   const pendingApps = slots.reduce((n, s) => n + s.applications.filter(a => a.status === 'pending').length, 0)
@@ -359,7 +560,7 @@ export default function RestaurantDashboard() {
         {/* ---- HOME TAB ---- */}
         {activeTab === 'home' && (
           <>
-            {/* Profile hero — mini stage */}
+            {/* Profile hero */}
             <div className="relative bg-graphite rounded-3xl overflow-hidden mb-6 shadow-xl">
               <div className="absolute inset-x-0 bottom-0 top-1/2 flex items-end justify-around opacity-[0.10] pointer-events-none">
                 {Array.from({ length: 18 }).map((_, i) => (
@@ -368,7 +569,6 @@ export default function RestaurantDashboard() {
               </div>
               <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-chestnut opacity-25 blur-2xl pointer-events-none" />
               <div className="absolute -bottom-14 -left-10 w-36 h-36 rounded-full bg-teal opacity-15 blur-2xl pointer-events-none" />
-
               <div className="relative z-10 p-5 flex items-center gap-4">
                 {profile.avatar
                   ? <img src={profile.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover shrink-0 shadow-inner border border-chestnut/30" />
@@ -387,7 +587,7 @@ export default function RestaurantDashboard() {
               </div>
             </div>
 
-            {/* Stats — bigger, bolder */}
+            {/* Stats */}
             <div className="grid grid-cols-4 gap-2.5 mb-7">
               <StatCard value={openSlots} label="Open" color="text-teal" icon="🎵" />
               <StatCard value={pendingApps} label="Pending" color="text-chestnut" icon="📬" highlight />
@@ -430,8 +630,8 @@ export default function RestaurantDashboard() {
               </>
             )}
 
-            {/* Recent applications */}
-            <SectionHeader eyebrow="Inbox" title="Recent" accent="Applications." />
+            {/* Pending applications */}
+            <SectionHeader eyebrow="Inbox" title="Pending" accent="Applications." />
             {pendingApps === 0 ? (
               <EmptyState
                 icon="🎵"
@@ -456,7 +656,7 @@ export default function RestaurantDashboard() {
                             <div className="flex items-center gap-1.5 mt-0.5">
                               <span className="text-charcoal text-xs">{app.musicianGenre}</span>
                               <span className="text-charcoal/40 text-xs">·</span>
-                              <span className="text-charcoal text-xs">⭐ {app.rating}</span>
+                              <span className="text-charcoal text-xs">⭐ {app.rating || '—'}</span>
                             </div>
                             <p className="text-charcoal/60 text-xs mt-0.5">For: {slot.date} · {slot.time}</p>
                           </div>
@@ -468,6 +668,7 @@ export default function RestaurantDashboard() {
                         )}
                         <div className="flex gap-2">
                           <button onClick={() => handleApplicationAction(slot.id, app.id, 'accept')} className="flex-1 bg-teal text-snow py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">Accept</button>
+                          <button onClick={() => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })} className="px-4 py-2.5 rounded-xl text-sm font-bold bg-graphite/10 text-graphite hover:bg-graphite/20 transition-colors">💬</button>
                           <button onClick={() => handleApplicationAction(slot.id, app.id, 'decline')} className="flex-1 bg-snow text-charcoal py-2.5 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10">Decline</button>
                         </div>
                       </div>
@@ -521,7 +722,14 @@ export default function RestaurantDashboard() {
                 ) : (
                   <div className="space-y-4">
                     {filteredSlots.map(slot => (
-                      <SlotCard key={slot.id} slot={slot} selectedSlotId={selectedSlotId} setSelectedSlotId={setSelectedSlotId} handleApplicationAction={handleApplicationAction} />
+                      <SlotCard
+                        key={slot.id}
+                        slot={slot}
+                        selectedSlotId={selectedSlotId}
+                        setSelectedSlotId={setSelectedSlotId}
+                        handleApplicationAction={handleApplicationAction}
+                        onMessage={(app) => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })}
+                      />
                     ))}
                   </div>
                 )}
@@ -536,6 +744,7 @@ export default function RestaurantDashboard() {
                 selectedSlotId={selectedSlotId}
                 setSelectedSlotId={setSelectedSlotId}
                 handleApplicationAction={handleApplicationAction}
+                onMessage={(app) => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })}
               />
             )}
           </>
@@ -639,25 +848,40 @@ export default function RestaurantDashboard() {
             {conversations.length === 0 ? (
               <EmptyState icon="💬" title="No messages yet" body="Browse musicians and reach out to start a conversation." />
             ) : (
-              <div className="space-y-2">
+              <div className="bg-white rounded-2xl shadow-sm overflow-hidden divide-y divide-charcoal/[0.06]">
                 {conversations.map(conv => (
                   <button
                     key={conv.id}
-                    onClick={() => {
+                    onClick={async () => {
                       setSelectedConvId(conv.id)
-                      setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread: false } : c))
+                      if (conv.unread) {
+                        await supabase.from('messages').update({ read: true })
+                          .eq('conversation_id', conv.id).eq('receiver_id', userId)
+                        setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread: false } : c))
+                      }
                     }}
-                    className="w-full bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3 hover:shadow-md transition-shadow text-left"
+                    className="w-full px-4 py-3.5 flex items-center gap-3.5 hover:bg-snow/80 transition-colors text-left"
                   >
-                    <Avatar src={conv.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" bg="bg-chestnut/10" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-0.5">
-                        <p className={`text-sm font-bold ${conv.unread ? 'text-graphite' : 'text-charcoal'}`}>{conv.musician}</p>
-                        <p className="text-charcoal text-xs">{conv.time}</p>
-                      </div>
-                      <p className={`text-xs truncate ${conv.unread ? 'text-graphite font-medium' : 'text-charcoal'}`}>{conv.lastMessage || 'No messages yet'}</p>
+                    <div className="relative shrink-0">
+                      <Avatar src={conv.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" bg="bg-chestnut/10" />
+                      {conv.unread && (
+                        <span className="absolute top-0 right-0 w-3 h-3 bg-chestnut rounded-full border-2 border-white" />
+                      )}
                     </div>
-                    {conv.unread && <div className="w-2.5 h-2.5 rounded-full bg-chestnut shrink-0" />}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between gap-2 mb-0.5">
+                        <p className={`text-sm truncate ${conv.unread ? 'font-bold text-graphite' : 'font-semibold text-charcoal'}`}>
+                          {conv.musician}
+                        </p>
+                        <p className="text-[11px] text-charcoal/40 shrink-0">{conv.time}</p>
+                      </div>
+                      <p className={`text-xs truncate ${conv.unread ? 'font-medium text-graphite' : 'text-charcoal/55'}`}>
+                        {conv.lastMessage || 'Start a conversation'}
+                      </p>
+                    </div>
+                    <svg className="w-3.5 h-3.5 text-charcoal/20 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
                   </button>
                 ))}
               </div>
@@ -667,35 +891,75 @@ export default function RestaurantDashboard() {
 
         {/* ---- MESSAGES TAB: CHAT VIEW ---- */}
         {activeTab === 'messages' && selectedConv && (
-          <div className="flex flex-col" style={{ height: 'calc(100vh - 160px)' }}>
-            <div className="flex items-center gap-3 mb-4 shrink-0">
-              <button onClick={() => setSelectedConvId(null)} className="text-charcoal hover:text-chestnut transition-colors text-sm font-medium">← Back</button>
-              <Avatar src={selectedConv.avatar} className="w-9 h-9 rounded-full" textSize="text-lg" bg="bg-chestnut/10" />
-              <p className="text-graphite font-bold">{selectedConv.musician}</p>
+          <div className="-mx-4 -mt-5 flex flex-col" style={{ height: 'calc(100vh - 130px)' }}>
+            {/* Header */}
+            <div className="bg-white px-4 py-3 flex items-center gap-3 border-b border-charcoal/[0.08] shadow-sm shrink-0">
+              <button
+                onClick={() => setSelectedConvId(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-snow transition-colors text-charcoal hover:text-chestnut shrink-0"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <Avatar src={selectedConv.avatar} className="w-10 h-10 rounded-full" textSize="text-lg" bg="bg-chestnut/10" />
+              <div className="flex-1 min-w-0">
+                <p className="text-graphite font-bold text-sm leading-tight truncate">{selectedConv.musician}</p>
+                <p className="text-charcoal/40 text-[11px] leading-tight">Musician</p>
+              </div>
             </div>
-            <div className="flex-1 overflow-y-auto space-y-3 mb-4">
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1" style={{ background: '#F5F0EC' }}>
               {selectedConv.messages.length === 0 && (
-                <p className="text-charcoal text-sm text-center mt-10">Say hello to {selectedConv.musician}! 👋</p>
-              )}
-              {selectedConv.messages.map(msg => (
-                <div key={msg.id} className={`flex ${msg.from === 'me' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm ${msg.from === 'me' ? 'bg-chestnut text-snow rounded-br-sm' : 'bg-white text-graphite shadow-sm rounded-bl-sm'}`}>
-                    <p>{msg.text}</p>
-                    <p className={`text-[10px] mt-1 ${msg.from === 'me' ? 'text-snow/60' : 'text-charcoal'}`}>{msg.time}</p>
-                  </div>
+                <div className="flex flex-col items-center justify-center h-full text-center gap-3 py-12">
+                  <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center text-3xl">👋</div>
+                  <p className="text-graphite font-bold">Say hello!</p>
+                  <p className="text-charcoal/60 text-sm max-w-[200px] leading-relaxed">
+                    Start a conversation with {selectedConv.musician}
+                  </p>
                 </div>
-              ))}
+              )}
+              {selectedConv.messages.map((msg, i) => {
+                const isMe = msg.from === 'me'
+                const prev = selectedConv.messages[i - 1]
+                const groupBreak = prev && prev.from !== msg.from
+                return (
+                  <div key={msg.id}>
+                    {groupBreak && <div className="h-2" />}
+                    <div className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[72%] px-4 py-2.5 text-sm shadow-sm ${
+                        isMe
+                          ? 'bg-chestnut text-snow rounded-2xl rounded-br-sm'
+                          : 'bg-white text-graphite rounded-2xl rounded-bl-sm'
+                      }`}>
+                        <p className="leading-relaxed">{msg.text}</p>
+                        <p className={`text-[10px] mt-1 ${isMe ? 'text-snow/50 text-right' : 'text-charcoal/40'}`}>{msg.time}</p>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+              <div ref={messagesEndRef} />
             </div>
-            <div className="flex gap-2 shrink-0">
+
+            {/* Input bar */}
+            <div className="bg-white border-t border-charcoal/[0.08] px-4 py-3 flex items-center gap-2.5 shrink-0">
               <input
                 value={chatInput}
                 onChange={e => setChatInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-                placeholder="Type a message..."
-                className="flex-1 bg-white rounded-xl px-4 py-3 shadow-sm focus:outline-none focus:shadow-md transition-shadow text-sm"
+                placeholder="Message..."
+                className="flex-1 bg-snow rounded-full px-4 py-2.5 text-sm focus:outline-none focus:shadow-md transition-shadow placeholder:text-charcoal/40"
               />
-              <button onClick={handleSendMessage} className="bg-chestnut text-snow px-5 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity">
-                Send
+              <button
+                onClick={handleSendMessage}
+                disabled={!chatInput.trim()}
+                className="w-10 h-10 bg-chestnut rounded-full flex items-center justify-center shrink-0 hover:opacity-90 transition-opacity disabled:opacity-30"
+              >
+                <svg className="w-4 h-4 text-white rotate-90" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                </svg>
               </button>
             </div>
           </div>
@@ -729,7 +993,6 @@ export default function RestaurantDashboard() {
               </div>
               <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-72 h-72 rounded-full bg-chestnut opacity-15 blur-3xl pointer-events-none" />
               <div className="absolute -bottom-20 -right-10 w-40 h-40 rounded-full bg-teal opacity-15 blur-2xl pointer-events-none" />
-
               <div className="relative z-10 p-8 flex flex-col items-center text-center">
                 {profile.avatar
                   ? <img src={profile.avatar} alt="" className="w-24 h-24 rounded-2xl object-cover mb-4 shadow-inner border-2 border-chestnut/30" />
@@ -792,7 +1055,6 @@ export default function RestaurantDashboard() {
                 onChange={e => setNewSlot(p => ({ ...p, date: e.target.value }))}
                 className="w-full bg-white rounded-xl px-4 py-2.5 mb-5 shadow-sm focus:outline-none text-sm border border-charcoal/10"
               />
-
               <div className="grid grid-cols-2 gap-3 mb-5">
                 <div>
                   <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Start Time</label>
@@ -803,7 +1065,6 @@ export default function RestaurantDashboard() {
                   <input type="time" value={newSlot.endTime} onChange={e => setNewSlot(p => ({ ...p, endTime: e.target.value }))} className="w-full bg-white rounded-xl px-4 py-2.5 shadow-sm focus:outline-none text-sm border border-charcoal/10" />
                 </div>
               </div>
-
               <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-2">Genre Preferences</label>
               <div className="flex flex-wrap gap-2 mb-5">
                 {GENRES.map(g => (
@@ -816,7 +1077,6 @@ export default function RestaurantDashboard() {
                   </button>
                 ))}
               </div>
-
               <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Budget ($)</label>
               <input
                 type="number"
@@ -825,7 +1085,6 @@ export default function RestaurantDashboard() {
                 onChange={e => setNewSlot(p => ({ ...p, budget: e.target.value }))}
                 className="w-full bg-white rounded-xl px-4 py-2.5 mb-5 shadow-sm focus:outline-none text-sm border border-charcoal/10"
               />
-
               <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">
                 Notes <span className="text-charcoal/40 font-normal normal-case">(optional)</span>
               </label>
@@ -836,7 +1095,6 @@ export default function RestaurantDashboard() {
                 rows={2}
                 className="w-full bg-white rounded-xl px-4 py-2.5 mb-5 shadow-sm focus:outline-none text-sm resize-none border border-charcoal/10"
               />
-
               {postSlotError && (
                 <p className="bg-red-100 text-red-600 p-3 rounded-xl mb-3 text-xs">{postSlotError}</p>
               )}
@@ -884,7 +1142,6 @@ function EmptyState({ icon, title, body, action }: {
         ))}
       </div>
       <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-chestnut opacity-15 blur-2xl pointer-events-none" />
-
       <div className="relative z-10 p-8 text-center">
         <div className="w-16 h-16 bg-chestnut/20 border border-chestnut/30 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 shadow-inner">{icon}</div>
         <p className="text-snow font-black text-lg mb-1.5 tracking-tight">{title}</p>
@@ -932,11 +1189,12 @@ function TabButton({ icon, label, active, onClick, badge }: { icon: string; labe
   )
 }
 
-function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAction }: {
+function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAction, onMessage }: {
   slot: Slot
   selectedSlotId: string | null
   setSelectedSlotId: (id: string | null) => void
   handleApplicationAction: (slotId: string, appId: string, action: 'accept' | 'decline') => void
+  onMessage: (app: Application) => void
 }) {
   const borderColor = slot.status === 'open' ? 'border-l-[#6C9A8B]' : slot.status === 'booked' ? 'border-l-[#DC7F41]' : 'border-l-[#bbb]'
   return (
@@ -983,18 +1241,19 @@ function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAc
                     <p className="text-graphite font-bold text-sm truncate">{app.musicianName}</p>
                     <span className="text-chestnut font-black text-sm shrink-0">${app.price}</span>
                   </div>
-                  <p className="text-charcoal text-xs">{app.musicianGenre} · ⭐ {app.rating}</p>
+                  <p className="text-charcoal text-xs">{app.musicianGenre}</p>
                 </div>
               </div>
               {app.note && <div className="bg-snow rounded-lg px-3 py-2 mb-2"><p className="text-charcoal text-sm italic">"{app.note}"</p></div>}
               {app.status === 'pending' ? (
                 <div className="flex gap-2">
                   <button onClick={() => handleApplicationAction(slot.id, app.id, 'accept')} className="flex-1 bg-teal text-snow py-2 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity">Accept</button>
+                  <button onClick={() => onMessage(app)} className="px-3 py-2 rounded-lg text-xs font-medium bg-graphite/10 text-graphite hover:bg-graphite/20">💬</button>
                   <button onClick={() => handleApplicationAction(slot.id, app.id, 'decline')} className="flex-1 bg-snow text-charcoal py-2 rounded-lg text-xs font-medium hover:bg-[#E8E4E0] border border-charcoal/10">Decline</button>
                 </div>
               ) : (
-                <span className={`inline-block text-[10px] font-black px-2.5 py-1 rounded-full tracking-widest uppercase ${app.status === 'accepted' ? 'bg-teal/10 text-teal' : 'bg-charcoal/10 text-charcoal'}`}>
-                  {app.status === 'accepted' ? 'Accepted' : 'Declined'}
+                <span className={`inline-block text-[10px] font-black px-2.5 py-1 rounded-full tracking-widest uppercase ${app.status === 'confirmed' ? 'bg-teal/10 text-teal' : 'bg-charcoal/10 text-charcoal'}`}>
+                  {app.status === 'confirmed' ? 'Accepted' : 'Declined'}
                 </span>
               )}
             </div>
@@ -1005,7 +1264,7 @@ function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAc
   )
 }
 
-function SlotCalendar({ slots, calendarMonth, setCalendarMonth, calendarSelectedDay, setCalendarSelectedDay, selectedSlotId, setSelectedSlotId, handleApplicationAction }: {
+function SlotCalendar({ slots, calendarMonth, setCalendarMonth, calendarSelectedDay, setCalendarSelectedDay, selectedSlotId, setSelectedSlotId, handleApplicationAction, onMessage }: {
   slots: Slot[]
   calendarMonth: Date
   setCalendarMonth: (d: Date) => void
@@ -1014,6 +1273,7 @@ function SlotCalendar({ slots, calendarMonth, setCalendarMonth, calendarSelected
   selectedSlotId: string | null
   setSelectedSlotId: (id: string | null) => void
   handleApplicationAction: (slotId: string, appId: string, action: 'accept' | 'decline') => void
+  onMessage: (app: Application) => void
 }) {
   const year = calendarMonth.getFullYear()
   const month = calendarMonth.getMonth()
@@ -1043,13 +1303,11 @@ function SlotCalendar({ slots, calendarMonth, setCalendarMonth, calendarSelected
         <span className="text-graphite font-bold">{monthLabel}</span>
         <button onClick={() => setCalendarMonth(new Date(year, month + 1, 1))} className="text-charcoal hover:text-graphite transition-colors text-xl px-2 py-1">›</button>
       </div>
-
       <div className="grid grid-cols-7 mb-1">
         {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (
           <div key={d} className="text-center text-xs font-semibold text-charcoal py-1">{d}</div>
         ))}
       </div>
-
       <div className="grid grid-cols-7 gap-1 bg-white rounded-2xl p-3 shadow-sm mb-4">
         {cells.map((day, i) => {
           if (!day) return <div key={`e-${i}`} />
@@ -1064,9 +1322,7 @@ function SlotCalendar({ slots, calendarMonth, setCalendarMonth, calendarSelected
             <button
               key={dateStr}
               onClick={() => setCalendarSelectedDay(isSelected ? null : dateStr)}
-              className={`flex flex-col items-center py-2 rounded-xl text-sm font-medium transition-all
-                ${isSelected ? 'bg-graphite text-snow' : isToday ? 'ring-2 ring-chestnut text-chestnut' : 'text-graphite hover:bg-snow'}
-              `}
+              className={`flex flex-col items-center py-2 rounded-xl text-sm font-medium transition-all ${isSelected ? 'bg-graphite text-snow' : isToday ? 'ring-2 ring-chestnut text-chestnut' : 'text-graphite hover:bg-snow'}`}
             >
               <span>{day}</span>
               {daySlots.length > 0 && (
@@ -1080,13 +1336,11 @@ function SlotCalendar({ slots, calendarMonth, setCalendarMonth, calendarSelected
           )
         })}
       </div>
-
       <div className="flex gap-4 mb-5 px-1">
         <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-teal" /><span className="text-xs text-charcoal font-medium">Open</span></div>
         <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-chestnut" /><span className="text-xs text-charcoal font-medium">Booked</span></div>
         <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-charcoal/40" /><span className="text-xs text-charcoal font-medium">Past</span></div>
       </div>
-
       {calendarSelectedDay ? (
         <>
           <div className="flex items-center gap-2.5 mb-3">
@@ -1100,7 +1354,7 @@ function SlotCalendar({ slots, calendarMonth, setCalendarMonth, calendarSelected
           ) : (
             <div className="space-y-4">
               {selectedDaySlots.map(slot => (
-                <SlotCard key={slot.id} slot={slot} selectedSlotId={selectedSlotId} setSelectedSlotId={setSelectedSlotId} handleApplicationAction={handleApplicationAction} />
+                <SlotCard key={slot.id} slot={slot} selectedSlotId={selectedSlotId} setSelectedSlotId={setSelectedSlotId} handleApplicationAction={handleApplicationAction} onMessage={onMessage} />
               ))}
             </div>
           )}
