@@ -135,7 +135,6 @@ export default function MusicianDashboard() {
 
   // Apply modal
   const [applyGigId, setApplyGigId] = useState<string | null>(null)
-  const [applyPrice, setApplyPrice] = useState('')
   const [applyNote, setApplyNote] = useState('')
 
   // Bookings
@@ -443,7 +442,7 @@ export default function MusicianDashboard() {
   const [applyError, setApplyError] = useState('')
 
   const handleApply = async () => {
-    if (!applyGigId || !applyPrice || !userId) return
+    if (!applyGigId || !userId) return
     const gig = gigs.find(g => g.id === applyGigId)
     if (!gig) return
     setApplying(true)
@@ -455,7 +454,7 @@ export default function MusicianDashboard() {
         restaurant_id: gig.venue.id,
         musician_id: userId,
         status: 'pending',
-        pay_amount: parseInt(applyPrice),
+        pay_amount: gig.budget,
         note: applyNote || null,
       })
       .select()
@@ -471,13 +470,12 @@ export default function MusicianDashboard() {
       id: newBooking.id,
       gig,
       status: 'pending',
-      price: parseInt(applyPrice),
+      price: gig.budget,
       note: applyNote,
     }
     setBookings(prev => [booking, ...prev])
     setGigs(prev => prev.filter(g => g.id !== gig.id))
     setApplyGigId(null)
-    setApplyPrice('')
     setApplyNote('')
     setActiveTab('bookings')
   }
@@ -683,7 +681,7 @@ export default function MusicianDashboard() {
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="text-graphite font-black">${b.price}</p>
+                          <p className="text-teal font-black">${b.price}</p>
                           <div className="flex items-center gap-1 justify-end mt-1">
                             <div className="w-1.5 h-1.5 rounded-full bg-teal" />
                             <span className="text-teal text-[10px] font-bold">Confirmed</span>
@@ -718,7 +716,7 @@ export default function MusicianDashboard() {
                         </div>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="text-graphite font-black text-sm">${b.price}</p>
+                        <p className="text-teal font-black text-sm">${b.price}</p>
                         <div className="mt-1"><BookingBadge status={b.status} /></div>
                       </div>
                     </div>
@@ -796,8 +794,8 @@ export default function MusicianDashboard() {
                         </div>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="text-graphite font-black">${gig.budget}</p>
-                        <span className="bg-teal/10 text-teal text-[10px] font-black px-2 py-0.5 rounded-full tracking-widest uppercase">Open</span>
+                        <p className="text-teal font-black text-xl">${gig.budget}</p>
+                        <p className="text-charcoal/50 text-[9px] font-semibold uppercase tracking-wide">pay offered</p>
                       </div>
                     </div>
                     <p className="text-charcoal text-xs mb-2">{gig.date} · {gig.time}</p>
@@ -824,7 +822,7 @@ export default function MusicianDashboard() {
                         View Details
                       </button>
                       <button
-                        onClick={() => { setApplyGigId(gig.id); setApplyPrice(gig.budget.toString()) }}
+                        onClick={() => setApplyGigId(gig.id)}
                         className="flex-1 bg-chestnut text-snow py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
                       >
                         Apply Now →
@@ -864,8 +862,8 @@ export default function MusicianDashboard() {
                   <p className="text-graphite font-bold text-sm">{selectedGig.time}</p>
                 </div>
                 <div className="bg-snow rounded-xl p-3">
-                  <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-1">Budget</p>
-                  <p className="text-chestnut font-black text-sm">${selectedGig.budget}</p>
+                  <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-1">Pay Offered</p>
+                  <p className="text-teal font-black text-sm">${selectedGig.budget}</p>
                 </div>
               </div>
               <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-2">Genre Preferences</p>
@@ -888,7 +886,7 @@ export default function MusicianDashboard() {
                 Message Venue
               </button>
               <button
-                onClick={() => { setApplyGigId(selectedGig.id); setApplyPrice(selectedGig.budget.toString()); setSelectedGig(null) }}
+                onClick={() => { setApplyGigId(selectedGig.id); setSelectedGig(null) }}
                 className="flex-1 bg-chestnut text-snow py-3 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity"
               >
                 Apply Now →
@@ -945,7 +943,7 @@ export default function MusicianDashboard() {
                             </div>
                           </div>
                           <div className="text-right shrink-0">
-                            <p className="text-graphite font-black text-sm">${b.price}</p>
+                            <p className="text-teal font-black text-sm">${b.price}</p>
                             <div className="mt-1"><BookingBadge status={b.status} /></div>
                           </div>
                         </div>
@@ -1052,8 +1050,13 @@ export default function MusicianDashboard() {
               </button>
               <Avatar src={selectedConv.avatar} className="w-10 h-10 rounded-full" textSize="text-lg" />
               <div className="flex-1 min-w-0">
-                <p className="text-graphite font-bold text-sm leading-tight truncate">{selectedConv.venue}</p>
-                <p className="text-charcoal/40 text-[11px] leading-tight">Venue</p>
+                <button
+                  onClick={() => router.push('/profile/' + selectedConv.otherUserId)}
+                  className="text-graphite font-bold text-sm leading-tight truncate hover:text-chestnut transition-colors text-left"
+                >
+                  {selectedConv.venue}
+                </button>
+                <p className="text-charcoal/40 text-[11px] leading-tight">Venue · tap to view profile</p>
               </div>
             </div>
 
@@ -1243,49 +1246,47 @@ export default function MusicianDashboard() {
                 <h3 className="text-snow text-xl font-black tracking-tight">Apply to <span className="text-chestnut italic">Gig.</span></h3>
               </div>
               <button
-                onClick={() => { setApplyGigId(null); setApplyPrice(''); setApplyNote('') }}
+                onClick={() => { setApplyGigId(null); setApplyNote('') }}
                 className="text-snow/60 hover:text-snow transition-colors text-xl leading-none relative z-10"
               >✕</button>
             </div>
             <div className="p-6">
-              <div className="flex items-center gap-3 mb-5 p-3 bg-white rounded-xl">
-                <Avatar src={applyGig.venue.avatar} className="w-10 h-10 rounded-full" textSize="text-xl" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-graphite font-bold text-sm truncate">{applyGig.venue.name}</p>
-                  <p className="text-charcoal text-xs">{applyGig.date} · {applyGig.time}</p>
+              {/* Slot summary */}
+              <div className="bg-white rounded-xl p-4 mb-5 space-y-3">
+                <div className="flex items-center gap-3">
+                  <Avatar src={applyGig.venue.avatar} className="w-10 h-10 rounded-full" textSize="text-xl" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-graphite font-bold text-sm truncate">{applyGig.venue.name}</p>
+                    <p className="text-charcoal text-xs">{applyGig.date} · {applyGig.time}</p>
+                  </div>
                 </div>
-                <p className="text-chestnut font-black shrink-0">Pays ${applyGig.budget}</p>
+                <div className="flex items-center justify-between pt-3 border-t border-charcoal/[0.08]">
+                  <span className="text-charcoal text-xs font-semibold uppercase tracking-wide">Pay Offered</span>
+                  <span className="text-teal font-black text-xl">${applyGig.budget}</span>
+                </div>
               </div>
 
-              <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Your Rate ($)</label>
-              <input
-                type="number"
-                placeholder={applyGig.budget.toString()}
-                value={applyPrice}
-                onChange={e => setApplyPrice(e.target.value)}
-                className="w-full bg-white rounded-xl px-4 py-2.5 mb-5 shadow-sm focus:outline-none text-sm border border-charcoal/10"
-              />
-
               <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">
-                Note to Venue <span className="text-charcoal/40 font-normal normal-case">(optional)</span>
+                Add a Note <span className="text-charcoal/40 font-normal normal-case">(optional)</span>
               </label>
               <textarea
-                placeholder="Tell them about your style, experience, or any questions..."
+                placeholder="Tell the restaurant about yourself, your style, or why you'd be a great fit."
                 value={applyNote}
-                onChange={e => setApplyNote(e.target.value)}
-                rows={3}
-                className="w-full bg-white rounded-xl px-4 py-2.5 mb-5 shadow-sm focus:outline-none text-sm resize-none border border-charcoal/10"
+                onChange={e => setApplyNote(e.target.value.slice(0, 300))}
+                rows={4}
+                className="w-full bg-white rounded-xl px-4 py-2.5 mb-1 shadow-sm focus:outline-none text-sm resize-none border border-charcoal/10"
               />
+              <p className="text-right text-charcoal/40 text-xs mb-5">{applyNote.length}/300</p>
 
               {applyError && (
                 <p className="bg-red-100 text-red-600 p-3 rounded-xl mb-3 text-xs">{applyError}</p>
               )}
               <button
                 onClick={handleApply}
-                disabled={!applyPrice || applying}
+                disabled={applying}
                 className="w-full bg-chestnut text-snow py-3.5 rounded-xl font-black text-sm shadow-md hover:opacity-90 transition-opacity disabled:opacity-40"
               >
-                {applying ? 'Sending…' : 'Send Application →'}
+                {applying ? 'Sending…' : 'Submit Application →'}
               </button>
             </div>
           </div>

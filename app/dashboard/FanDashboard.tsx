@@ -474,12 +474,14 @@ export default function FanDashboard() {
                         const isFollowing = followedIds.has(v.id)
                         return (
                           <div key={v.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-4">
-                            <Avatar src={v.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-graphite font-bold text-sm">{v.name}</p>
+                            <button onClick={() => router.push('/profile/' + v.id)} className="shrink-0">
+                              <Avatar src={v.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" />
+                            </button>
+                            <button onClick={() => router.push('/profile/' + v.id)} className="flex-1 min-w-0 text-left">
+                              <p className="text-graphite font-bold text-sm hover:text-chestnut transition-colors">{v.name}</p>
                               <p className="text-charcoal text-xs">{[v.type, v.location].filter(Boolean).join(' · ')}</p>
                               <p className="text-teal text-xs font-semibold mt-0.5">📍 {v.distance}</p>
-                            </div>
+                            </button>
                             <button
                               onClick={() => toggleFollow(v.id)}
                               className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
@@ -512,12 +514,14 @@ export default function FanDashboard() {
                         return (
                           <div key={m.id} className="bg-white rounded-2xl p-4 shadow-sm">
                             <div className="flex items-center gap-4 mb-2">
-                              <Avatar src={m.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" bg="bg-chestnut/10" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-graphite font-bold text-sm">{m.name}</p>
+                              <button onClick={() => router.push('/profile/' + m.id)} className="shrink-0">
+                                <Avatar src={m.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" bg="bg-chestnut/10" />
+                              </button>
+                              <button onClick={() => router.push('/profile/' + m.id)} className="flex-1 min-w-0 text-left">
+                                <p className="text-graphite font-bold text-sm hover:text-chestnut transition-colors">{m.name}</p>
                                 <p className="text-charcoal text-xs">{m.genres.join(' · ')}</p>
                                 <p className="text-teal text-xs font-semibold mt-0.5">📍 {m.distance}</p>
-                              </div>
+                              </button>
                               <button
                                 onClick={() => toggleFollow(m.id)}
                                 className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
@@ -567,11 +571,13 @@ export default function FanDashboard() {
                     <div className="space-y-2 mb-6">
                       {followedVenues.map(v => (
                         <div key={v.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3">
-                          <Avatar src={v.avatar} className="w-11 h-11 rounded-full" textSize="text-xl" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-graphite font-bold text-sm truncate">{v.name}</p>
+                          <button onClick={() => router.push('/profile/' + v.id)} className="shrink-0">
+                            <Avatar src={v.avatar} className="w-11 h-11 rounded-full" textSize="text-xl" />
+                          </button>
+                          <button onClick={() => router.push('/profile/' + v.id)} className="flex-1 min-w-0 text-left">
+                            <p className="text-graphite font-bold text-sm truncate hover:text-chestnut transition-colors">{v.name}</p>
                             <p className="text-charcoal text-xs">{v.type} · {v.location}</p>
-                          </div>
+                          </button>
                           <button
                             onClick={() => toggleFollow(v.id)}
                             className="shrink-0 px-3 py-1.5 rounded-full text-xs font-bold bg-charcoal/10 text-charcoal hover:bg-red-50 hover:text-red-500 transition-all"
@@ -591,11 +597,13 @@ export default function FanDashboard() {
                     <div className="space-y-2">
                       {followedMusicians.map(m => (
                         <div key={m.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3">
-                          <Avatar src={m.avatar} className="w-11 h-11 rounded-full" textSize="text-xl" bg="bg-chestnut/10" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-graphite font-bold text-sm truncate">{m.name}</p>
+                          <button onClick={() => router.push('/profile/' + m.id)} className="shrink-0">
+                            <Avatar src={m.avatar} className="w-11 h-11 rounded-full" textSize="text-xl" bg="bg-chestnut/10" />
+                          </button>
+                          <button onClick={() => router.push('/profile/' + m.id)} className="flex-1 min-w-0 text-left">
+                            <p className="text-graphite font-bold text-sm truncate hover:text-chestnut transition-colors">{m.name}</p>
                             <p className="text-charcoal text-xs">{m.genres.join(' · ')}</p>
-                          </div>
+                          </button>
                           <button
                             onClick={() => toggleFollow(m.id)}
                             className="shrink-0 px-3 py-1.5 rounded-full text-xs font-bold bg-charcoal/10 text-charcoal hover:bg-red-50 hover:text-red-500 transition-all"

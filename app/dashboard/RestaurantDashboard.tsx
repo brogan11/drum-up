@@ -4,12 +4,13 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { eqBarStyle } from '@/lib/eq'
+import { milesBetween } from '@/lib/distance'
 import { Avatar } from '@/components/Avatar'
 
 // ---- Types ----
 
 type AppStatus = 'pending' | 'confirmed' | 'cancelled'
-type SlotStatus = 'open' | 'booked' | 'past'
+type SlotStatus = 'open' | 'booked' | 'past' | 'cancelled'
 type SlotFilter = 'all' | 'open' | 'booked' | 'past'
 type SlotsView = 'list' | 'calendar'
 
@@ -18,8 +19,11 @@ interface Application {
   musicianId: string
   musicianName: string
   musicianGenre: string
-  rating: number
-  price: number
+  musicianLocation: string
+  musicianDistance: string
+  instagram: string
+  youtube: string
+  spotify: string
   note: string
   avatar: string
   status: AppStatus
@@ -29,24 +33,29 @@ interface Slot {
   id: string
   date: string
   rawDate: string
+  rawStartTime: string
+  rawEndTime: string
   time: string
   genres: string[]
   budget: number
+  notes: string
   status: SlotStatus
   bookedMusician?: string
   applications: Application[]
 }
 
-interface Musician {
+interface LiveMusician {
   id: string
   name: string
   genres: string[]
-  rating: number
-  reviewCount: number
-  priceRange: string
-  distance: string
   bio: string
   avatar: string
+  location: string
+  distance: number
+  distanceStr: string
+  instagram: string
+  youtube: string
+  spotify: string
 }
 
 interface ChatMessage {
@@ -79,10 +88,6 @@ interface VenueProfile {
 // ---- Constants ----
 
 const GENRES = ['Jazz', 'Blues', 'Acoustic', 'Folk', 'R&B', 'Soul', 'Rock', 'Country', 'Pop', 'Classical']
-
-// ---- Mock Data ----
-
-const MUSICIANS: Musician[] = []
 
 const INITIAL_PROFILE: VenueProfile = {
   name: 'Your Venue',
@@ -125,6 +130,7 @@ function getConversationId(uid1: string, uid2: string): string {
 function StatusBadge({ status }: { status: SlotStatus }) {
   if (status === 'open') return <span className="bg-teal/10 text-teal text-[10px] font-black px-2.5 py-1 rounded-full tracking-widest uppercase">Open</span>
   if (status === 'booked') return <span className="bg-chestnut/10 text-chestnut text-[10px] font-black px-2.5 py-1 rounded-full tracking-widest uppercase">Booked</span>
+  if (status === 'cancelled') return <span className="bg-red-100 text-red-500 text-[10px] font-black px-2.5 py-1 rounded-full tracking-widest uppercase">Cancelled</span>
   return <span className="bg-charcoal/10 text-charcoal text-[10px] font-black px-2.5 py-1 rounded-full tracking-widest uppercase">Past</span>
 }
 
@@ -148,7 +154,7 @@ export default function RestaurantDashboard() {
 
   const [search, setSearch] = useState('')
   const [genreFilter, setGenreFilter] = useState<string | null>(null)
-  const [selectedMusician, setSelectedMusician] = useState<Musician | null>(null)
+  const [selectedLiveMusician, setSelectedLiveMusician] = useState<LiveMusician | null>(null)
 
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null)
   const [chatInput, setChatInput] = useState('')
@@ -159,10 +165,20 @@ export default function RestaurantDashboard() {
   const [userId, setUserId] = useState('')
   const [savingProfile, setSavingProfile] = useState(false)
   const [restaurantCoords, setRestaurantCoords] = useState<{ lat: number | null; lon: number | null }>({ lat: null, lon: null })
+  const [discoveryRadius, setDiscoveryRadius] = useState(25)
+  const [radiusDraft, setRadiusDraft] = useState(25)
+  const [savingRadius, setSavingRadius] = useState(false)
+  const [radiusSaved, setRadiusSaved] = useState(false)
+  const [profileSaved, setProfileSaved] = useState(false)
+  const [liveMusicians, setLiveMusicians] = useState<LiveMusician[]>([])
+  const [browseLoading, setBrowseLoading] = useState(false)
 
   // ---- Data loading ----
 
-  const loadSlots = async (rid: string) => {
+  const loadSlots = async (rid: string, resLat?: number | null, resLon?: number | null) => {
+    const lat = resLat !== undefined ? resLat : restaurantCoords.lat
+    const lon = resLon !== undefined ? resLon : restaurantCoords.lon
+
     const { data } = await supabase
       .from('availability')
       .select('*')
@@ -175,14 +191,19 @@ export default function RestaurantDashboard() {
       const dateLabel = new Date(row.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
       const dbStatus = row.status as string
       const isPast = row.date < today
-      const status: SlotStatus = isPast ? 'past' : dbStatus === 'filled' ? 'booked' : 'open'
+      const status: SlotStatus = isPast ? 'past' : dbStatus === 'filled' ? 'booked' : dbStatus === 'cancelled' ? 'cancelled' : 'open'
+      const rawStart = row.start_time?.slice(0, 5) ?? ''
+      const rawEnd = row.end_time?.slice(0, 5) ?? ''
       return {
         id: row.id,
         date: dateLabel,
         rawDate: row.date,
-        time: `${formatTime(row.start_time?.slice(0, 5) ?? '')} – ${formatTime(row.end_time?.slice(0, 5) ?? '')}`,
+        rawStartTime: rawStart,
+        rawEndTime: rawEnd,
+        time: `${formatTime(rawStart)} – ${formatTime(rawEnd)}`,
         genres: Array.isArray(row.genres) ? row.genres : [],
         budget: Number(row.pay) || 0,
+        notes: row.description ?? '',
         status,
         applications: [],
       }
@@ -202,7 +223,7 @@ export default function RestaurantDashboard() {
         const musicianIds = [...new Set(bookingsData.map(b => b.musician_id))]
         const { data: musicianData } = await supabase
           .from('profiles')
-          .select('id, full_name, avatar_url, role_metadata')
+          .select('id, full_name, avatar_url, role_metadata, location_text, latitude, longitude, instagram_url, youtube_url, spotify_url')
           .in('id', musicianIds)
         const musicianById = new Map((musicianData ?? []).map(m => [m.id, m]))
 
@@ -211,13 +232,21 @@ export default function RestaurantDashboard() {
           const applications: Application[] = slotBookings.map(b => {
             const musician = musicianById.get(b.musician_id)
             const meta = (musician?.role_metadata ?? {}) as Record<string, unknown>
+            let distStr = ''
+            if (lat != null && lon != null && musician?.latitude != null && musician?.longitude != null) {
+              const d = milesBetween(lat, lon, musician.latitude as number, musician.longitude as number)
+              distStr = `${Math.round(d)} mi away`
+            }
             return {
               id: b.id,
               musicianId: b.musician_id,
               musicianName: musician?.full_name ?? 'Unknown Musician',
               musicianGenre: Array.isArray(meta.genres) ? (meta.genres as string[]).slice(0, 2).join(', ') : '',
-              rating: 0,
-              price: Number(b.pay_amount) || 0,
+              musicianLocation: (musician as Record<string, unknown>)?.location_text as string ?? '',
+              musicianDistance: distStr,
+              instagram: (musician as Record<string, unknown>)?.instagram_url as string ?? '',
+              youtube: (musician as Record<string, unknown>)?.youtube_url as string ?? '',
+              spotify: (musician as Record<string, unknown>)?.spotify_url as string ?? '',
               note: b.note ?? '',
               avatar: musician?.avatar_url ?? '',
               status: b.status as AppStatus,
@@ -291,6 +320,40 @@ export default function RestaurantDashboard() {
     setConversations(convs.sort((a, b) => lastMsgAt(b.id).localeCompare(lastMsgAt(a.id))))
   }
 
+  const loadMusicians = async (lat: number, lon: number, radius: number) => {
+    setBrowseLoading(true)
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, full_name, avatar_url, bio, location_text, latitude, longitude, instagram_url, youtube_url, spotify_url, role_metadata')
+      .eq('user_type', 'musician')
+    setBrowseLoading(false)
+    if (!data) return
+
+    const results: LiveMusician[] = data
+      .filter(m => m.latitude != null && m.longitude != null)
+      .map(m => {
+        const dist = milesBetween(lat, lon, m.latitude as number, m.longitude as number)
+        const meta = (m.role_metadata ?? {}) as Record<string, unknown>
+        return {
+          id: m.id,
+          name: m.full_name ?? 'Unknown',
+          genres: Array.isArray(meta.genres) ? meta.genres as string[] : [],
+          bio: m.bio ?? '',
+          avatar: m.avatar_url ?? '',
+          location: m.location_text ?? '',
+          distance: dist,
+          distanceStr: dist < 1 ? 'Less than 1 mile away' : `${Math.round(dist)} mile${Math.round(dist) === 1 ? '' : 's'} away`,
+          instagram: m.instagram_url ?? '',
+          youtube: m.youtube_url ?? '',
+          spotify: m.spotify_url ?? '',
+        }
+      })
+      .filter(m => m.distance <= radius)
+      .sort((a, b) => a.distance - b.distance)
+
+    setLiveMusicians(results)
+  }
+
   useEffect(() => {
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser()
@@ -308,9 +371,17 @@ export default function RestaurantDashboard() {
         website: data.website ?? '',
         avatar: data.avatar_url ?? '',
       })
-      setRestaurantCoords({ lat: data.latitude ?? null, lon: data.longitude ?? null })
-      await loadSlots(user.id)
+      const lat = data.latitude ?? null
+      const lon = data.longitude ?? null
+      const radius = (data.discovery_radius_miles as number | null) ?? 25
+      setRestaurantCoords({ lat, lon })
+      setDiscoveryRadius(radius)
+      setRadiusDraft(radius)
+      await loadSlots(user.id, lat, lon)
       await loadConversations(user.id)
+      if (lat != null && lon != null) {
+        void loadMusicians(lat, lon, radius)
+      }
     }
     load()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -386,6 +457,7 @@ export default function RestaurantDashboard() {
       cuisine_type: profileDraft.type || null,
     }
     const { error: upErr } = await supabase.from('profiles').update({
+      full_name: profileDraft.name || null,
       bio: profileDraft.description || null,
       location_text: profileDraft.address || null,
       website: profileDraft.website || null,
@@ -395,6 +467,24 @@ export default function RestaurantDashboard() {
     if (upErr) { console.error('Profile save failed', upErr); return }
     setProfile(profileDraft)
     setEditingProfile(false)
+    setProfileSaved(true)
+    setTimeout(() => setProfileSaved(false), 2000)
+  }
+
+  const saveRadius = async () => {
+    if (!userId) return
+    setSavingRadius(true)
+    const { error } = await supabase.from('profiles').update({
+      discovery_radius_miles: radiusDraft,
+    }).eq('id', userId)
+    setSavingRadius(false)
+    if (error) { console.error('Failed to save radius', error); return }
+    setDiscoveryRadius(radiusDraft)
+    setRadiusSaved(true)
+    setTimeout(() => setRadiusSaved(false), 2000)
+    if (restaurantCoords.lat != null && restaurantCoords.lon != null) {
+      await loadMusicians(restaurantCoords.lat, restaurantCoords.lon, radiusDraft)
+    }
   }
 
   const handleLogout = async () => {
@@ -404,6 +494,15 @@ export default function RestaurantDashboard() {
 
   const [postingSlot, setPostingSlot] = useState(false)
   const [postSlotError, setPostSlotError] = useState('')
+
+  const [editingSlot, setEditingSlot] = useState<Slot | null>(null)
+  const [editDraft, setEditDraft] = useState({ date: '', startTime: '', endTime: '', budget: '', notes: '' })
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  const [cancelSlotId, setCancelSlotId] = useState<string | null>(null)
+  const [cancellingSlot, setCancellingSlot] = useState(false)
+
+  const [bookingConfirmedMsg, setBookingConfirmedMsg] = useState<string | null>(null)
 
   const handlePostSlot = async () => {
     if (!newSlot.date || !newSlot.startTime || !newSlot.endTime || !newSlot.budget) return
@@ -444,6 +543,19 @@ export default function RestaurantDashboard() {
 
     if (action === 'accept') {
       await supabase.from('availability').update({ status: 'filled' }).eq('id', slotId)
+      // Auto-decline all other pending applications for this slot
+      await supabase.from('bookings')
+        .update({ status: 'cancelled' })
+        .eq('availability_id', slotId)
+        .eq('status', 'pending')
+        .neq('id', appId)
+
+      const slot = slots.find(s => s.id === slotId)
+      const app = slot?.applications.find(a => a.id === appId)
+      if (slot && app) {
+        setBookingConfirmedMsg(`Booking confirmed! ${app.musicianName} has been booked for ${slot.date}.`)
+        setTimeout(() => setBookingConfirmedMsg(null), 4000)
+      }
     }
 
     setSlots(prev => prev.map(slot => {
@@ -453,11 +565,45 @@ export default function RestaurantDashboard() {
         ...slot,
         status: action === 'accept' ? 'booked' : slot.status,
         bookedMusician: action === 'accept' ? app?.musicianName : slot.bookedMusician,
-        applications: slot.applications.map(a =>
-          a.id === appId ? { ...a, status: action === 'accept' ? 'confirmed' : 'cancelled' } : a
-        ),
+        applications: slot.applications.map(a => {
+          if (a.id === appId) return { ...a, status: action === 'accept' ? 'confirmed' : 'cancelled' }
+          if (action === 'accept' && a.status === 'pending') return { ...a, status: 'cancelled' as AppStatus }
+          return a
+        }),
       }
     }))
+  }
+
+  const handleEditSlot = async () => {
+    if (!editingSlot || !userId) return
+    setSavingEdit(true)
+    const { error } = await supabase.from('availability').update({
+      date: editDraft.date,
+      start_time: editDraft.startTime,
+      end_time: editDraft.endTime,
+      pay: parseInt(editDraft.budget) || 0,
+      description: editDraft.notes || null,
+    }).eq('id', editingSlot.id).eq('restaurant_id', userId)
+    setSavingEdit(false)
+    if (error) { console.error('Edit slot failed', error); return }
+    setEditingSlot(null)
+    await loadSlots(userId)
+  }
+
+  const handleCancelSlot = async () => {
+    if (!cancelSlotId || !userId) return
+    setCancellingSlot(true)
+    const slot = slots.find(s => s.id === cancelSlotId)
+    if (slot && slot.applications.some(a => a.status === 'pending' || a.status === 'confirmed')) {
+      await supabase.from('bookings')
+        .update({ status: 'cancelled' })
+        .eq('availability_id', cancelSlotId)
+        .in('status', ['pending', 'confirmed'])
+    }
+    await supabase.from('availability').update({ status: 'cancelled' }).eq('id', cancelSlotId)
+    setCancelSlotId(null)
+    setCancellingSlot(false)
+    await loadSlots(userId)
   }
 
   const handleSendMessage = async () => {
@@ -525,7 +671,7 @@ export default function RestaurantDashboard() {
       setSelectedConvId(convId)
     }
 
-    setSelectedMusician(null)
+    setSelectedLiveMusician(null)
     setActiveTab('messages')
   }
 
@@ -536,7 +682,7 @@ export default function RestaurantDashboard() {
   const upcomingGigs = slots.filter(s => s.status === 'booked').length
   const pastGigs = slots.filter(s => s.status === 'past').length
   const filteredSlots = slotFilter === 'all' ? slots : slots.filter(s => s.status === slotFilter)
-  const filteredMusicians = MUSICIANS.filter(m => {
+  const filteredMusicians = liveMusicians.filter(m => {
     const q = search.toLowerCase()
     const matchSearch = !q || m.name.toLowerCase().includes(q) || m.genres.some(g => g.toLowerCase().includes(q))
     const matchGenre = !genreFilter || m.genres.includes(genreFilter)
@@ -674,12 +820,15 @@ export default function RestaurantDashboard() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
                               <p className="text-graphite font-bold text-sm truncate">{app.musicianName}</p>
-                              <span className="text-chestnut font-black text-sm shrink-0">${app.price}</span>
+                              <div className="text-right shrink-0">
+                                <p className="text-teal font-black text-sm">${slot.budget}</p>
+                                <p className="text-charcoal/50 text-[9px] uppercase tracking-wide">pay offered</p>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1.5 mt-0.5">
+                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                               <span className="text-charcoal text-xs">{app.musicianGenre}</span>
-                              <span className="text-charcoal/40 text-xs">·</span>
-                              <span className="text-charcoal text-xs">⭐ {app.rating || '—'}</span>
+                              {app.musicianLocation && <><span className="text-charcoal/40 text-xs">·</span><span className="text-charcoal text-xs">📍 {app.musicianLocation}</span></>}
+                              {app.musicianDistance && <span className="text-chestnut text-xs font-semibold">{app.musicianDistance}</span>}
                             </div>
                             <p className="text-charcoal/60 text-xs mt-0.5">For: {slot.date} · {slot.time}</p>
                           </div>
@@ -687,6 +836,13 @@ export default function RestaurantDashboard() {
                         {app.note && (
                           <div className="bg-snow rounded-xl px-3 py-2.5 mb-3">
                             <p className="text-charcoal text-sm italic leading-relaxed">"{app.note}"</p>
+                          </div>
+                        )}
+                        {(app.instagram || app.youtube || app.spotify) && (
+                          <div className="flex flex-wrap gap-3 mb-3">
+                            {app.instagram && <a href={app.instagram} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">📷 Instagram</a>}
+                            {app.youtube && <a href={app.youtube} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">▶ YouTube</a>}
+                            {app.spotify && <a href={app.spotify} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">🎵 Spotify</a>}
                           </div>
                         )}
                         <div className="flex gap-2">
@@ -752,6 +908,8 @@ export default function RestaurantDashboard() {
                         setSelectedSlotId={setSelectedSlotId}
                         handleApplicationAction={handleApplicationAction}
                         onMessage={(app) => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })}
+                        onEdit={slot.status === 'open' ? () => { setEditingSlot(slot); setEditDraft({ date: slot.rawDate, startTime: slot.rawStartTime, endTime: slot.rawEndTime, budget: String(slot.budget), notes: slot.notes }) } : undefined}
+                        onCancel={(slot.status === 'open' || slot.status === 'booked') ? () => setCancelSlotId(slot.id) : undefined}
                       />
                     ))}
                   </div>
@@ -768,13 +926,15 @@ export default function RestaurantDashboard() {
                 setSelectedSlotId={setSelectedSlotId}
                 handleApplicationAction={handleApplicationAction}
                 onMessage={(app) => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })}
+                onEditSlot={(slot) => { setEditingSlot(slot); setEditDraft({ date: slot.rawDate, startTime: slot.rawStartTime, endTime: slot.rawEndTime, budget: String(slot.budget), notes: slot.notes }) }}
+                onCancelSlot={(slotId) => setCancelSlotId(slotId)}
               />
             )}
           </>
         )}
 
         {/* ---- BROWSE TAB: LIST ---- */}
-        {activeTab === 'browse' && !selectedMusician && (
+        {activeTab === 'browse' && !selectedLiveMusician && (
           <>
             <div className="mb-5">
               <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">Talent Pool</p>
@@ -782,6 +942,30 @@ export default function RestaurantDashboard() {
                 Browse <span className="text-chestnut italic">Musicians.</span>
               </h2>
             </div>
+
+            {/* Radius filter bar */}
+            <div className="flex items-center justify-between gap-3 mb-4 bg-white rounded-xl px-4 py-2.5 shadow-sm">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-chestnut shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span className="text-charcoal text-sm font-semibold">Within {discoveryRadius} miles</span>
+              </div>
+              <button
+                onClick={() => {
+                  if (restaurantCoords.lat != null && restaurantCoords.lon != null) {
+                    void loadMusicians(restaurantCoords.lat, restaurantCoords.lon, discoveryRadius)
+                  }
+                }}
+                disabled={browseLoading}
+                className="text-chestnut text-sm font-bold hover:underline disabled:opacity-40 transition-opacity"
+              >
+                {browseLoading ? 'Loading…' : '↺ Refresh'}
+              </button>
+            </div>
+
+            {/* Search */}
             <div className="relative mb-4">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-charcoal/40 text-sm pointer-events-none">🔍</span>
               <input
@@ -791,29 +975,96 @@ export default function RestaurantDashboard() {
                 className="w-full bg-white rounded-xl pl-10 pr-4 py-3 shadow-sm focus:outline-none focus:shadow-md transition-shadow text-sm"
               />
             </div>
+
+            {/* Genre filter chips */}
             <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
-              <button onClick={() => setGenreFilter(null)} className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${!genreFilter ? 'bg-graphite text-snow' : 'bg-white text-charcoal hover:bg-[#E8E4E0]'}`}>
-                All
-              </button>
+              <button onClick={() => setGenreFilter(null)} className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${!genreFilter ? 'bg-graphite text-snow' : 'bg-white text-charcoal hover:bg-[#E8E4E0]'}`}>All</button>
               {GENRES.map(g => (
-                <button key={g} onClick={() => setGenreFilter(genreFilter === g ? null : g)} className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${genreFilter === g ? 'bg-graphite text-snow' : 'bg-white text-charcoal hover:bg-[#E8E4E0]'}`}>
-                  {g}
-                </button>
+                <button key={g} onClick={() => setGenreFilter(genreFilter === g ? null : g)} className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${genreFilter === g ? 'bg-graphite text-snow' : 'bg-white text-charcoal hover:bg-[#E8E4E0]'}`}>{g}</button>
               ))}
             </div>
-            {filteredMusicians.length === 0 ? (
-              <EmptyState icon="🎸" title="No musicians yet" body="Musicians on Drum Up will appear here once they join. Check back soon." />
-            ) : (
+
+            {/* Loading skeleton */}
+            {browseLoading && (
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="bg-white rounded-2xl p-4 shadow-sm animate-pulse">
+                    <div className="flex items-start gap-4 mb-3">
+                      <div className="w-14 h-14 rounded-full bg-charcoal/10 shrink-0" />
+                      <div className="flex-1 space-y-2 pt-1">
+                        <div className="h-4 bg-charcoal/10 rounded w-2/3" />
+                        <div className="h-3 bg-charcoal/10 rounded w-1/2" />
+                        <div className="h-3 bg-charcoal/10 rounded w-3/4" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="h-9 bg-charcoal/10 rounded-xl flex-1" />
+                      <div className="h-9 bg-charcoal/10 rounded-xl flex-1" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* No location */}
+            {!browseLoading && restaurantCoords.lat == null && (
+              <EmptyState
+                icon="📍"
+                title="Location not set"
+                body="Add your location in Settings so we can find musicians near you."
+              />
+            )}
+
+            {/* Empty state */}
+            {!browseLoading && restaurantCoords.lat != null && filteredMusicians.length === 0 && (
+              <EmptyState
+                icon="🎸"
+                title={`No musicians found within ${discoveryRadius} miles`}
+                body="Try increasing your discovery radius in your profile settings."
+                action={{ label: 'Update Radius in Profile', onClick: () => setActiveTab('profile') }}
+              />
+            )}
+
+            {/* Musician cards */}
+            {!browseLoading && filteredMusicians.length > 0 && (
               <div className="space-y-3">
                 {filteredMusicians.map(m => (
-                  <div key={m.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-4">
-                    <Avatar src={m.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" bg="bg-chestnut/10" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-graphite font-bold text-sm">{m.name}</p>
-                      <p className="text-charcoal text-xs">{m.genres.join(' · ')}</p>
-                      <p className="text-charcoal text-xs mt-0.5">⭐ {m.rating} ({m.reviewCount}) · {m.distance} · {m.priceRange}</p>
+                  <div key={m.id} className="bg-white rounded-2xl p-4 shadow-sm">
+                    <div className="flex items-start gap-4 mb-3">
+                      <Avatar src={m.avatar} className="w-14 h-14 rounded-full shrink-0" textSize="text-2xl" bg="bg-chestnut/10" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-graphite font-bold text-sm">{m.name}</p>
+                        {m.location && <p className="text-charcoal text-xs mt-0.5">{m.location}</p>}
+                        <p className="text-chestnut text-xs font-semibold mt-0.5">📍 {m.distanceStr}</p>
+                        {m.bio && <p className="text-charcoal/70 text-xs mt-1.5 line-clamp-2 leading-relaxed">{m.bio}</p>}
+                      </div>
                     </div>
-                    <button onClick={() => setSelectedMusician(m)} className="text-chestnut text-sm font-bold hover:underline shrink-0">View →</button>
+                    {m.genres.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-3">
+                        {m.genres.map(g => <span key={g} className="text-[10px] bg-snow text-charcoal px-2 py-0.5 rounded-full font-medium">{g}</span>)}
+                      </div>
+                    )}
+                    {(m.instagram || m.youtube || m.spotify) && (
+                      <div className="flex flex-wrap gap-3 mb-3">
+                        {m.instagram && <a href={m.instagram} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">📷 Instagram</a>}
+                        {m.youtube && <a href={m.youtube} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">▶ YouTube</a>}
+                        {m.spotify && <a href={m.spotify} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">🎵 Spotify</a>}
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => openConversation({ id: m.id, name: m.name, avatar: m.avatar })}
+                        className="flex-1 bg-snow text-charcoal py-2.5 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10"
+                      >
+                        💬 Message
+                      </button>
+                      <button
+                        onClick={() => router.push('/profile/' + m.id)}
+                        className="flex-1 bg-chestnut text-snow py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
+                      >
+                        View Profile →
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -822,38 +1073,67 @@ export default function RestaurantDashboard() {
         )}
 
         {/* ---- BROWSE TAB: MUSICIAN PROFILE ---- */}
-        {activeTab === 'browse' && selectedMusician && (
+        {activeTab === 'browse' && selectedLiveMusician && (
           <div>
-            <button onClick={() => setSelectedMusician(null)} className="flex items-center gap-1.5 text-charcoal text-sm mb-5 hover:text-chestnut transition-colors font-medium">
+            <button onClick={() => setSelectedLiveMusician(null)} className="flex items-center gap-1.5 text-charcoal text-sm mb-5 hover:text-chestnut transition-colors font-medium">
               ← Back to Browse
             </button>
             <div className="bg-white rounded-2xl p-6 shadow-sm mb-4">
               <div className="flex items-center gap-4 mb-5">
-                <Avatar src={selectedMusician.avatar} className="w-20 h-20 rounded-2xl" textSize="text-4xl" bg="bg-chestnut/10" />
+                <Avatar src={selectedLiveMusician.avatar} className="w-20 h-20 rounded-2xl" textSize="text-4xl" bg="bg-chestnut/10" />
                 <div>
-                  <h2 className="text-graphite text-xl font-black">{selectedMusician.name}</h2>
-                  <p className="text-charcoal text-sm mt-0.5">{selectedMusician.genres.join(' · ')}</p>
-                  <p className="text-charcoal text-sm">⭐ {selectedMusician.rating} ({selectedMusician.reviewCount} reviews)</p>
+                  <h2 className="text-graphite text-xl font-black">{selectedLiveMusician.name}</h2>
+                  {selectedLiveMusician.genres.length > 0 && (
+                    <p className="text-charcoal text-sm mt-0.5">{selectedLiveMusician.genres.join(' · ')}</p>
+                  )}
+                  <p className="text-chestnut text-sm mt-1 font-semibold">📍 {selectedLiveMusician.distanceStr}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3 mb-5">
                 <div className="bg-snow rounded-xl p-3">
-                  <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-1">Price Range</p>
-                  <p className="text-graphite font-bold text-sm">{selectedMusician.priceRange}</p>
+                  <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-1">Location</p>
+                  <p className="text-graphite font-bold text-sm">{selectedLiveMusician.location || '—'}</p>
                 </div>
                 <div className="bg-snow rounded-xl p-3">
                   <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-1">Distance</p>
-                  <p className="text-graphite font-bold text-sm">{selectedMusician.distance}</p>
+                  <p className="text-graphite font-bold text-sm">{selectedLiveMusician.distanceStr}</p>
                 </div>
               </div>
-              <p className="text-charcoal text-sm leading-relaxed">{selectedMusician.bio}</p>
+              {selectedLiveMusician.bio && (
+                <div className="mb-4">
+                  <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-2">About</p>
+                  <p className="text-charcoal text-sm leading-relaxed">{selectedLiveMusician.bio}</p>
+                </div>
+              )}
+              {(selectedLiveMusician.instagram || selectedLiveMusician.youtube || selectedLiveMusician.spotify) && (
+                <div>
+                  <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-2">Links</p>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedLiveMusician.instagram && (
+                      <a href={selectedLiveMusician.instagram} target="_blank" rel="noopener noreferrer" className="bg-snow px-3 py-1.5 rounded-xl text-xs font-medium text-charcoal hover:bg-[#E8E4E0] transition-colors">📷 Instagram</a>
+                    )}
+                    {selectedLiveMusician.youtube && (
+                      <a href={selectedLiveMusician.youtube} target="_blank" rel="noopener noreferrer" className="bg-snow px-3 py-1.5 rounded-xl text-xs font-medium text-charcoal hover:bg-[#E8E4E0] transition-colors">▶ YouTube</a>
+                    )}
+                    {selectedLiveMusician.spotify && (
+                      <a href={selectedLiveMusician.spotify} target="_blank" rel="noopener noreferrer" className="bg-snow px-3 py-1.5 rounded-xl text-xs font-medium text-charcoal hover:bg-[#E8E4E0] transition-colors">🎵 Spotify</a>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex gap-3">
-              <button onClick={() => openConversation(selectedMusician)} className="flex-1 bg-graphite text-snow py-3 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity">
-                Message
+              <button
+                onClick={() => openConversation({ id: selectedLiveMusician.id, name: selectedLiveMusician.name, avatar: selectedLiveMusician.avatar })}
+                className="flex-1 bg-graphite text-snow py-3 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity"
+              >
+                💬 Message
               </button>
-              <button className="flex-1 bg-chestnut text-snow py-3 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity">
-                Invite to Slot
+              <button
+                onClick={() => { setSelectedLiveMusician(null) }}
+                className="flex-1 bg-chestnut text-snow py-3 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity"
+              >
+                ← Back to Browse
               </button>
             </div>
           </div>
@@ -927,8 +1207,13 @@ export default function RestaurantDashboard() {
               </button>
               <Avatar src={selectedConv.avatar} className="w-10 h-10 rounded-full" textSize="text-lg" bg="bg-chestnut/10" />
               <div className="flex-1 min-w-0">
-                <p className="text-graphite font-bold text-sm leading-tight truncate">{selectedConv.musician}</p>
-                <p className="text-charcoal/40 text-[11px] leading-tight">Musician</p>
+                <button
+                  onClick={() => router.push('/profile/' + selectedConv.otherUserId)}
+                  className="text-graphite font-bold text-sm leading-tight truncate hover:text-chestnut transition-colors text-left"
+                >
+                  {selectedConv.musician}
+                </button>
+                <p className="text-charcoal/40 text-[11px] leading-tight">Musician · tap to view profile</p>
               </div>
             </div>
 
@@ -999,7 +1284,15 @@ export default function RestaurantDashboard() {
                 </h2>
               </div>
               {!editingProfile ? (
-                <button onClick={() => { setEditingProfile(true); setProfileDraft(profile) }} className="text-chestnut text-sm font-bold hover:underline shrink-0">Edit</button>
+                <div className="flex items-center gap-3 shrink-0">
+                  {profileSaved && (
+                    <span className="flex items-center gap-1 text-teal text-xs font-semibold">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                      Saved!
+                    </span>
+                  )}
+                  <button onClick={() => { setEditingProfile(true); setProfileDraft(profile) }} className="text-chestnut text-sm font-bold hover:underline">Edit</button>
+                </div>
               ) : (
                 <div className="flex gap-3 shrink-0">
                   <button onClick={() => setEditingProfile(false)} disabled={savingProfile} className="text-charcoal text-sm font-medium hover:underline disabled:opacity-50">Cancel</button>
@@ -1036,6 +1329,53 @@ export default function RestaurantDashboard() {
               <ProfileField label="Website" value={editingProfile ? profileDraft.website : profile.website} editing={editingProfile} onChange={v => setProfileDraft(p => ({ ...p, website: v }))} placeholder="https://yourrestaurant.com" />
             </div>
 
+            {/* Discovery Radius */}
+            <div className="bg-white rounded-2xl p-5 shadow-sm mb-4">
+              <div className="flex items-center gap-2 mb-1">
+                <svg className="w-4 h-4 text-chestnut shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <h3 className="text-graphite font-bold">Discovery Radius</h3>
+              </div>
+              <p className="text-charcoal/60 text-xs mb-5 leading-relaxed">Musicians within this radius will appear in your browse tab</p>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-charcoal text-xs font-medium">5 mi</span>
+                <span className="text-graphite font-black text-xl">{radiusDraft} miles</span>
+                <span className="text-charcoal text-xs font-medium">100 mi</span>
+              </div>
+              <input
+                type="range"
+                min={5}
+                max={100}
+                step={5}
+                value={radiusDraft}
+                onChange={e => setRadiusDraft(Number(e.target.value))}
+                className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                style={{
+                  accentColor: '#DC7F41',
+                  background: `linear-gradient(to right, #DC7F41 ${((radiusDraft - 5) / 95) * 100}%, #E8E4E0 ${((radiusDraft - 5) / 95) * 100}%)`,
+                }}
+              />
+              <div className="mt-4 flex items-center gap-3">
+                <button
+                  onClick={saveRadius}
+                  disabled={savingRadius || radiusDraft === discoveryRadius}
+                  className="bg-chestnut text-snow px-5 py-2 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-40"
+                >
+                  {savingRadius ? 'Saving…' : 'Save Radius'}
+                </button>
+                {radiusSaved && (
+                  <span className="flex items-center gap-1.5 text-teal text-sm font-semibold">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Saved!
+                  </span>
+                )}
+              </div>
+            </div>
+
             <div className="bg-white rounded-2xl p-5 shadow-sm">
               <h3 className="text-graphite font-bold mb-3">Account</h3>
               <button onClick={handleLogout} className="w-full text-left text-sm text-charcoal hover:text-chestnut transition-colors py-1 font-medium">
@@ -1057,6 +1397,110 @@ export default function RestaurantDashboard() {
           <TabButton icon="🍽" label="Profile" active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
         </div>
       </nav>
+
+      {/* ---- BOOKING CONFIRMED TOAST ---- */}
+      {bookingConfirmedMsg && (
+        <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-50 max-w-sm w-[calc(100%-2rem)]">
+          <div className="bg-graphite text-snow rounded-2xl px-5 py-4 shadow-2xl flex items-start gap-3">
+            <span className="text-2xl shrink-0">🎉</span>
+            <div>
+              <p className="font-black text-sm">Booking Confirmed!</p>
+              <p className="text-snow/70 text-xs mt-0.5 leading-relaxed">{bookingConfirmedMsg}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---- EDIT SLOT MODAL ---- */}
+      {editingSlot && (
+        <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-snow w-full max-w-md rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="bg-graphite rounded-t-3xl px-6 py-4 flex items-center justify-between">
+              <div>
+                <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em]">Edit Slot</p>
+                <h3 className="text-snow text-xl font-black tracking-tight">{editingSlot.date}</h3>
+              </div>
+              <button onClick={() => setEditingSlot(null)} className="text-snow/60 hover:text-snow transition-colors text-xl leading-none">✕</button>
+            </div>
+            <div className="p-6">
+              {editingSlot.applications.some(a => a.status === 'pending') && (
+                <div className="bg-chestnut/10 border border-chestnut/20 rounded-xl px-4 py-3 mb-5 flex items-start gap-2.5">
+                  <span className="text-chestnut text-base shrink-0">⚠️</span>
+                  <p className="text-chestnut text-xs leading-relaxed font-medium">This slot has pending applications. Editing the details will not automatically notify applicants.</p>
+                </div>
+              )}
+              <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Date</label>
+              <input
+                type="date"
+                value={editDraft.date}
+                onChange={e => setEditDraft(p => ({ ...p, date: e.target.value }))}
+                className="w-full bg-white rounded-xl px-4 py-2.5 mb-5 shadow-sm focus:outline-none text-sm border border-charcoal/10"
+              />
+              <div className="grid grid-cols-2 gap-3 mb-5">
+                <div>
+                  <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Start Time</label>
+                  <input type="time" value={editDraft.startTime} onChange={e => setEditDraft(p => ({ ...p, startTime: e.target.value }))} className="w-full bg-white rounded-xl px-4 py-2.5 shadow-sm focus:outline-none text-sm border border-charcoal/10" />
+                </div>
+                <div>
+                  <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">End Time</label>
+                  <input type="time" value={editDraft.endTime} onChange={e => setEditDraft(p => ({ ...p, endTime: e.target.value }))} className="w-full bg-white rounded-xl px-4 py-2.5 shadow-sm focus:outline-none text-sm border border-charcoal/10" />
+                </div>
+              </div>
+              <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Pay Offered</label>
+              <div className="relative mb-5">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-charcoal font-bold text-sm pointer-events-none">$</span>
+                <input
+                  type="number"
+                  value={editDraft.budget}
+                  onChange={e => setEditDraft(p => ({ ...p, budget: e.target.value }))}
+                  className="w-full bg-white rounded-xl pl-8 pr-4 py-2.5 shadow-sm focus:outline-none text-sm border border-charcoal/10"
+                />
+              </div>
+              <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">
+                Description <span className="text-charcoal/40 font-normal normal-case">(optional)</span>
+              </label>
+              <textarea
+                value={editDraft.notes}
+                onChange={e => setEditDraft(p => ({ ...p, notes: e.target.value }))}
+                rows={3}
+                className="w-full bg-white rounded-xl px-4 py-2.5 mb-5 shadow-sm focus:outline-none text-sm resize-none border border-charcoal/10"
+              />
+              <div className="flex gap-3">
+                <button onClick={() => setEditingSlot(null)} disabled={savingEdit} className="flex-1 bg-snow text-charcoal py-3 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10 disabled:opacity-50">Cancel</button>
+                <button onClick={handleEditSlot} disabled={savingEdit} className="flex-1 bg-chestnut text-snow py-3 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50">{savingEdit ? 'Saving…' : 'Save Changes'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---- CANCEL SLOT MODAL ---- */}
+      {cancelSlotId && (
+        <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-snow w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden">
+            <div className="p-6">
+              <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center text-2xl mx-auto mb-4">🚫</div>
+              <h3 className="text-graphite text-xl font-black text-center mb-2">Cancel this slot?</h3>
+              {(() => {
+                const slot = slots.find(s => s.id === cancelSlotId)
+                const hasConfirmed = slot?.applications.some(a => a.status === 'confirmed')
+                const hasPending = slot?.applications.some(a => a.status === 'pending')
+                return hasConfirmed ? (
+                  <p className="text-charcoal text-sm text-center leading-relaxed mb-6">This slot has a confirmed musician. Cancelling will also cancel their booking.</p>
+                ) : hasPending ? (
+                  <p className="text-charcoal text-sm text-center leading-relaxed mb-6">This slot has pending applications. They will be cancelled as well.</p>
+                ) : (
+                  <p className="text-charcoal text-sm text-center leading-relaxed mb-6">This slot will be marked as cancelled and hidden from musicians.</p>
+                )
+              })()}
+              <div className="flex gap-3">
+                <button onClick={() => setCancelSlotId(null)} disabled={cancellingSlot} className="flex-1 bg-snow text-charcoal py-3 rounded-xl text-sm font-medium border border-charcoal/10 hover:bg-[#E8E4E0] transition-colors disabled:opacity-50">Keep Slot</button>
+                <button onClick={handleCancelSlot} disabled={cancellingSlot} className="flex-1 bg-red-500 text-white py-3 rounded-xl text-sm font-bold hover:bg-red-600 transition-colors disabled:opacity-50">{cancellingSlot ? 'Cancelling…' : 'Yes, Cancel'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ---- POST SLOT MODAL ---- */}
       {postSlotOpen && (
@@ -1088,6 +1532,27 @@ export default function RestaurantDashboard() {
                   <input type="time" value={newSlot.endTime} onChange={e => setNewSlot(p => ({ ...p, endTime: e.target.value }))} className="w-full bg-white rounded-xl px-4 py-2.5 shadow-sm focus:outline-none text-sm border border-charcoal/10" />
                 </div>
               </div>
+              <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Pay Offered</label>
+              <div className="relative mb-5">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-charcoal font-bold text-sm pointer-events-none">$</span>
+                <input
+                  type="number"
+                  placeholder="e.g. 200"
+                  value={newSlot.budget}
+                  onChange={e => setNewSlot(p => ({ ...p, budget: e.target.value }))}
+                  className="w-full bg-white rounded-xl pl-8 pr-4 py-2.5 shadow-sm focus:outline-none text-sm border border-charcoal/10"
+                />
+              </div>
+              <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">
+                Description <span className="text-charcoal/40 font-normal normal-case">(optional)</span>
+              </label>
+              <textarea
+                placeholder="Tell musicians what you're looking for — vibe, genre preferences, attire, etc."
+                value={newSlot.notes}
+                onChange={e => setNewSlot(p => ({ ...p, notes: e.target.value }))}
+                rows={3}
+                className="w-full bg-white rounded-xl px-4 py-2.5 mb-5 shadow-sm focus:outline-none text-sm resize-none border border-charcoal/10"
+              />
               <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-2">Genre Preferences</label>
               <div className="flex flex-wrap gap-2 mb-5">
                 {GENRES.map(g => (
@@ -1100,24 +1565,37 @@ export default function RestaurantDashboard() {
                   </button>
                 ))}
               </div>
-              <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Budget ($)</label>
-              <input
-                type="number"
-                placeholder="e.g. 200"
-                value={newSlot.budget}
-                onChange={e => setNewSlot(p => ({ ...p, budget: e.target.value }))}
-                className="w-full bg-white rounded-xl px-4 py-2.5 mb-5 shadow-sm focus:outline-none text-sm border border-charcoal/10"
-              />
-              <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">
-                Notes <span className="text-charcoal/40 font-normal normal-case">(optional)</span>
-              </label>
-              <textarea
-                placeholder="Any additional details for musicians..."
-                value={newSlot.notes}
-                onChange={e => setNewSlot(p => ({ ...p, notes: e.target.value }))}
-                rows={2}
-                className="w-full bg-white rounded-xl px-4 py-2.5 mb-5 shadow-sm focus:outline-none text-sm resize-none border border-charcoal/10"
-              />
+
+              {/* Preview */}
+              {(newSlot.date || newSlot.budget) && (
+                <div className="mb-5">
+                  <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-2">Preview — What musicians will see</p>
+                  <div className="bg-[#F5F0EC] rounded-xl p-3 border border-charcoal/10">
+                    <div className="bg-white rounded-xl p-3 border-l-4 border-l-[#6C9A8B]">
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <p className="text-graphite font-bold text-sm">{profile.name || 'Your Venue'}</p>
+                          <p className="text-charcoal text-xs">{profile.address || 'Your Location'}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-teal font-black text-lg">{newSlot.budget ? `$${newSlot.budget}` : '—'}</p>
+                          <p className="text-charcoal/50 text-[9px] font-semibold uppercase tracking-wide">pay offered</p>
+                        </div>
+                      </div>
+                      {newSlot.date && <p className="text-charcoal text-xs mb-1">
+                        {new Date(newSlot.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                        {newSlot.startTime ? ` · ${formatTime(newSlot.startTime)}` : ''}
+                        {newSlot.endTime ? ` – ${formatTime(newSlot.endTime)}` : ''}
+                      </p>}
+                      {newSlot.genres.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {newSlot.genres.map(g => <span key={g} className="text-[10px] bg-snow text-charcoal px-2 py-0.5 rounded-full">{g}</span>)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
               {postSlotError && (
                 <p className="bg-red-100 text-red-600 p-3 rounded-xl mb-3 text-xs">{postSlotError}</p>
               )}
@@ -1212,12 +1690,14 @@ function TabButton({ icon, label, active, onClick, badge }: { icon: string; labe
   )
 }
 
-function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAction, onMessage }: {
+function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAction, onMessage, onEdit, onCancel }: {
   slot: Slot
   selectedSlotId: string | null
   setSelectedSlotId: (id: string | null) => void
   handleApplicationAction: (slotId: string, appId: string, action: 'accept' | 'decline') => void
   onMessage: (app: Application) => void
+  onEdit?: () => void
+  onCancel?: () => void
 }) {
   const borderColor = slot.status === 'open' ? 'border-l-[#6C9A8B]' : slot.status === 'booked' ? 'border-l-[#DC7F41]' : 'border-l-[#bbb]'
   return (
@@ -1235,7 +1715,7 @@ function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAc
         </div>
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-3 text-sm text-charcoal flex-wrap">
-            <span>Budget: <span className="text-graphite font-black">${slot.budget}</span></span>
+            <span>Pay Offered: <span className="text-teal font-black">${slot.budget}</span></span>
             {slot.status === 'open' && (
               <span>{slot.applications.length} application{slot.applications.length !== 1 ? 's' : ''}</span>
             )}
@@ -1243,14 +1723,22 @@ function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAc
               <span className="text-chestnut font-semibold">{slot.bookedMusician}</span>
             )}
           </div>
-          {slot.status === 'open' && slot.applications.length > 0 && (
-            <button
-              onClick={() => setSelectedSlotId(selectedSlotId === slot.id ? null : slot.id)}
-              className="text-chestnut text-sm font-bold hover:underline"
-            >
-              {selectedSlotId === slot.id ? 'Hide' : 'View Applications'}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {slot.status === 'open' && onEdit && (
+              <button onClick={onEdit} className="text-charcoal/60 text-xs font-semibold hover:text-chestnut transition-colors">Edit</button>
+            )}
+            {(slot.status === 'open' || slot.status === 'booked') && onCancel && (
+              <button onClick={onCancel} className="text-red-400 text-xs font-semibold hover:text-red-600 transition-colors">Cancel</button>
+            )}
+            {slot.status === 'open' && slot.applications.length > 0 && (
+              <button
+                onClick={() => setSelectedSlotId(selectedSlotId === slot.id ? null : slot.id)}
+                className="text-chestnut text-sm font-bold hover:underline"
+              >
+                {selectedSlotId === slot.id ? 'Hide' : 'View Applications'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
       {selectedSlotId === slot.id && (
@@ -1262,11 +1750,22 @@ function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAc
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-graphite font-bold text-sm truncate">{app.musicianName}</p>
-                    <span className="text-chestnut font-black text-sm shrink-0">${app.price}</span>
+                    <div className="text-right shrink-0">
+                      <p className="text-teal font-black text-sm">${slot.budget}</p>
+                      <p className="text-charcoal/50 text-[9px] uppercase tracking-wide">pay offered</p>
+                    </div>
                   </div>
                   <p className="text-charcoal text-xs">{app.musicianGenre}</p>
+                  {app.musicianLocation && <p className="text-charcoal/60 text-xs mt-0.5">📍 {app.musicianLocation}{app.musicianDistance ? ` · ${app.musicianDistance}` : ''}</p>}
                 </div>
               </div>
+              {(app.instagram || app.youtube || app.spotify) && (
+                <div className="flex flex-wrap gap-3 mb-2">
+                  {app.instagram && <a href={app.instagram} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">📷 Instagram</a>}
+                  {app.youtube && <a href={app.youtube} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">▶ YouTube</a>}
+                  {app.spotify && <a href={app.spotify} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">🎵 Spotify</a>}
+                </div>
+              )}
               {app.note && <div className="bg-snow rounded-lg px-3 py-2 mb-2"><p className="text-charcoal text-sm italic">"{app.note}"</p></div>}
               {app.status === 'pending' ? (
                 <div className="flex gap-2">
@@ -1287,7 +1786,7 @@ function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAc
   )
 }
 
-function SlotCalendar({ slots, calendarMonth, setCalendarMonth, calendarSelectedDay, setCalendarSelectedDay, selectedSlotId, setSelectedSlotId, handleApplicationAction, onMessage }: {
+function SlotCalendar({ slots, calendarMonth, setCalendarMonth, calendarSelectedDay, setCalendarSelectedDay, selectedSlotId, setSelectedSlotId, handleApplicationAction, onMessage, onEditSlot, onCancelSlot }: {
   slots: Slot[]
   calendarMonth: Date
   setCalendarMonth: (d: Date) => void
@@ -1297,6 +1796,8 @@ function SlotCalendar({ slots, calendarMonth, setCalendarMonth, calendarSelected
   setSelectedSlotId: (id: string | null) => void
   handleApplicationAction: (slotId: string, appId: string, action: 'accept' | 'decline') => void
   onMessage: (app: Application) => void
+  onEditSlot?: (slot: Slot) => void
+  onCancelSlot?: (slotId: string) => void
 }) {
   const year = calendarMonth.getFullYear()
   const month = calendarMonth.getMonth()
@@ -1377,7 +1878,16 @@ function SlotCalendar({ slots, calendarMonth, setCalendarMonth, calendarSelected
           ) : (
             <div className="space-y-4">
               {selectedDaySlots.map(slot => (
-                <SlotCard key={slot.id} slot={slot} selectedSlotId={selectedSlotId} setSelectedSlotId={setSelectedSlotId} handleApplicationAction={handleApplicationAction} onMessage={onMessage} />
+                <SlotCard
+                  key={slot.id}
+                  slot={slot}
+                  selectedSlotId={selectedSlotId}
+                  setSelectedSlotId={setSelectedSlotId}
+                  handleApplicationAction={handleApplicationAction}
+                  onMessage={onMessage}
+                  onEdit={slot.status === 'open' && onEditSlot ? () => onEditSlot(slot) : undefined}
+                  onCancel={(slot.status === 'open' || slot.status === 'booked') && onCancelSlot ? () => onCancelSlot(slot.id) : undefined}
+                />
               ))}
             </div>
           )}
