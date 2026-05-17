@@ -1,11 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { eqBarStyle } from '@/lib/eq'
 import { milesBetween } from '@/lib/distance'
 import { Avatar } from '@/components/Avatar'
+import MessagingTab, { MessagingTabRef } from '@/components/MessagingTab'
 
 // ---- Types ----
 
@@ -38,6 +39,7 @@ interface Show {
   musicianName: string
   date: string
   rawDate: string
+  rawEndDatetime: string
   time: string
   genres: string[]
   isTonight: boolean
@@ -76,6 +78,11 @@ export default function FanDashboard() {
   const [profileDraft, setProfileDraft] = useState<FanProfile>(INITIAL_PROFILE)
   const [userId, setUserId] = useState('')
   const [savingProfile, setSavingProfile] = useState(false)
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
+
+  // Messaging
+  const messagingRef = useRef<MessagingTabRef>(null)
+  const [msgUnread, setMsgUnread] = useState(0)
 
   const loadShows = useCallback(async () => {
     const today = new Date().toISOString().slice(0, 10)
@@ -127,6 +134,7 @@ export default function FanDashboard() {
       const dateLabel = rawDate
         ? new Date(rawDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
         : ''
+      const rawEndDatetime = `${rawDate}T${a.end_time ?? '23:59:00'}`
       return {
         id: b.id,
         venueId: b.restaurant_id,
@@ -135,11 +143,14 @@ export default function FanDashboard() {
         musicianName: musician?.full_name ?? 'Musician',
         date: dateLabel,
         rawDate,
+        rawEndDatetime,
         time: `${fmtTime(a.start_time?.slice(0, 5) ?? '')} – ${fmtTime(a.end_time?.slice(0, 5) ?? '')}`,
         genres: Array.isArray(a.genres) ? (a.genres as string[]) : [],
-        isTonight: rawDate === today,
+        isTonight: rawDate === today && new Date(rawEndDatetime) >= new Date(),
       }
-    }).sort((a, b) => a.rawDate.localeCompare(b.rawDate))
+    })
+      .filter(show => new Date(show.rawEndDatetime) >= new Date())
+      .sort((a, b) => a.rawDate.localeCompare(b.rawDate))
 
     setShows(mapped)
   }, [])
@@ -289,19 +300,37 @@ export default function FanDashboard() {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-chestnut" />
             </span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="relative">
             <button
-              onClick={() => router.push('/settings')}
-              className="text-[11px] font-semibold uppercase tracking-[0.15em] text-snow/60 hover:text-chestnut transition-colors"
+              onClick={() => setHeaderMenuOpen(o => !o)}
+              className="flex items-center gap-2 group"
             >
-              Settings
+              {profile.avatar
+                ? <img src={profile.avatar} alt="" className="w-8 h-8 rounded-full object-cover border-2 border-chestnut/40 group-hover:border-chestnut transition-colors" />
+                : <div className="w-8 h-8 rounded-full bg-graphite border-2 border-chestnut/40 group-hover:border-chestnut transition-colors flex items-center justify-center text-snow text-xs font-black">
+                    {profile.name.slice(0, 2).toUpperCase() || 'DU'}
+                  </div>}
             </button>
-            <button
-              onClick={handleLogout}
-              className="text-[11px] font-semibold uppercase tracking-[0.15em] text-snow/60 hover:text-chestnut transition-colors"
-            >
-              Log Out
-            </button>
+            {headerMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setHeaderMenuOpen(false)} />
+                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl z-50 overflow-hidden border border-charcoal/10">
+                  <button onClick={() => { router.push('/profile/' + userId); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
+                    <span>👤</span> View Profile
+                  </button>
+                  <button onClick={() => { setActiveTab('profile'); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
+                    <span>✏️</span> Edit Profile
+                  </button>
+                  <button onClick={() => { router.push('/settings'); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
+                    <span>⚙️</span> Settings
+                  </button>
+                  <div className="border-t border-charcoal/10" />
+                  <button onClick={() => { handleLogout(); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-medium text-charcoal hover:bg-snow transition-colors flex items-center gap-2">
+                    <span>🚪</span> Log Out
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -640,6 +669,13 @@ export default function FanDashboard() {
               )}
             </div>
 
+            <button
+              onClick={() => router.push('/profile/' + userId)}
+              className="flex items-center gap-1 text-chestnut text-sm font-bold hover:underline mb-4"
+            >
+              View Public Profile →
+            </button>
+
             {/* Hero card */}
             <div className="relative bg-graphite rounded-3xl overflow-hidden mb-4 shadow-xl">
               <div className="absolute inset-x-0 bottom-0 top-1/2 flex items-end justify-around opacity-[0.10] pointer-events-none">
@@ -711,12 +747,22 @@ export default function FanDashboard() {
 
       </main>
 
+      {/* ---- MESSAGING (always mounted so ref is available) ---- */}
+      <div className={activeTab !== 'messages' ? 'hidden' : ''}>
+        <div className="max-w-2xl mx-auto px-4" style={{ paddingBottom: '96px' }}>
+          {userId && (
+            <MessagingTab ref={messagingRef} userId={userId} onUnreadChange={setMsgUnread} />
+          )}
+        </div>
+      </div>
+
       {/* ---- BOTTOM TAB BAR ---- */}
       <nav className="fixed bottom-0 left-0 right-0 bg-graphite/95 backdrop-blur-md border-t border-charcoal/30 z-40">
-        <div className="max-w-2xl mx-auto grid grid-cols-4 px-2 py-2">
+        <div className="max-w-2xl mx-auto grid grid-cols-5 px-2 py-2">
           <TabButton icon="🎶" label="Feed"      active={activeTab === 'feed'}      onClick={() => setActiveTab('feed')} />
           <TabButton icon="🔍" label="Discover"  active={activeTab === 'discover'}  onClick={() => setActiveTab('discover')} />
           <TabButton icon="❤️" label="Following" active={activeTab === 'following'} onClick={() => setActiveTab('following')} badge={followingCount} />
+          <TabButton icon="💬" label="Messages"  active={activeTab === 'messages'}  onClick={() => setActiveTab('messages')} badge={msgUnread} />
           <TabButton icon="★"  label="Profile"   active={activeTab === 'profile'}   onClick={() => setActiveTab('profile')} />
         </div>
       </nav>

@@ -83,6 +83,8 @@ export default function OnboardingPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [locationLoading, setLocationLoading] = useState(false)
+  const [showSuccess, setShowSuccess] = useState(false)
+  const [savedAvatarUrl, setSavedAvatarUrl] = useState('')
 
   const [basic, setBasic] = useState<BasicInfo>({
     fullName: '',
@@ -271,13 +273,14 @@ export default function OnboardingPage() {
         role_metadata: roleMetadata,
       }
 
-      console.log('Upserting profile', profileRow)
       const { error: upsertErr } = await supabase.from('profiles').upsert(profileRow)
       if (upsertErr) {
         console.error('Profile upsert failed', upsertErr)
         throw upsertErr
       }
-      router.push('/dashboard')
+      setSavedAvatarUrl(avatarUrl)
+      setShowSuccess(true)
+      setSubmitting(false)
     } catch (e) {
       console.error('Onboarding finish failed', e)
       setError(formatError(e))
@@ -289,6 +292,56 @@ export default function OnboardingPage() {
     return (
       <div className="min-h-screen bg-snow flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-chestnut border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (showSuccess) {
+    const displayName = userType === 'restaurant'
+      ? (role.venueName || basic.fullName || 'Your Venue')
+      : (basic.fullName || 'Your Profile')
+    const initials = displayName.slice(0, 2).toUpperCase()
+    const roleLabel = userType === 'restaurant' ? '🍽 Restaurant' : userType === 'musician' ? '♪ Musician' : '★ Fan'
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-4" style={{ background: PANEL_BG }}>
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-8">
+            <div className="w-20 h-20 bg-chestnut rounded-2xl flex items-center justify-center text-4xl mx-auto mb-4 shadow-xl">🎉</div>
+            <h1 className="text-graphite text-3xl font-black tracking-tight mb-2">
+              Your profile is <span className="text-chestnut italic">live!</span>
+            </h1>
+            <p className="text-charcoal leading-relaxed">You're all set. Musicians and venues can now find you on Drum Up.</p>
+          </div>
+
+          {/* Profile preview card */}
+          <div className="bg-white rounded-2xl p-5 shadow-sm mb-6">
+            <div className="flex items-center gap-4">
+              {savedAvatarUrl
+                ? <img src={savedAvatarUrl} alt="" className="w-14 h-14 rounded-2xl object-cover shrink-0 border-2 border-chestnut/20" />
+                : <div className="w-14 h-14 rounded-2xl bg-chestnut/10 border-2 border-chestnut/20 flex items-center justify-center text-2xl font-black text-chestnut shrink-0">{initials}</div>}
+              <div className="min-w-0">
+                <p className="text-graphite font-black text-lg leading-tight truncate">{displayName}</p>
+                <p className="text-charcoal text-sm">{roleLabel}</p>
+                {basic.locationText && <p className="text-charcoal/60 text-xs mt-0.5">📍 {basic.locationText}</p>}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => router.push('/profile/' + userId)}
+              className="w-full bg-chestnut text-snow py-3.5 rounded-xl font-black text-sm shadow-md hover:opacity-90 transition-opacity"
+            >
+              View My Profile →
+            </button>
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="w-full bg-white text-graphite py-3.5 rounded-xl font-bold text-sm shadow-sm hover:shadow-md transition-shadow border border-charcoal/10"
+            >
+              Go to Dashboard
+            </button>
+          </div>
+        </div>
       </div>
     )
   }

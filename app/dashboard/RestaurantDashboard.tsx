@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { eqBarStyle } from '@/lib/eq'
 import { milesBetween } from '@/lib/distance'
 import { Avatar } from '@/components/Avatar'
+import MessagingTab, { MessagingTabRef } from '@/components/MessagingTab'
 
 // ---- Types ----
 
@@ -58,24 +59,6 @@ interface LiveMusician {
   spotify: string
 }
 
-interface ChatMessage {
-  id: string
-  text: string
-  from: 'me' | 'them'
-  time: string
-}
-
-interface Conversation {
-  id: string
-  musician: string
-  avatar: string
-  lastMessage: string
-  time: string
-  unread: boolean
-  messages: ChatMessage[]
-  otherUserId: string
-}
-
 interface VenueProfile {
   name: string
   type: string
@@ -108,25 +91,6 @@ function formatTime(t: string): string {
   return `${hour}:${m.toString().padStart(2, '0')} ${period}`
 }
 
-function fmtMsgTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-}
-
-// Deterministic conversation UUID from two user UUIDs (XOR + valid v4 header)
-function getConversationId(uid1: string, uid2: string): string {
-  const [a, b] = [uid1, uid2].sort()
-  const aClean = a.replace(/-/g, '')
-  const bClean = b.replace(/-/g, '')
-  let xored = ''
-  for (let i = 0; i < 32; i++) {
-    xored += (parseInt(aClean[i], 16) ^ parseInt(bClean[i], 16)).toString(16)
-  }
-  // Force version 4 + variant bits
-  xored = xored.slice(0, 12) + '4' + xored.slice(13, 16) +
-    ((parseInt(xored[16], 16) & 0x3) | 0x8).toString(16) + xored.slice(17)
-  return `${xored.slice(0, 8)}-${xored.slice(8, 12)}-${xored.slice(12, 16)}-${xored.slice(16, 20)}-${xored.slice(20)}`
-}
-
 function StatusBadge({ status }: { status: SlotStatus }) {
   if (status === 'open') return <span className="bg-teal/10 text-teal text-[10px] font-black px-2.5 py-1 rounded-full tracking-widest uppercase">Open</span>
   if (status === 'booked') return <span className="bg-chestnut/10 text-chestnut text-[10px] font-black px-2.5 py-1 rounded-full tracking-widest uppercase">Booked</span>
@@ -140,7 +104,6 @@ export default function RestaurantDashboard() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('home')
   const [slots, setSlots] = useState<Slot[]>([])
-  const [conversations, setConversations] = useState<Conversation[]>([])
   const [profile, setProfile] = useState<VenueProfile>(INITIAL_PROFILE)
 
   const [postSlotOpen, setPostSlotOpen] = useState(false)
@@ -156,9 +119,9 @@ export default function RestaurantDashboard() {
   const [genreFilter, setGenreFilter] = useState<string | null>(null)
   const [selectedLiveMusician, setSelectedLiveMusician] = useState<LiveMusician | null>(null)
 
-  const [selectedConvId, setSelectedConvId] = useState<string | null>(null)
-  const [chatInput, setChatInput] = useState('')
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  // Messaging
+  const messagingRef = useRef<MessagingTabRef>(null)
+  const [msgUnread, setMsgUnread] = useState(0)
 
   const [editingProfile, setEditingProfile] = useState(false)
   const [profileDraft, setProfileDraft] = useState<VenueProfile>(INITIAL_PROFILE)
@@ -172,6 +135,7 @@ export default function RestaurantDashboard() {
   const [profileSaved, setProfileSaved] = useState(false)
   const [liveMusicians, setLiveMusicians] = useState<LiveMusician[]>([])
   const [browseLoading, setBrowseLoading] = useState(false)
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
 
   // ---- Data loading ----
 
@@ -186,11 +150,11 @@ export default function RestaurantDashboard() {
       .order('date', { ascending: true })
     if (!data) return
 
-    const today = new Date().toISOString().slice(0, 10)
     const mapped: Slot[] = data.map(row => {
       const dateLabel = new Date(row.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
       const dbStatus = row.status as string
-      const isPast = row.date < today
+      const endDatetime = new Date(`${row.date}T${row.end_time ?? '23:59:00'}`)
+      const isPast = endDatetime < new Date()
       const status: SlotStatus = isPast ? 'past' : dbStatus === 'filled' ? 'booked' : dbStatus === 'cancelled' ? 'cancelled' : 'open'
       const rawStart = row.start_time?.slice(0, 5) ?? ''
       const rawEnd = row.end_time?.slice(0, 5) ?? ''
@@ -262,64 +226,6 @@ export default function RestaurantDashboard() {
     setSlots(mapped)
   }
 
-  const loadConversations = async (uid: string) => {
-    const { data: msgs } = await supabase
-      .from('messages')
-      .select('*')
-      .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)
-      .order('created_at', { ascending: true })
-
-    if (!msgs || msgs.length === 0) return
-
-    const convMap = new Map<string, typeof msgs>()
-    msgs.forEach(m => {
-      if (!convMap.has(m.conversation_id)) convMap.set(m.conversation_id, [])
-      convMap.get(m.conversation_id)!.push(m)
-    })
-
-    const otherIds = new Set<string>()
-    convMap.forEach(convMsgs => {
-      const first = convMsgs[0]
-      const otherId = first.sender_id === uid ? first.receiver_id : first.sender_id
-      otherIds.add(otherId)
-    })
-
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('id, full_name, avatar_url')
-      .in('id', [...otherIds])
-
-    const profileById = new Map((profiles ?? []).map(p => [p.id, p]))
-
-    const convs: Conversation[] = []
-    convMap.forEach((convMsgs, convId) => {
-      const first = convMsgs[0]
-      const otherId = first.sender_id === uid ? first.receiver_id : first.sender_id
-      const other = profileById.get(otherId)
-      const lastMsg = convMsgs[convMsgs.length - 1]
-      const hasUnread = convMsgs.some(m => m.receiver_id === uid && !m.read)
-
-      convs.push({
-        id: convId,
-        musician: other?.full_name ?? 'Unknown',
-        avatar: other?.avatar_url ?? '',
-        lastMessage: lastMsg.content,
-        time: fmtMsgTime(lastMsg.created_at),
-        unread: hasUnread,
-        messages: convMsgs.map(m => ({
-          id: m.id,
-          text: m.content,
-          from: m.sender_id === uid ? 'me' : 'them',
-          time: fmtMsgTime(m.created_at),
-        })),
-        otherUserId: otherId,
-      })
-    })
-
-    const lastMsgAt = (convId: string) => convMap.get(convId)?.at(-1)?.created_at ?? ''
-    setConversations(convs.sort((a, b) => lastMsgAt(b.id).localeCompare(lastMsgAt(a.id))))
-  }
-
   const loadMusicians = async (lat: number, lon: number, radius: number) => {
     setBrowseLoading(true)
     const { data } = await supabase
@@ -378,7 +284,6 @@ export default function RestaurantDashboard() {
       setDiscoveryRadius(radius)
       setRadiusDraft(radius)
       await loadSlots(user.id, lat, lon)
-      await loadConversations(user.id)
       if (lat != null && lon != null) {
         void loadMusicians(lat, lon, radius)
       }
@@ -409,40 +314,6 @@ export default function RestaurantDashboard() {
   useEffect(() => {
     if (activeTab === 'slots' && userId) loadSlots(userId)
   }, [activeTab, userId])
-
-  // Realtime: incoming messages on the open conversation
-  useEffect(() => {
-    if (!userId || !selectedConvId) return
-    const sub = supabase
-      .channel(`conv-${selectedConvId}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
-        filter: `conversation_id=eq.${selectedConvId}`,
-      }, (payload) => {
-        const msg = payload.new as { id: string; sender_id: string; content: string; created_at: string }
-        if (msg.sender_id === userId) return
-        setConversations(prev => prev.map(c =>
-          c.id !== selectedConvId ? c : {
-            ...c,
-            lastMessage: msg.content,
-            messages: [...c.messages, {
-              id: msg.id,
-              text: msg.content,
-              from: 'them' as const,
-              time: fmtMsgTime(msg.created_at),
-            }],
-          }
-        ))
-      })
-      .subscribe()
-    return () => { void supabase.removeChannel(sub) }
-  }, [userId, selectedConvId])
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [conversations, selectedConvId])
 
   // ---- Actions ----
 
@@ -606,73 +477,13 @@ export default function RestaurantDashboard() {
     await loadSlots(userId)
   }
 
-  const handleSendMessage = async () => {
-    if (!chatInput.trim() || !selectedConvId || !userId) return
-    const text = chatInput.trim()
-    const conv = conversations.find(c => c.id === selectedConvId)
-    if (!conv) return
-    setChatInput('')
-
-    const { data: newMsg, error } = await supabase
-      .from('messages')
-      .insert({
-        sender_id: userId,
-        receiver_id: conv.otherUserId,
-        content: text,
-        conversation_id: selectedConvId,
-        read: false,
-      })
-      .select()
-      .single()
-
-    if (error) { console.error('Failed to send message', error); return }
-
-    setConversations(prev => prev.map(c =>
-      c.id !== selectedConvId ? c : {
-        ...c,
-        lastMessage: text,
-        time: 'now',
-        messages: [...c.messages, { id: newMsg.id, text, from: 'me', time: 'now' }],
-      }
-    ))
-  }
-
-  const openConversation = async (musician: { id: string; name: string; avatar: string }) => {
-    if (!userId || !musician.id) return
-    const convId = getConversationId(userId, musician.id)
-    const existing = conversations.find(c => c.id === convId)
-
-    if (existing) {
-      setSelectedConvId(convId)
-      await supabase.from('messages').update({ read: true })
-        .eq('conversation_id', convId).eq('receiver_id', userId)
-      setConversations(prev => prev.map(c => c.id === convId ? { ...c, unread: false } : c))
-    } else {
-      const { data: existingMsgs } = await supabase
-        .from('messages').select('*')
-        .eq('conversation_id', convId).order('created_at', { ascending: true })
-
-      const newConv: Conversation = {
-        id: convId,
-        musician: musician.name,
-        avatar: musician.avatar,
-        lastMessage: existingMsgs?.at(-1)?.content ?? '',
-        time: existingMsgs?.length ? fmtMsgTime(existingMsgs.at(-1)!.created_at) : '',
-        unread: false,
-        messages: (existingMsgs ?? []).map(m => ({
-          id: m.id,
-          text: m.content,
-          from: m.sender_id === userId ? 'me' : 'them',
-          time: fmtMsgTime(m.created_at),
-        })),
-        otherUserId: musician.id,
-      }
-      setConversations(prev => [newConv, ...prev.filter(c => c.id !== convId)])
-      setSelectedConvId(convId)
-    }
-
+  const openConversation = (musician: { id: string; name: string; avatar: string }) => {
+    if (!musician.id) return
     setSelectedLiveMusician(null)
     setActiveTab('messages')
+    setTimeout(() => {
+      messagingRef.current?.openWith(musician.id, musician.name, musician.avatar)
+    }, 0)
   }
 
   // ---- Derived ----
@@ -688,9 +499,6 @@ export default function RestaurantDashboard() {
     const matchGenre = !genreFilter || m.genres.includes(genreFilter)
     return matchSearch && matchGenre
   })
-  const selectedConv = conversations.find(c => c.id === selectedConvId)
-  const unreadCount = conversations.filter(c => c.unread).length
-
   return (
     <div className="min-h-screen pb-24" style={{ background: 'radial-gradient(ellipse 50% 40% at 12% 8%, rgba(108,154,139,0.10), transparent 70%), radial-gradient(ellipse 50% 40% at 88% 92%, rgba(220,127,65,0.12), transparent 70%), #E8E4E0' }}>
 
@@ -707,19 +515,37 @@ export default function RestaurantDashboard() {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-chestnut" />
             </span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="relative">
             <button
-              onClick={() => router.push('/settings')}
-              className="text-[11px] font-semibold uppercase tracking-[0.15em] text-snow/60 hover:text-chestnut transition-colors"
+              onClick={() => setHeaderMenuOpen(o => !o)}
+              className="flex items-center gap-2 group"
             >
-              Settings
+              {profile.avatar
+                ? <img src={profile.avatar} alt="" className="w-8 h-8 rounded-full object-cover border-2 border-chestnut/40 group-hover:border-chestnut transition-colors" />
+                : <div className="w-8 h-8 rounded-full bg-graphite border-2 border-chestnut/40 group-hover:border-chestnut transition-colors flex items-center justify-center text-snow text-xs font-black">
+                    {profile.name.slice(0, 2).toUpperCase() || 'DU'}
+                  </div>}
             </button>
-            <button
-              onClick={handleLogout}
-              className="text-[11px] font-semibold uppercase tracking-[0.15em] text-snow/60 hover:text-chestnut transition-colors"
-            >
-              Log Out
-            </button>
+            {headerMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setHeaderMenuOpen(false)} />
+                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl z-50 overflow-hidden border border-charcoal/10">
+                  <button onClick={() => { router.push('/profile/' + userId); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
+                    <span>👤</span> View Profile
+                  </button>
+                  <button onClick={() => { setActiveTab('profile'); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
+                    <span>✏️</span> Edit Profile
+                  </button>
+                  <button onClick={() => { router.push('/settings'); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
+                    <span>⚙️</span> Settings
+                  </button>
+                  <div className="border-t border-charcoal/10" />
+                  <button onClick={() => { handleLogout(); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-medium text-charcoal hover:bg-snow transition-colors flex items-center gap-2">
+                    <span>🚪</span> Log Out
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -763,6 +589,22 @@ export default function RestaurantDashboard() {
               <StatCard value={upcomingGigs} label="Booked" color="text-graphite" icon="✅" />
               <StatCard value={pastGigs} label="Past" color="text-charcoal" icon="🕐" />
             </div>
+
+            {/* Pending alert */}
+            {pendingApps > 0 && (
+              <div className="bg-chestnut/10 border border-chestnut/20 rounded-2xl p-4 mb-6 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-xl">📬</span>
+                  <p className="text-chestnut font-bold text-sm">You have <span className="font-black">{pendingApps}</span> pending application{pendingApps !== 1 ? 's' : ''} waiting for review</p>
+                </div>
+                <button
+                  onClick={() => setActiveTab('slots')}
+                  className="bg-chestnut text-snow px-4 py-2 rounded-xl text-xs font-bold hover:opacity-90 transition-opacity shrink-0"
+                >
+                  Review Now →
+                </button>
+              </div>
+            )}
 
             {/* Upcoming gigs */}
             {upcomingGigs > 0 && (
@@ -858,80 +700,232 @@ export default function RestaurantDashboard() {
           </>
         )}
 
-        {/* ---- SLOTS TAB ---- */}
-        {activeTab === 'slots' && (
-          <>
-            <div className="flex items-end justify-between mb-5 gap-3">
-              <div>
-                <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">Manage</p>
-                <h2 className="text-graphite text-3xl font-black tracking-tight leading-none">
-                  Your <span className="text-chestnut italic">Slots.</span>
-                </h2>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="flex bg-white rounded-xl shadow-sm overflow-hidden border border-charcoal/10">
-                  <button
-                    onClick={() => setSlotsView('list')}
-                    className={`px-3 py-2 text-sm font-medium transition-all ${slotsView === 'list' ? 'bg-graphite text-snow' : 'text-charcoal hover:bg-snow'}`}
-                    title="List view"
-                  >☰</button>
-                  <button
-                    onClick={() => setSlotsView('calendar')}
-                    className={`px-3 py-2 text-sm font-medium transition-all ${slotsView === 'calendar' ? 'bg-graphite text-snow' : 'text-charcoal hover:bg-snow'}`}
-                    title="Calendar view"
-                  >▦</button>
+        {/* ---- BOOKINGS TAB ---- */}
+        {activeTab === 'slots' && (() => {
+          const allPendingApps = slots.flatMap(slot =>
+            slot.applications.filter(a => a.status === 'pending').map(a => ({ app: a, slot }))
+          )
+          const upcomingBooked = slots.filter(s => s.status === 'booked')
+          const pastBooked = slots.filter(s => s.status === 'past' && s.applications.some(a => a.status === 'confirmed'))
+          return (
+            <>
+              <div className="flex items-end justify-between mb-6 gap-3">
+                <div>
+                  <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">Manage</p>
+                  <h2 className="text-graphite text-3xl font-black tracking-tight leading-none">
+                    Your <span className="text-chestnut italic">Bookings.</span>
+                  </h2>
                 </div>
-                <button onClick={() => setPostSlotOpen(true)} className="bg-chestnut text-snow px-4 py-2 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">
+                <button onClick={() => setPostSlotOpen(true)} className="bg-chestnut text-snow px-4 py-2 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity shrink-0">
                   + New Slot
                 </button>
               </div>
-            </div>
 
-            {slotsView === 'list' ? (
-              <>
-                <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
-                  {(['all', 'open', 'booked', 'past'] as SlotFilter[]).map(f => (
-                    <button key={f} onClick={() => setSlotFilter(f)} className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-semibold capitalize transition-all ${slotFilter === f ? 'bg-graphite text-snow' : 'bg-white text-charcoal hover:bg-[#E8E4E0]'}`}>
-                      {f}
-                    </button>
-                  ))}
-                </div>
-                {filteredSlots.length === 0 ? (
-                  <EmptyState icon="📅" title="No slots found" body="Post a slot to start receiving applications from musicians." />
+              {/* Section 1 — Pending Applications */}
+              <div className="mb-8">
+                <SectionHeader eyebrow="Review" title="Pending" accent="Applications." />
+                {allPendingApps.length === 0 ? (
+                  <EmptyState
+                    icon="📬"
+                    title="No pending applications"
+                    body="Post a slot to start receiving applications from musicians."
+                    action={{ label: 'Post a Slot', onClick: () => setPostSlotOpen(true) }}
+                  />
                 ) : (
-                  <div className="space-y-4">
-                    {filteredSlots.map(slot => (
-                      <SlotCard
-                        key={slot.id}
-                        slot={slot}
-                        selectedSlotId={selectedSlotId}
-                        setSelectedSlotId={setSelectedSlotId}
-                        handleApplicationAction={handleApplicationAction}
-                        onMessage={(app) => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })}
-                        onEdit={slot.status === 'open' ? () => { setEditingSlot(slot); setEditDraft({ date: slot.rawDate, startTime: slot.rawStartTime, endTime: slot.rawEndTime, budget: String(slot.budget), notes: slot.notes }) } : undefined}
-                        onCancel={(slot.status === 'open' || slot.status === 'booked') ? () => setCancelSlotId(slot.id) : undefined}
-                      />
+                  <div className="space-y-3">
+                    {allPendingApps.map(({ app, slot }) => (
+                      <div key={app.id} className="bg-white rounded-2xl p-4 shadow-sm border-l-4 border-l-[#DC7F41]">
+                        <div className="flex items-start gap-3 mb-3">
+                          <Avatar src={app.avatar} className="w-11 h-11 rounded-full" textSize="text-xl" bg="bg-chestnut/10" />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <button
+                                onClick={() => router.push('/profile/' + app.musicianId)}
+                                className="text-graphite font-bold text-sm truncate hover:text-chestnut transition-colors text-left"
+                              >
+                                {app.musicianName}
+                              </button>
+                              <div className="text-right shrink-0">
+                                <p className="text-teal font-black text-sm">${slot.budget}</p>
+                                <p className="text-charcoal/50 text-[9px] uppercase tracking-wide">pay</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                              {app.musicianGenre && <span className="text-charcoal text-xs">{app.musicianGenre}</span>}
+                              {app.musicianDistance && <><span className="text-charcoal/40 text-xs">·</span><span className="text-chestnut text-xs font-semibold">{app.musicianDistance}</span></>}
+                            </div>
+                            <p className="text-charcoal/60 text-xs mt-0.5">For: {slot.date} · {slot.time}</p>
+                          </div>
+                        </div>
+                        {app.note && (
+                          <div className="bg-snow rounded-xl px-3 py-2.5 mb-3">
+                            <p className="text-charcoal text-sm italic leading-relaxed">"{app.note}"</p>
+                          </div>
+                        )}
+                        {(app.instagram || app.youtube || app.spotify) && (
+                          <div className="flex flex-wrap gap-3 mb-3">
+                            {app.instagram && <a href={app.instagram} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">📷 Instagram</a>}
+                            {app.youtube && <a href={app.youtube} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">▶ YouTube</a>}
+                            {app.spotify && <a href={app.spotify} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">🎵 Spotify</a>}
+                          </div>
+                        )}
+                        <div className="flex gap-2">
+                          <button onClick={() => handleApplicationAction(slot.id, app.id, 'accept')} className="flex-1 bg-chestnut text-snow py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">Accept</button>
+                          <button onClick={() => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })} className="px-4 py-2.5 rounded-xl text-sm font-bold bg-graphite/10 text-graphite hover:bg-graphite/20 transition-colors">💬</button>
+                          <button onClick={() => handleApplicationAction(slot.id, app.id, 'decline')} className="flex-1 bg-snow text-charcoal py-2.5 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10">Decline</button>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
-              </>
-            ) : (
-              <SlotCalendar
-                slots={slots}
-                calendarMonth={calendarMonth}
-                setCalendarMonth={setCalendarMonth}
-                calendarSelectedDay={calendarSelectedDay}
-                setCalendarSelectedDay={setCalendarSelectedDay}
-                selectedSlotId={selectedSlotId}
-                setSelectedSlotId={setSelectedSlotId}
-                handleApplicationAction={handleApplicationAction}
-                onMessage={(app) => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })}
-                onEditSlot={(slot) => { setEditingSlot(slot); setEditDraft({ date: slot.rawDate, startTime: slot.rawStartTime, endTime: slot.rawEndTime, budget: String(slot.budget), notes: slot.notes }) }}
-                onCancelSlot={(slotId) => setCancelSlotId(slotId)}
-              />
-            )}
-          </>
-        )}
+              </div>
+
+              {/* Section 2 — Confirmed Bookings */}
+              <div className="mb-8">
+                <SectionHeader eyebrow="Confirmed" title="Booked" accent="Gigs." />
+                {upcomingBooked.length === 0 && pastBooked.length === 0 ? (
+                  <EmptyState
+                    icon="✅"
+                    title="No confirmed bookings yet"
+                    body="Accept a musician's application to create a confirmed booking."
+                  />
+                ) : (
+                  <div className="space-y-3">
+                    {upcomingBooked.length > 0 && (
+                      <>
+                        <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-2">Upcoming</p>
+                        {upcomingBooked.map(slot => {
+                          const confirmedApp = slot.applications.find(a => a.status === 'confirmed')
+                          const musicianName = slot.bookedMusician ?? confirmedApp?.musicianName ?? 'Musician'
+                          const musicianId = confirmedApp?.musicianId
+                          const [, datePart] = slot.date.split(', ')
+                          const [mon, day] = (datePart || '').split(' ')
+                          return (
+                            <div key={slot.id} className="bg-white rounded-2xl p-4 shadow-sm border-l-4 border-l-[#6C9A8B]">
+                              <div className="flex items-center gap-3">
+                                <div className="bg-teal/10 rounded-xl px-3 py-2.5 text-center shrink-0 min-w-[52px]">
+                                  <p className="text-teal text-[10px] font-black uppercase tracking-wide">{mon}</p>
+                                  <p className="text-teal text-2xl font-black leading-tight">{day}</p>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <button
+                                    onClick={() => musicianId && router.push('/profile/' + musicianId)}
+                                    className="text-graphite font-bold text-sm truncate hover:text-chestnut transition-colors text-left block"
+                                  >
+                                    {musicianName}
+                                  </button>
+                                  <p className="text-charcoal text-xs mt-0.5">{slot.time}</p>
+                                  <div className="flex gap-1 mt-1 flex-wrap">
+                                    {slot.genres.map(g => <span key={g} className="text-[10px] bg-snow text-charcoal px-2 py-0.5 rounded-full font-medium">{g}</span>)}
+                                  </div>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <p className="text-teal font-black">${slot.budget}</p>
+                                  <button
+                                    onClick={() => confirmedApp && openConversation({ id: confirmedApp.musicianId, name: confirmedApp.musicianName, avatar: confirmedApp.avatar })}
+                                    className="text-charcoal/60 text-[10px] font-medium hover:text-chestnut transition-colors mt-1 block"
+                                  >
+                                    💬 Message
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </>
+                    )}
+                    {pastBooked.length > 0 && (
+                      <>
+                        <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-2 mt-4">Past</p>
+                        {pastBooked.map(slot => {
+                          const confirmedApp = slot.applications.find(a => a.status === 'confirmed')
+                          const musicianName = slot.bookedMusician ?? confirmedApp?.musicianName ?? 'Musician'
+                          const musicianId = confirmedApp?.musicianId
+                          return (
+                            <div key={slot.id} className="bg-white rounded-2xl p-4 shadow-sm opacity-70">
+                              <div className="flex items-center gap-3">
+                                <div className="bg-charcoal/10 rounded-xl px-3 py-2.5 text-center shrink-0 min-w-[52px]">
+                                  <p className="text-charcoal/60 text-[10px] font-black uppercase tracking-wide">{slot.date.split(' ')[0]}</p>
+                                  <p className="text-charcoal/60 text-2xl font-black leading-tight">{slot.date.split(' ')[2]?.replace(',', '')}</p>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <button
+                                    onClick={() => musicianId && router.push('/profile/' + musicianId)}
+                                    className="text-graphite font-bold text-sm truncate hover:text-chestnut transition-colors text-left block"
+                                  >
+                                    {musicianName}
+                                  </button>
+                                  <p className="text-charcoal text-xs mt-0.5">{slot.time}</p>
+                                </div>
+                                <p className="text-charcoal font-black shrink-0">${slot.budget}</p>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Section 3 — Your Posted Slots */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <SectionHeader eyebrow="All" title="Posted" accent="Slots." />
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex bg-white rounded-xl shadow-sm overflow-hidden border border-charcoal/10">
+                      <button onClick={() => setSlotsView('list')} className={`px-3 py-2 text-sm font-medium transition-all ${slotsView === 'list' ? 'bg-graphite text-snow' : 'text-charcoal hover:bg-snow'}`} title="List view">☰</button>
+                      <button onClick={() => setSlotsView('calendar')} className={`px-3 py-2 text-sm font-medium transition-all ${slotsView === 'calendar' ? 'bg-graphite text-snow' : 'text-charcoal hover:bg-snow'}`} title="Calendar view">▦</button>
+                    </div>
+                  </div>
+                </div>
+                {slotsView === 'list' ? (
+                  <>
+                    <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
+                      {(['all', 'open', 'booked', 'past'] as SlotFilter[]).map(f => (
+                        <button key={f} onClick={() => setSlotFilter(f)} className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-semibold capitalize transition-all ${slotFilter === f ? 'bg-graphite text-snow' : 'bg-white text-charcoal hover:bg-[#E8E4E0]'}`}>
+                          {f}
+                        </button>
+                      ))}
+                    </div>
+                    {filteredSlots.length === 0 ? (
+                      <EmptyState icon="📅" title="No slots found" body="Post a slot to start receiving applications from musicians." />
+                    ) : (
+                      <div className="space-y-4">
+                        {filteredSlots.map(slot => (
+                          <SlotCard
+                            key={slot.id}
+                            slot={slot}
+                            selectedSlotId={selectedSlotId}
+                            setSelectedSlotId={setSelectedSlotId}
+                            handleApplicationAction={handleApplicationAction}
+                            onMessage={(app) => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })}
+                            onEdit={slot.status === 'open' ? () => { setEditingSlot(slot); setEditDraft({ date: slot.rawDate, startTime: slot.rawStartTime, endTime: slot.rawEndTime, budget: String(slot.budget), notes: slot.notes }) } : undefined}
+                            onCancel={(slot.status === 'open' || slot.status === 'booked') ? () => setCancelSlotId(slot.id) : undefined}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <SlotCalendar
+                    slots={slots}
+                    calendarMonth={calendarMonth}
+                    setCalendarMonth={setCalendarMonth}
+                    calendarSelectedDay={calendarSelectedDay}
+                    setCalendarSelectedDay={setCalendarSelectedDay}
+                    selectedSlotId={selectedSlotId}
+                    setSelectedSlotId={setSelectedSlotId}
+                    handleApplicationAction={handleApplicationAction}
+                    onMessage={(app) => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })}
+                    onEditSlot={(slot) => { setEditingSlot(slot); setEditDraft({ date: slot.rawDate, startTime: slot.rawStartTime, endTime: slot.rawEndTime, budget: String(slot.budget), notes: slot.notes }) }}
+                    onCancelSlot={(slotId) => setCancelSlotId(slotId)}
+                  />
+                )}
+              </div>
+            </>
+          )
+        })()}
 
         {/* ---- BROWSE TAB: LIST ---- */}
         {activeTab === 'browse' && !selectedLiveMusician && (
@@ -1139,140 +1133,6 @@ export default function RestaurantDashboard() {
           </div>
         )}
 
-        {/* ---- MESSAGES TAB: CONVERSATION LIST ---- */}
-        {activeTab === 'messages' && !selectedConv && (
-          <>
-            <div className="mb-5">
-              <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">Inbox</p>
-              <h2 className="text-graphite text-3xl font-black tracking-tight leading-none">
-                Your <span className="text-chestnut italic">Messages.</span>
-              </h2>
-            </div>
-            {conversations.length === 0 ? (
-              <EmptyState icon="💬" title="No messages yet" body="Browse musicians and reach out to start a conversation." />
-            ) : (
-              <div className="bg-white rounded-2xl shadow-sm overflow-hidden divide-y divide-charcoal/[0.06]">
-                {conversations.map(conv => (
-                  <button
-                    key={conv.id}
-                    onClick={async () => {
-                      setSelectedConvId(conv.id)
-                      if (conv.unread) {
-                        await supabase.from('messages').update({ read: true })
-                          .eq('conversation_id', conv.id).eq('receiver_id', userId)
-                        setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread: false } : c))
-                      }
-                    }}
-                    className="w-full px-4 py-3.5 flex items-center gap-3.5 hover:bg-snow/80 transition-colors text-left"
-                  >
-                    <div className="relative shrink-0">
-                      <Avatar src={conv.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" bg="bg-chestnut/10" />
-                      {conv.unread && (
-                        <span className="absolute top-0 right-0 w-3 h-3 bg-chestnut rounded-full border-2 border-white" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline justify-between gap-2 mb-0.5">
-                        <p className={`text-sm truncate ${conv.unread ? 'font-bold text-graphite' : 'font-semibold text-charcoal'}`}>
-                          {conv.musician}
-                        </p>
-                        <p className="text-[11px] text-charcoal/40 shrink-0">{conv.time}</p>
-                      </div>
-                      <p className={`text-xs truncate ${conv.unread ? 'font-medium text-graphite' : 'text-charcoal/55'}`}>
-                        {conv.lastMessage || 'Start a conversation'}
-                      </p>
-                    </div>
-                    <svg className="w-3.5 h-3.5 text-charcoal/20 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ---- MESSAGES TAB: CHAT VIEW ---- */}
-        {activeTab === 'messages' && selectedConv && (
-          <div className="-mx-4 -mt-5 flex flex-col" style={{ height: 'calc(100vh - 130px)' }}>
-            {/* Header */}
-            <div className="bg-white px-4 py-3 flex items-center gap-3 border-b border-charcoal/[0.08] shadow-sm shrink-0">
-              <button
-                onClick={() => setSelectedConvId(null)}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-snow transition-colors text-charcoal hover:text-chestnut shrink-0"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-              <Avatar src={selectedConv.avatar} className="w-10 h-10 rounded-full" textSize="text-lg" bg="bg-chestnut/10" />
-              <div className="flex-1 min-w-0">
-                <button
-                  onClick={() => router.push('/profile/' + selectedConv.otherUserId)}
-                  className="text-graphite font-bold text-sm leading-tight truncate hover:text-chestnut transition-colors text-left"
-                >
-                  {selectedConv.musician}
-                </button>
-                <p className="text-charcoal/40 text-[11px] leading-tight">Musician · tap to view profile</p>
-              </div>
-            </div>
-
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1" style={{ background: '#F5F0EC' }}>
-              {selectedConv.messages.length === 0 && (
-                <div className="flex flex-col items-center justify-center h-full text-center gap-3 py-12">
-                  <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center text-3xl">👋</div>
-                  <p className="text-graphite font-bold">Say hello!</p>
-                  <p className="text-charcoal/60 text-sm max-w-[200px] leading-relaxed">
-                    Start a conversation with {selectedConv.musician}
-                  </p>
-                </div>
-              )}
-              {selectedConv.messages.map((msg, i) => {
-                const isMe = msg.from === 'me'
-                const prev = selectedConv.messages[i - 1]
-                const groupBreak = prev && prev.from !== msg.from
-                return (
-                  <div key={msg.id}>
-                    {groupBreak && <div className="h-2" />}
-                    <div className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[72%] px-4 py-2.5 text-sm shadow-sm ${
-                        isMe
-                          ? 'bg-chestnut text-snow rounded-2xl rounded-br-sm'
-                          : 'bg-white text-graphite rounded-2xl rounded-bl-sm'
-                      }`}>
-                        <p className="leading-relaxed">{msg.text}</p>
-                        <p className={`text-[10px] mt-1 ${isMe ? 'text-snow/50 text-right' : 'text-charcoal/40'}`}>{msg.time}</p>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* Input bar */}
-            <div className="bg-white border-t border-charcoal/[0.08] px-4 py-3 flex items-center gap-2.5 shrink-0">
-              <input
-                value={chatInput}
-                onChange={e => setChatInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-                placeholder="Message..."
-                className="flex-1 bg-snow rounded-full px-4 py-2.5 text-sm focus:outline-none focus:shadow-md transition-shadow placeholder:text-charcoal/40"
-              />
-              <button
-                onClick={handleSendMessage}
-                disabled={!chatInput.trim()}
-                className="w-10 h-10 bg-chestnut rounded-full flex items-center justify-center shrink-0 hover:opacity-90 transition-opacity disabled:opacity-30"
-              >
-                <svg className="w-4 h-4 text-white rotate-90" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* ---- PROFILE TAB ---- */}
         {activeTab === 'profile' && (
           <>
@@ -1300,6 +1160,13 @@ export default function RestaurantDashboard() {
                 </div>
               )}
             </div>
+
+            <button
+              onClick={() => router.push('/profile/' + userId)}
+              className="flex items-center gap-1 text-chestnut text-sm font-bold hover:underline mb-4"
+            >
+              View Public Profile →
+            </button>
 
             <div className="relative bg-graphite rounded-3xl overflow-hidden mb-4 shadow-xl">
               <div className="absolute inset-x-0 bottom-0 top-1/2 flex items-end justify-around opacity-[0.10] pointer-events-none">
@@ -1387,13 +1254,22 @@ export default function RestaurantDashboard() {
 
       </main>
 
+      {/* ---- MESSAGING (always mounted so ref is available) ---- */}
+      <div className={activeTab !== 'messages' ? 'hidden' : ''}>
+        <div className="max-w-2xl mx-auto px-4" style={{ paddingBottom: '96px' }}>
+          {userId && (
+            <MessagingTab ref={messagingRef} userId={userId} onUnreadChange={setMsgUnread} />
+          )}
+        </div>
+      </div>
+
       {/* ---- BOTTOM TAB BAR ---- */}
       <nav className="fixed bottom-0 left-0 right-0 bg-graphite/95 backdrop-blur-md border-t border-charcoal/30 z-40">
         <div className="max-w-2xl mx-auto grid grid-cols-5 px-2 py-2">
           <TabButton icon="🏠" label="Home" active={activeTab === 'home'} onClick={() => setActiveTab('home')} />
-          <TabButton icon="📅" label="Slots" active={activeTab === 'slots'} onClick={() => setActiveTab('slots')} />
+          <TabButton icon="📋" label="Bookings" active={activeTab === 'slots'} onClick={() => setActiveTab('slots')} badge={pendingApps > 0 ? pendingApps : undefined} />
           <TabButton icon="🔍" label="Browse" active={activeTab === 'browse'} onClick={() => setActiveTab('browse')} />
-          <TabButton icon="💬" label="Messages" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} badge={unreadCount} />
+          <TabButton icon="💬" label="Messages" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} badge={msgUnread} />
           <TabButton icon="🍽" label="Profile" active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
         </div>
       </nav>
