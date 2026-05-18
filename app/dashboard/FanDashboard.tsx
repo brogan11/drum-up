@@ -7,6 +7,8 @@ import { eqBarStyle } from '@/lib/eq'
 import { milesBetween } from '@/lib/distance'
 import { Avatar } from '@/components/Avatar'
 import MessagingTab, { MessagingTabRef } from '@/components/MessagingTab'
+import { useToast } from '@/components/Toast'
+import { SkeletonStatCard, SkeletonBookingCard, SkeletonMusicianCard } from '@/components/Skeleton'
 
 // ---- Types ----
 
@@ -79,6 +81,8 @@ export default function FanDashboard() {
   const [userId, setUserId] = useState('')
   const [savingProfile, setSavingProfile] = useState(false)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
+  const [dataLoading, setDataLoading] = useState(true)
+  const { toast } = useToast()
 
   // Messaging
   const messagingRef = useRef<MessagingTabRef>(null)
@@ -157,12 +161,14 @@ export default function FanDashboard() {
 
   const loadDiscover = useCallback(async (lat: number, lon: number, radius: number, uid: string) => {
     setDiscoverLoading(true)
-    const { data: profiles } = await supabase
+    try {
+    const { data: profiles, error: discErr } = await supabase
       .from('profiles')
       .select('id, full_name, user_type, avatar_url, bio, location_text, latitude, longitude, role_metadata')
       .in('user_type', ['restaurant', 'musician'])
       .neq('id', uid)
 
+    if (discErr) throw discErr
     if (!profiles) { setDiscoverLoading(false); return }
 
     const inRange = profiles
@@ -198,35 +204,52 @@ export default function FanDashboard() {
     }
     setVenues(newVenues)
     setMusicians(newMusicians)
-    setDiscoverLoading(false)
+    } catch (err) {
+      console.error('Failed to load discover:', err)
+      toast.error('Could not load nearby venues and musicians.')
+    } finally {
+      setDiscoverLoading(false)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
     const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-      setUserId(user.id)
-      const { data } = await supabase
-        .from('profiles').select('*').eq('id', user.id).maybeSingle()
-      if (!data) return
-      setProfile({
-        name: data.full_name ?? '',
-        bio: data.bio ?? '',
-        location: data.location_text ?? '',
-        avatar: data.avatar_url ?? '',
-      })
-      const lat = data.latitude as number | null
-      const lon = data.longitude as number | null
-      setFanCoords({ lat, lon })
+      try {
+        const { data: { user }, error: authErr } = await supabase.auth.getUser()
+        if (authErr) throw authErr
+        if (!user) return
+        setUserId(user.id)
+        const { data, error: profileErr } = await supabase
+          .from('profiles').select('*').eq('id', user.id).maybeSingle()
+        if (profileErr) throw profileErr
+        if (!data) return
+        setProfile({
+          name: data.full_name ?? '',
+          bio: data.bio ?? '',
+          location: data.location_text ?? '',
+          avatar: data.avatar_url ?? '',
+        })
+        const lat = data.latitude as number | null
+        const lon = data.longitude as number | null
+        setFanCoords({ lat, lon })
 
-      const { data: followsData } = await supabase
-        .from('follows').select('following_id').eq('follower_id', user.id)
-      if (followsData) setFollowedIds(new Set(followsData.map(f => f.following_id)))
+        const { data: followsData, error: followsErr } = await supabase
+          .from('follows').select('following_id').eq('follower_id', user.id)
+        if (followsErr) throw followsErr
+        if (followsData) setFollowedIds(new Set(followsData.map(f => f.following_id)))
 
-      await loadShows()
-      if (lat != null && lon != null) loadDiscover(lat, lon, 25, user.id)
+        await loadShows()
+        if (lat != null && lon != null) loadDiscover(lat, lon, 25, user.id)
+      } catch (err) {
+        console.error('Failed to load fan dashboard:', err)
+        toast.error('Failed to load your dashboard. Please refresh.')
+      } finally {
+        setDataLoading(false)
+      }
     }
     load()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadDiscover, loadShows])
 
   useEffect(() => {
@@ -237,33 +260,50 @@ export default function FanDashboard() {
   const saveProfile = async () => {
     if (!userId) return
     setSavingProfile(true)
-    const { error: upErr } = await supabase.from('profiles').update({
-      full_name: profileDraft.name || null,
-      bio: profileDraft.bio || null,
-      location_text: profileDraft.location || null,
-    }).eq('id', userId)
-    setSavingProfile(false)
-    if (upErr) {
-      console.error('Profile save failed', upErr)
-      return
+    try {
+      const { error: upErr } = await supabase.from('profiles').update({
+        full_name: profileDraft.name || null,
+        bio: profileDraft.bio || null,
+        location_text: profileDraft.location || null,
+      }).eq('id', userId)
+      if (upErr) throw upErr
+      setProfile(profileDraft)
+      setEditingProfile(false)
+      toast.success('Profile saved!')
+    } catch (err) {
+      console.error('Profile save failed:', err)
+      toast.error('Could not save your profile. Please try again.')
+    } finally {
+      setSavingProfile(false)
     }
-    setProfile(profileDraft)
-    setEditingProfile(false)
   }
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/')
+    try {
+      await supabase.auth.signOut()
+      router.push('/')
+    } catch (err) {
+      console.error('Logout failed:', err)
+      toast.error('Logout failed. Please try again.')
+    }
   }
 
   const toggleFollow = async (id: string) => {
     if (!userId) return
-    if (followedIds.has(id)) {
-      await supabase.from('follows').delete().eq('follower_id', userId).eq('following_id', id)
-      setFollowedIds(prev => { const next = new Set(prev); next.delete(id); return next })
-    } else {
-      await supabase.from('follows').insert({ follower_id: userId, following_id: id })
-      setFollowedIds(prev => new Set([...prev, id]))
+    const wasFollowing = followedIds.has(id)
+    try {
+      if (wasFollowing) {
+        const { error } = await supabase.from('follows').delete().eq('follower_id', userId).eq('following_id', id)
+        if (error) throw error
+        setFollowedIds(prev => { const next = new Set(prev); next.delete(id); return next })
+      } else {
+        const { error } = await supabase.from('follows').insert({ follower_id: userId, following_id: id })
+        if (error) throw error
+        setFollowedIds(prev => new Set([...prev, id]))
+      }
+    } catch (err) {
+      console.error('Follow toggle failed:', err)
+      toast.error('Could not update follow. Please try again.')
     }
   }
 
@@ -371,11 +411,17 @@ export default function FanDashboard() {
             </div>
 
             {/* Stats — tonight is the hero */}
-            <div className="grid grid-cols-3 gap-2.5 mb-7">
-              <StatCard value={followingCount} label="Following" color="text-chestnut" icon="❤️" />
-              <StatCard value={tonightShows.length} label="Tonight" color="text-teal" icon="🎶" highlight />
-              <StatCard value={upcomingShows.length} label="This Week" color="text-graphite" icon="📅" />
-            </div>
+            {dataLoading ? (
+              <div className="grid grid-cols-3 gap-2.5 mb-7">
+                <SkeletonStatCard /><SkeletonStatCard /><SkeletonStatCard />
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-2.5 mb-7">
+                <StatCard value={followingCount} label="Following" color="text-chestnut" icon="❤️" />
+                <StatCard value={tonightShows.length} label="Tonight" color="text-teal" icon="🎶" highlight />
+                <StatCard value={upcomingShows.length} label="This Week" color="text-graphite" icon="📅" />
+              </div>
+            )}
 
             {/* Tonight */}
             {tonightShows.length > 0 && (
@@ -391,7 +437,11 @@ export default function FanDashboard() {
 
             {/* Upcoming this week */}
             <SectionHeader eyebrow="The Feed" title="Upcoming" accent="Shows." />
-            {feedShows.length === 0 ? (
+            {dataLoading ? (
+              <div className="space-y-3">
+                <SkeletonBookingCard /><SkeletonBookingCard /><SkeletonBookingCard />
+              </div>
+            ) : feedShows.length === 0 ? (
               <EmptyState
                 icon="🎵"
                 title="Your feed is empty"
@@ -479,13 +529,8 @@ export default function FanDashboard() {
             </div>
 
             {discoverLoading ? (
-              <div className="flex flex-col items-center justify-center py-16 gap-3">
-                <div className="flex gap-1">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="eq-bar w-2 bg-chestnut rounded-t" style={eqBarStyle(i, 7)} />
-                  ))}
-                </div>
-                <p className="text-charcoal text-sm font-medium">Finding local music…</p>
+              <div className="space-y-3">
+                <SkeletonMusicianCard /><SkeletonMusicianCard /><SkeletonMusicianCard /><SkeletonMusicianCard />
               </div>
             ) : (
               <>

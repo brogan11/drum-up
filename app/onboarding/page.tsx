@@ -105,21 +105,28 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        router.push('/auth/login')
-        return
+      try {
+        const { data: { user }, error: authErr } = await supabase.auth.getUser()
+        if (authErr) throw authErr
+        if (!user) {
+          router.push('/auth/login')
+          return
+        }
+        setUserId(user.id)
+        const t = (user.user_metadata?.user_type as UserType) || 'fan'
+        setUserType(t)
+        const meta = user.user_metadata ?? {}
+        setBasic(prev => ({
+          ...prev,
+          fullName: meta.full_name ?? meta.name ?? '',
+          avatarPreview: meta.avatar_url ?? '',
+        }))
+      } catch (e) {
+        console.error('Onboarding init failed', e)
+        setError('Failed to load your session. Please refresh the page.')
+      } finally {
+        setLoading(false)
       }
-      setUserId(user.id)
-      const t = (user.user_metadata?.user_type as UserType) || 'fan'
-      setUserType(t)
-      const meta = user.user_metadata ?? {}
-      setBasic(prev => ({
-        ...prev,
-        fullName: meta.full_name ?? meta.name ?? '',
-        avatarPreview: meta.avatar_url ?? '',
-      }))
-      setLoading(false)
     }
     init()
   }, [router])
@@ -669,7 +676,7 @@ export default function OnboardingPage() {
                 className="bg-chestnut text-snow font-bold text-sm px-6 py-2.5 rounded-xl shadow-md hover:shadow-lg hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 group"
               >
                 {submitting
-                  ? 'Saving...'
+                  ? <><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg> Saving…</>
                   : step === TOTAL_STEPS
                     ? <>Finish <span className="group-hover:translate-x-0.5 transition-transform">✓</span></>
                     : <>Next <span className="group-hover:translate-x-0.5 transition-transform">→</span></>}

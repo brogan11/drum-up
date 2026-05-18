@@ -23,6 +23,8 @@ interface FormState {
   fullName: string
   avatarFile: File | null
   avatarPreview: string
+  bannerFile: File | null
+  bannerPreview: string
   locationText: string
   latitude: number | null
   longitude: number | null
@@ -50,7 +52,7 @@ interface FormState {
 }
 
 const EMPTY: FormState = {
-  fullName: '', avatarFile: null, avatarPreview: '',
+  fullName: '', avatarFile: null, avatarPreview: '', bannerFile: null, bannerPreview: '',
   locationText: '', latitude: null, longitude: null,
   venueName: '', capacity: '', cuisineType: '', musicNights: [],
   genres: [], instruments: '', soloOrBand: '', yearsPerforming: '',
@@ -91,59 +93,64 @@ export default function SettingsPage() {
 
   useEffect(() => {
     const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        router.push('/auth/login')
-        return
-      }
-      setUserId(user.id)
-      setEmail(user.email ?? '')
+      try {
+        const { data: { user }, error: authErr } = await supabase.auth.getUser()
+        if (authErr) throw authErr
+        if (!user) {
+          router.push('/auth/login')
+          return
+        }
+        setUserId(user.id)
+        setEmail(user.email ?? '')
 
-      const { data: profile, error: pErr } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .maybeSingle()
+        const { data: profile, error: pErr } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .maybeSingle()
 
-      if (pErr) {
-        setError(formatError(pErr))
+        if (pErr) throw pErr
+        if (!profile) {
+          router.push('/onboarding')
+          return
+        }
+
+        const t = (profile.user_type as UserType) || (user.user_metadata?.user_type as UserType) || 'fan'
+        setUserType(t)
+        const meta = profile.role_metadata ?? {}
+
+        setForm({
+          fullName: profile.full_name ?? '',
+          avatarFile: null,
+          avatarPreview: profile.avatar_url ?? '',
+          bannerFile: null,
+          bannerPreview: (meta.banner_url as string | undefined) ?? '',
+          locationText: profile.location_text ?? '',
+          latitude: profile.latitude ?? null,
+          longitude: profile.longitude ?? null,
+          venueName: meta.venue_name ?? '',
+          capacity: meta.capacity != null ? String(meta.capacity) : '',
+          cuisineType: meta.cuisine_type ?? '',
+          musicNights: Array.isArray(meta.music_nights) ? meta.music_nights : [],
+          genres: Array.isArray(meta.genres) ? meta.genres : [],
+          instruments: meta.instruments ?? '',
+          soloOrBand: meta.solo_or_band ?? '',
+          yearsPerforming: meta.years_performing != null ? String(meta.years_performing) : '',
+          favoriteGenres: Array.isArray(meta.favorite_genres) ? meta.favorite_genres : [],
+          maxDistance: typeof profile.max_distance_miles === 'number' ? profile.max_distance_miles : 20,
+          bio: profile.bio ?? '',
+          instagram: profile.instagram_url ?? '',
+          tiktok: profile.tiktok_url ?? '',
+          spotify: profile.spotify_url ?? '',
+          youtube: profile.youtube_url ?? '',
+          website: profile.website ?? '',
+        })
+      } catch (e) {
+        console.error('Settings load failed', e)
+        setError(formatError(e))
+      } finally {
         setLoading(false)
-        return
       }
-      if (!profile) {
-        router.push('/onboarding')
-        return
-      }
-
-      const t = (profile.user_type as UserType) || (user.user_metadata?.user_type as UserType) || 'fan'
-      setUserType(t)
-      const meta = profile.role_metadata ?? {}
-
-      setForm({
-        fullName: profile.full_name ?? '',
-        avatarFile: null,
-        avatarPreview: profile.avatar_url ?? '',
-        locationText: profile.location_text ?? '',
-        latitude: profile.latitude ?? null,
-        longitude: profile.longitude ?? null,
-        venueName: meta.venue_name ?? '',
-        capacity: meta.capacity != null ? String(meta.capacity) : '',
-        cuisineType: meta.cuisine_type ?? '',
-        musicNights: Array.isArray(meta.music_nights) ? meta.music_nights : [],
-        genres: Array.isArray(meta.genres) ? meta.genres : [],
-        instruments: meta.instruments ?? '',
-        soloOrBand: meta.solo_or_band ?? '',
-        yearsPerforming: meta.years_performing != null ? String(meta.years_performing) : '',
-        favoriteGenres: Array.isArray(meta.favorite_genres) ? meta.favorite_genres : [],
-        maxDistance: typeof profile.max_distance_miles === 'number' ? profile.max_distance_miles : 20,
-        bio: profile.bio ?? '',
-        instagram: profile.instagram_url ?? '',
-        tiktok: profile.tiktok_url ?? '',
-        spotify: profile.spotify_url ?? '',
-        youtube: profile.youtube_url ?? '',
-        website: profile.website ?? '',
-      })
-      setLoading(false)
     }
     load()
   }, [router])
@@ -164,6 +171,17 @@ export default function SettingsPage() {
     }
     update('avatarFile', file)
     update('avatarPreview', URL.createObjectURL(file))
+  }
+
+  const handleBannerChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 10 * 1024 * 1024) {
+      setError('Banner image must be under 10MB.')
+      return
+    }
+    update('bannerFile', file)
+    update('bannerPreview', URL.createObjectURL(file))
   }
 
   const detectLocation = () => {
@@ -225,7 +243,11 @@ export default function SettingsPage() {
   }
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
+    try {
+      await supabase.auth.signOut()
+    } catch (e) {
+      console.error('Sign out failed', e)
+    }
     router.push('/')
   }
 
@@ -246,17 +268,31 @@ export default function SettingsPage() {
         avatarUrl = data.publicUrl
       }
 
+      let bannerUrl = form.bannerPreview.startsWith('blob:') ? '' : form.bannerPreview
+      if (form.bannerFile) {
+        const ext = form.bannerFile.name.split('.').pop()?.toLowerCase() || 'jpg'
+        const path = `${userId}/banner-${Date.now()}.${ext}`
+        const { error: bannerUpErr } = await supabase.storage
+          .from('avatars')
+          .upload(path, form.bannerFile, { upsert: true, contentType: form.bannerFile.type })
+        if (bannerUpErr) throw bannerUpErr
+        const { data: bannerData } = supabase.storage.from('avatars').getPublicUrl(path)
+        bannerUrl = bannerData.publicUrl
+      }
+
       const roleMetadata: Record<string, unknown> = {}
       if (userType === 'restaurant') {
         roleMetadata.venue_name = form.venueName || null
         roleMetadata.capacity = form.capacity ? Number(form.capacity) : null
         roleMetadata.cuisine_type = form.cuisineType || null
         roleMetadata.music_nights = form.musicNights
+        roleMetadata.banner_url = bannerUrl || null
       } else if (userType === 'musician') {
         roleMetadata.genres = form.genres
         roleMetadata.instruments = form.instruments || null
         roleMetadata.solo_or_band = form.soloOrBand || null
         roleMetadata.years_performing = form.yearsPerforming ? Number(form.yearsPerforming) : null
+        roleMetadata.banner_url = bannerUrl || null
       } else {
         roleMetadata.favorite_genres = form.favoriteGenres
       }
@@ -279,8 +315,7 @@ export default function SettingsPage() {
 
       if (upErr) throw upErr
 
-      // Reset avatar file state — preview now reflects the persisted URL
-      setForm(prev => ({ ...prev, avatarFile: null, avatarPreview: avatarUrl }))
+      setForm(prev => ({ ...prev, avatarFile: null, avatarPreview: avatarUrl, bannerFile: null, bannerPreview: bannerUrl }))
       setSavedAt(Date.now())
     } catch (e) {
       console.error('Settings save failed', e)
@@ -384,6 +419,20 @@ export default function SettingsPage() {
           >
             {userType === 'restaurant' && (
               <>
+                <Field label="Banner photo">
+                  <div className="relative rounded-2xl overflow-hidden mb-2" style={{ aspectRatio: '3/1', minHeight: 96 }}>
+                    {form.bannerPreview && /^(https?:\/\/|blob:)/.test(form.bannerPreview) ? (
+                      <img src={form.bannerPreview} alt="Banner preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-4xl opacity-20 select-none" style={{ background: 'linear-gradient(135deg, #DC7F41 0%, #3D2419 100%)' }}>🍽</div>
+                    )}
+                  </div>
+                  <label className="inline-block bg-snow text-graphite font-bold text-sm px-4 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+                    {form.bannerPreview ? 'Change banner' : 'Upload banner'}
+                    <input type="file" accept="image/*" className="hidden" onChange={handleBannerChange} />
+                  </label>
+                  <p className="text-xs text-charcoal/60 mt-1.5">Landscape photo (3:1 ratio works best), up to 10MB</p>
+                </Field>
                 <Field label="Venue name">
                   <Input value={form.venueName} onChange={v => update('venueName', v)} placeholder="The Lantern Room" />
                 </Field>
@@ -407,6 +456,20 @@ export default function SettingsPage() {
 
             {userType === 'musician' && (
               <>
+                <Field label="Cover photo">
+                  <div className="relative rounded-2xl overflow-hidden mb-2" style={{ aspectRatio: '3/1', minHeight: 96 }}>
+                    {form.bannerPreview && /^(https?:\/\/|blob:)/.test(form.bannerPreview) ? (
+                      <img src={form.bannerPreview} alt="Cover preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-4xl opacity-20 select-none" style={{ background: 'linear-gradient(135deg, #DC7F41 0%, #2A2A2A 100%)' }}>♪</div>
+                    )}
+                  </div>
+                  <label className="inline-block bg-snow text-graphite font-bold text-sm px-4 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+                    {form.bannerPreview ? 'Change cover' : 'Upload cover'}
+                    <input type="file" accept="image/*" className="hidden" onChange={handleBannerChange} />
+                  </label>
+                  <p className="text-xs text-charcoal/60 mt-1.5">Stage or press photo (landscape works best), up to 10MB</p>
+                </Field>
                 <Field label="Genres">
                   <ChipRow
                     items={GENRES}
@@ -550,7 +613,9 @@ export default function SettingsPage() {
             disabled={saving}
             className="bg-chestnut text-snow font-bold text-sm px-6 py-2.5 rounded-xl shadow-md hover:shadow-lg hover:opacity-90 transition-all disabled:opacity-50 flex items-center gap-2"
           >
-            {saving ? 'Saving…' : 'Save changes'}
+            {saving
+              ? <><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg> Saving…</>
+              : 'Save changes'}
           </button>
         </div>
       </div>

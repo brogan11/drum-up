@@ -7,11 +7,16 @@ import { eqBarStyle } from '@/lib/eq'
 import { milesBetween } from '@/lib/distance'
 import { Avatar } from '@/components/Avatar'
 import MessagingTab, { MessagingTabRef } from '@/components/MessagingTab'
+import { useToast } from '@/components/Toast'
+import {
+  SkeletonStatCard,
+  SkeletonBookingCard,
+  SkeletonMusicianCard,
+} from '@/components/Skeleton'
 
 // ---- Types ----
 
 type BookingStatus = 'pending' | 'confirmed' | 'cancelled'
-type BookingFilter = 'all' | 'pending' | 'confirmed' | 'cancelled'
 
 interface Venue {
   id: string
@@ -88,10 +93,15 @@ function BookingBadge({ status }: { status: BookingStatus }) {
 
 export default function MusicianDashboard() {
   const router = useRouter()
+  const { toast } = useToast()
   const [activeTab, setActiveTab] = useState('home')
   const [gigs, setGigs] = useState<Gig[]>([])
   const [bookings, setBookings] = useState<Booking[]>([])
   const [profile, setProfile] = useState<MusicianProfile>(INITIAL_PROFILE)
+
+  // Loading states
+  const [dataLoading, setDataLoading] = useState(true)
+  const [gigsLoading, setGigsLoading] = useState(true)
 
   // Gig browsing
   const [gigSearch, setGigSearch] = useState('')
@@ -101,9 +111,6 @@ export default function MusicianDashboard() {
   // Apply modal
   const [applyGigId, setApplyGigId] = useState<string | null>(null)
   const [applyNote, setApplyNote] = useState('')
-
-  // Bookings
-  const [bookingFilter, setBookingFilter] = useState<BookingFilter>('all')
 
   // Messaging
   const messagingRef = useRef<MessagingTabRef>(null)
@@ -116,169 +123,219 @@ export default function MusicianDashboard() {
   const [savingProfile, setSavingProfile] = useState(false)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
 
+  // Analytics
+  const [analyticsViews7d, setAnalyticsViews7d] = useState<number | null>(null)
+  const [analyticsViews30d, setAnalyticsViews30d] = useState<number | null>(null)
+  const [analyticsFollowers, setAnalyticsFollowers] = useState<number | null>(null)
+  const [analyticsGigs, setAnalyticsGigs] = useState<number | null>(null)
+  const [analyticsRating, setAnalyticsRating] = useState<number | null>(null)
+  const [analyticsReviewCount, setAnalyticsReviewCount] = useState<number | null>(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(false)
+  const [analyticsLoaded, setAnalyticsLoaded] = useState(false)
+
   // ---- Data loading ----
 
   const loadMyBookings = async (uid: string, myLat: number | null, myLon: number | null) => {
-    const { data: myBookings } = await supabase
-      .from('bookings')
-      .select('id, availability_id, restaurant_id, status, pay_amount, note, created_at')
-      .eq('musician_id', uid)
-      .order('created_at', { ascending: false })
+    try {
+      const { data: myBookings, error: bookingsErr } = await supabase
+        .from('bookings')
+        .select('id, availability_id, restaurant_id, status, pay_amount, note, created_at')
+        .eq('musician_id', uid)
+        .order('created_at', { ascending: false })
 
-    if (!myBookings || myBookings.length === 0) { setBookings([]); return }
+      if (bookingsErr) throw bookingsErr
+      if (!myBookings || myBookings.length === 0) { setBookings([]); return }
 
-    const availIds = myBookings.map(b => b.availability_id)
-    const restaurantIds = [...new Set(myBookings.map(b => b.restaurant_id))]
+      const availIds = myBookings.map(b => b.availability_id)
+      const restaurantIds = [...new Set(myBookings.map(b => b.restaurant_id))]
 
-    const [{ data: avails }, { data: restaurants }] = await Promise.all([
-      supabase.from('availability').select('id, date, start_time, end_time, genres, pay').in('id', availIds),
-      supabase.from('profiles').select('id, full_name, avatar_url, role_metadata, latitude, longitude').in('id', restaurantIds),
-    ])
+      const [{ data: avails, error: availsErr }, { data: restaurants, error: restErr }] = await Promise.all([
+        supabase.from('availability').select('id, date, start_time, end_time, genres, pay').in('id', availIds),
+        supabase.from('profiles').select('id, full_name, avatar_url, role_metadata, latitude, longitude').in('id', restaurantIds),
+      ])
 
-    const availById = new Map((avails ?? []).map(a => [a.id, a]))
-    const restaurantById = new Map((restaurants ?? []).map(r => [r.id, r]))
+      if (availsErr) throw availsErr
+      if (restErr) throw restErr
 
-    const mapped: Booking[] = myBookings.map(b => {
-      const avail = availById.get(b.availability_id)
-      const restaurant = restaurantById.get(b.restaurant_id)
-      const meta = (restaurant?.role_metadata ?? {}) as Record<string, unknown>
-      const venueName = (meta.venue_name as string | undefined) ?? restaurant?.full_name ?? 'Venue'
-      const dateLabel = avail
-        ? new Date(avail.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-        : '—'
-      const timeStr = avail
-        ? `${fmt(avail.start_time?.slice(0, 5) ?? '')} – ${fmt(avail.end_time?.slice(0, 5) ?? '')}`
-        : '—'
+      const availById = new Map((avails ?? []).map(a => [a.id, a]))
+      const restaurantById = new Map((restaurants ?? []).map(r => [r.id, r]))
 
-      let distanceStr = '—'
-      if (myLat != null && myLon != null && restaurant?.latitude != null && restaurant?.longitude != null) {
-        distanceStr = `${milesBetween(myLat, myLon, restaurant.latitude, restaurant.longitude).toFixed(1)} mi`
-      }
+      const mapped: Booking[] = myBookings.map(b => {
+        const avail = availById.get(b.availability_id)
+        const restaurant = restaurantById.get(b.restaurant_id)
+        const meta = (restaurant?.role_metadata ?? {}) as Record<string, unknown>
+        const venueName = (meta.venue_name as string | undefined) ?? restaurant?.full_name ?? 'Venue'
+        const dateLabel = avail
+          ? new Date(avail.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+          : '—'
+        const timeStr = avail
+          ? `${fmt(avail.start_time?.slice(0, 5) ?? '')} – ${fmt(avail.end_time?.slice(0, 5) ?? '')}`
+          : '—'
 
-      return {
-        id: b.id,
-        gig: {
-          id: b.availability_id,
-          venue: {
-            id: b.restaurant_id,
-            name: venueName,
-            type: (meta.cuisine_type as string | undefined) ?? '',
-            distance: distanceStr,
-            avatar: restaurant?.avatar_url ?? '',
+        let distanceStr = '—'
+        if (myLat != null && myLon != null && restaurant?.latitude != null && restaurant?.longitude != null) {
+          distanceStr = `${milesBetween(myLat, myLon, restaurant.latitude, restaurant.longitude).toFixed(1)} mi`
+        }
+
+        return {
+          id: b.id,
+          gig: {
+            id: b.availability_id,
+            venue: {
+              id: b.restaurant_id,
+              name: venueName,
+              type: (meta.cuisine_type as string | undefined) ?? '',
+              distance: distanceStr,
+              avatar: restaurant?.avatar_url ?? '',
+            },
+            date: dateLabel,
+            rawDate: avail?.date ?? '',
+            rawEndDatetime: avail ? `${avail.date}T${avail.end_time ?? '23:59:00'}` : '',
+            time: timeStr,
+            genres: Array.isArray(avail?.genres) ? avail.genres : [],
+            budget: Number(avail?.pay) || 0,
+            description: '',
           },
-          date: dateLabel,
-          rawDate: avail?.date ?? '',
-          rawEndDatetime: avail ? `${avail.date}T${avail.end_time ?? '23:59:00'}` : '',
-          time: timeStr,
-          genres: Array.isArray(avail?.genres) ? avail.genres : [],
-          budget: Number(avail?.pay) || 0,
-          description: '',
-        },
-        status: b.status as BookingStatus,
-        price: Number(b.pay_amount) || 0,
-        note: b.note ?? '',
-      }
-    })
-    setBookings(mapped)
+          status: b.status as BookingStatus,
+          price: Number(b.pay_amount) || 0,
+          note: b.note ?? '',
+        }
+      })
+      setBookings(mapped)
+    } catch (err) {
+      console.error('Failed to load bookings:', err)
+      toast.error('Could not load your bookings. Pull to refresh.')
+    }
   }
 
   useEffect(() => {
     const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-      setUserId(user.id)
-      const { data } = await supabase
-        .from('profiles').select('*').eq('id', user.id).maybeSingle()
-      if (!data) return
-      const meta = (data.role_metadata ?? {}) as Record<string, unknown>
-      setProfile({
-        name: data.full_name ?? '',
-        bio: data.bio ?? '',
-        avatar: data.avatar_url ?? '',
-        genres: Array.isArray(meta.genres) ? meta.genres as string[] : [],
-        instagram: data.instagram_url ?? '',
-        youtube: data.youtube_url ?? '',
-        spotify: data.spotify_url ?? '',
-        website: data.website ?? '',
-      })
+      try {
+        const { data: { user }, error: authErr } = await supabase.auth.getUser()
+        if (authErr) throw authErr
+        if (!user) return
 
-      const myLat = data.latitude as number | null
-      const myLon = data.longitude as number | null
-      const maxMiles = (data.max_distance_miles as number | null) ?? 20
+        setUserId(user.id)
 
-      await loadMyBookings(user.id, myLat, myLon)
+        const { data, error: profileErr } = await supabase
+          .from('profiles').select('*').eq('id', user.id).maybeSingle()
+        if (profileErr) throw profileErr
+        if (!data) return
 
-      if (myLat == null || myLon == null) return
+        const meta = (data.role_metadata ?? {}) as Record<string, unknown>
+        setProfile({
+          name: data.full_name ?? '',
+          bio: data.bio ?? '',
+          avatar: data.avatar_url ?? '',
+          genres: Array.isArray(meta.genres) ? meta.genres as string[] : [],
+          instagram: data.instagram_url ?? '',
+          youtube: data.youtube_url ?? '',
+          spotify: data.spotify_url ?? '',
+          website: data.website ?? '',
+        })
 
-      const today = new Date().toISOString().slice(0, 10)
+        const myLat = data.latitude as number | null
+        const myLon = data.longitude as number | null
+        const maxMiles = (data.max_distance_miles as number | null) ?? 20
 
-      // Availability IDs the musician already applied to (any status)
-      const { data: existingBookings } = await supabase
-        .from('bookings')
-        .select('availability_id')
-        .eq('musician_id', user.id)
-      const appliedIds = new Set((existingBookings ?? []).map(b => b.availability_id))
+        await loadMyBookings(user.id, myLat, myLon)
+        setDataLoading(false)
 
-      const { data: slots } = await supabase
-        .from('availability')
-        .select('id, restaurant_id, date, start_time, end_time, description, pay, genres, latitude, longitude')
-        .eq('status', 'open')
-        .gte('date', today)
-        .order('date', { ascending: true })
-
-      if (!slots || slots.length === 0) return
-
-      const unapplied = slots.filter(s => !appliedIds.has(s.id))
-      if (unapplied.length === 0) { setGigs([]); return }
-
-      const inRange = unapplied
-        .filter(s => s.latitude != null && s.longitude != null)
-        .map(s => ({
-          slot: s,
-          distance: milesBetween(myLat, myLon, s.latitude as number, s.longitude as number),
-        }))
-        .filter(x => x.distance <= maxMiles)
-        .sort((a, b) => a.distance - b.distance)
-
-      if (inRange.length === 0) { setGigs([]); return }
-
-      const venueIds = Array.from(new Set(inRange.map(x => x.slot.restaurant_id)))
-      const { data: venues } = await supabase
-        .from('profiles')
-        .select('id, full_name, role_metadata, avatar_url')
-        .in('id', venueIds)
-      const venueById = new Map((venues ?? []).map(v => [v.id, v]))
-
-      const nearby: Gig[] = inRange.map(({ slot: s, distance }) => {
-        const v = venueById.get(s.restaurant_id)
-        const vMeta = (v?.role_metadata ?? {}) as Record<string, unknown>
-        const name = (vMeta.venue_name as string | undefined) ?? v?.full_name ?? 'Venue'
-        const dateLabel = new Date(s.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-        return {
-          id: s.id,
-          venue: {
-            id: s.restaurant_id,
-            name,
-            type: (vMeta.cuisine_type as string | undefined) ?? '',
-            distance: `${distance.toFixed(1)} mi`,
-            avatar: v?.avatar_url || '🍽',
-          },
-          date: dateLabel,
-          rawDate: s.date,
-          rawEndDatetime: `${s.date}T${s.end_time ?? '23:59:00'}`,
-          time: `${fmt(s.start_time?.slice(0, 5) ?? '')} – ${fmt(s.end_time?.slice(0, 5) ?? '')}`,
-          genres: Array.isArray(s.genres) ? s.genres : [],
-          budget: Number(s.pay) || 0,
-          description: s.description ?? '',
+        if (myLat == null || myLon == null) {
+          setGigsLoading(false)
+          return
         }
-      })
-      setGigs(nearby)
+
+        const today = new Date().toISOString().slice(0, 10)
+
+        const { data: existingBookings, error: existErr } = await supabase
+          .from('bookings')
+          .select('availability_id')
+          .eq('musician_id', user.id)
+        if (existErr) throw existErr
+
+        const appliedIds = new Set((existingBookings ?? []).map(b => b.availability_id))
+
+        const { data: slots, error: slotsErr } = await supabase
+          .from('availability')
+          .select('id, restaurant_id, date, start_time, end_time, description, pay, genres, latitude, longitude')
+          .eq('status', 'open')
+          .gte('date', today)
+          .order('date', { ascending: true })
+
+        if (slotsErr) throw slotsErr
+
+        if (!slots || slots.length === 0) {
+          setGigsLoading(false)
+          return
+        }
+
+        const unapplied = slots.filter(s => !appliedIds.has(s.id))
+        if (unapplied.length === 0) { setGigs([]); setGigsLoading(false); return }
+
+        const inRange = unapplied
+          .filter(s => s.latitude != null && s.longitude != null)
+          .map(s => ({
+            slot: s,
+            distance: milesBetween(myLat, myLon, s.latitude as number, s.longitude as number),
+          }))
+          .filter(x => x.distance <= maxMiles)
+          .sort((a, b) => a.distance - b.distance)
+
+        if (inRange.length === 0) { setGigs([]); setGigsLoading(false); return }
+
+        const venueIds = Array.from(new Set(inRange.map(x => x.slot.restaurant_id)))
+        const { data: venues, error: venuesErr } = await supabase
+          .from('profiles')
+          .select('id, full_name, role_metadata, avatar_url')
+          .in('id', venueIds)
+        if (venuesErr) throw venuesErr
+
+        const venueById = new Map((venues ?? []).map(v => [v.id, v]))
+
+        const nearby: Gig[] = inRange.map(({ slot: s, distance }) => {
+          const v = venueById.get(s.restaurant_id)
+          const vMeta = (v?.role_metadata ?? {}) as Record<string, unknown>
+          const name = (vMeta.venue_name as string | undefined) ?? v?.full_name ?? 'Venue'
+          const dateLabel = new Date(s.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+          return {
+            id: s.id,
+            venue: {
+              id: s.restaurant_id,
+              name,
+              type: (vMeta.cuisine_type as string | undefined) ?? '',
+              distance: `${distance.toFixed(1)} mi`,
+              avatar: v?.avatar_url || '🍽',
+            },
+            date: dateLabel,
+            rawDate: s.date,
+            rawEndDatetime: `${s.date}T${s.end_time ?? '23:59:00'}`,
+            time: `${fmt(s.start_time?.slice(0, 5) ?? '')} – ${fmt(s.end_time?.slice(0, 5) ?? '')}`,
+            genres: Array.isArray(s.genres) ? s.genres : [],
+            budget: Number(s.pay) || 0,
+            description: s.description ?? '',
+          }
+        })
+        setGigs(nearby)
+      } catch (err) {
+        console.error('Failed to load musician dashboard:', err)
+        toast.error('Failed to load your dashboard. Please refresh.')
+        setDataLoading(false)
+      } finally {
+        setGigsLoading(false)
+      }
     }
     load()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Realtime: bookings table changes (any status update to musician's bookings)
+  // Load analytics when profile tab is first opened
+  useEffect(() => {
+    if (activeTab === 'profile' && userId) loadAnalytics(userId)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, userId])
+
+  // Realtime: bookings table changes
   useEffect(() => {
     if (!userId) return
     const sub = supabase
@@ -289,13 +346,13 @@ export default function MusicianDashboard() {
         table: 'bookings',
         filter: `musician_id=eq.${userId}`,
       }, () => {
-        // Reload profile data to get fresh coords, then reload bookings
         supabase.from('profiles').select('latitude, longitude, max_distance_miles').eq('id', userId).maybeSingle().then(({ data }) => {
           loadMyBookings(userId, (data?.latitude as number | null) ?? null, (data?.longitude as number | null) ?? null)
         })
       })
       .subscribe()
     return () => { void supabase.removeChannel(sub) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId])
 
   // ---- Actions ----
@@ -303,27 +360,77 @@ export default function MusicianDashboard() {
   const saveProfile = async () => {
     if (!userId) return
     setSavingProfile(true)
-    const { data: existing } = await supabase
-      .from('profiles').select('role_metadata').eq('id', userId).maybeSingle()
-    const meta = { ...(existing?.role_metadata ?? {}), genres: profileDraft.genres }
-    const { error: upErr } = await supabase.from('profiles').update({
-      full_name: profileDraft.name || null,
-      bio: profileDraft.bio || null,
-      instagram_url: profileDraft.instagram || null,
-      youtube_url: profileDraft.youtube || null,
-      spotify_url: profileDraft.spotify || null,
-      website: profileDraft.website || null,
-      role_metadata: meta,
-    }).eq('id', userId)
-    setSavingProfile(false)
-    if (upErr) { console.error('Profile save failed', upErr); return }
-    setProfile(profileDraft)
-    setEditingProfile(false)
+    try {
+      const { data: existing, error: fetchErr } = await supabase
+        .from('profiles').select('role_metadata').eq('id', userId).maybeSingle()
+      if (fetchErr) throw fetchErr
+
+      const meta = { ...(existing?.role_metadata ?? {}), genres: profileDraft.genres }
+      const { error: upErr } = await supabase.from('profiles').update({
+        full_name: profileDraft.name || null,
+        bio: profileDraft.bio || null,
+        instagram_url: profileDraft.instagram || null,
+        youtube_url: profileDraft.youtube || null,
+        spotify_url: profileDraft.spotify || null,
+        website: profileDraft.website || null,
+        role_metadata: meta,
+      }).eq('id', userId)
+
+      if (upErr) throw upErr
+
+      setProfile(profileDraft)
+      setEditingProfile(false)
+      toast.success('Profile saved!')
+    } catch (err) {
+      console.error('Profile save failed:', err)
+      toast.error('Could not save your profile. Please try again.')
+    } finally {
+      setSavingProfile(false)
+    }
   }
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/')
+    try {
+      await supabase.auth.signOut()
+      router.push('/')
+    } catch (err) {
+      console.error('Logout failed:', err)
+      toast.error('Logout failed. Please try again.')
+    }
+  }
+
+  const loadAnalytics = async (uid: string) => {
+    if (analyticsLoaded) return
+    setAnalyticsLoading(true)
+    try {
+      const now = Date.now()
+      const d7 = new Date(now - 7 * 86400000).toISOString()
+      const d30 = new Date(now - 30 * 86400000).toISOString()
+      const [v7, v30, fol, bks, revs] = await Promise.all([
+        supabase.from('profile_views').select('id', { count: 'exact', head: true }).eq('profile_id', uid).gte('viewed_at', d7),
+        supabase.from('profile_views').select('id', { count: 'exact', head: true }).eq('profile_id', uid).gte('viewed_at', d30),
+        supabase.from('follows').select('id', { count: 'exact', head: true }).eq('following_id', uid),
+        supabase.from('bookings').select('id', { count: 'exact', head: true }).eq('musician_id', uid).eq('status', 'confirmed'),
+        supabase.from('reviews').select('rating').eq('reviewee_id', uid),
+      ])
+      setAnalyticsViews7d(v7.count ?? 0)
+      setAnalyticsViews30d(v30.count ?? 0)
+      setAnalyticsFollowers(fol.count ?? 0)
+      setAnalyticsGigs(bks.count ?? 0)
+      if (revs.data && revs.data.length > 0) {
+        const avg = revs.data.reduce((s, r) => s + r.rating, 0) / revs.data.length
+        setAnalyticsRating(parseFloat(avg.toFixed(1)))
+        setAnalyticsReviewCount(revs.data.length)
+      } else {
+        setAnalyticsRating(null)
+        setAnalyticsReviewCount(0)
+      }
+      setAnalyticsLoaded(true)
+    } catch (err) {
+      console.error('Analytics load failed:', err)
+    } finally {
+      setAnalyticsLoading(false)
+    }
   }
 
   const [applying, setApplying] = useState(false)
@@ -335,53 +442,66 @@ export default function MusicianDashboard() {
     if (!gig) return
     setApplying(true)
     setApplyError('')
-    const { data: newBooking, error: insertErr } = await supabase
-      .from('bookings')
-      .insert({
-        availability_id: gig.id,
-        restaurant_id: gig.venue.id,
-        musician_id: userId,
-        status: 'pending',
-        pay_amount: gig.budget,
-        note: applyNote || null,
-      })
-      .select()
-      .single()
-    setApplying(false)
-    if (insertErr) {
-      console.error('Apply failed', insertErr)
-      setApplyError(insertErr.message)
-      return
-    }
+    try {
+      const { data: newBooking, error: insertErr } = await supabase
+        .from('bookings')
+        .insert({
+          availability_id: gig.id,
+          restaurant_id: gig.venue.id,
+          musician_id: userId,
+          status: 'pending',
+          pay_amount: gig.budget,
+          note: applyNote || null,
+        })
+        .select()
+        .single()
 
-    const booking: Booking = {
-      id: newBooking.id,
-      gig,
-      status: 'pending',
-      price: gig.budget,
-      note: applyNote,
+      if (insertErr) throw insertErr
+
+      const booking: Booking = {
+        id: newBooking.id,
+        gig,
+        status: 'pending',
+        price: gig.budget,
+        note: applyNote,
+      }
+      setBookings(prev => [booking, ...prev])
+      setGigs(prev => prev.filter(g => g.id !== gig.id))
+      setApplyGigId(null)
+      setApplyNote('')
+      setActiveTab('bookings')
+      toast.success('Application sent!')
+    } catch (err) {
+      console.error('Apply failed:', err)
+      const msg = err instanceof Error ? err.message : 'Something went wrong'
+      setApplyError(msg)
+      toast.error('Failed to send application. Please try again.')
+    } finally {
+      setApplying(false)
     }
-    setBookings(prev => [booking, ...prev])
-    setGigs(prev => prev.filter(g => g.id !== gig.id))
-    setApplyGigId(null)
-    setApplyNote('')
-    setActiveTab('bookings')
   }
 
   const handleCancelApplication = async (bookingId: string) => {
     const booking = bookings.find(b => b.id === bookingId)
-    const { error } = await supabase
-      .from('bookings')
-      .update({ status: 'cancelled' })
-      .eq('id', bookingId)
-      .eq('musician_id', userId)
-    if (error) { console.error('Failed to cancel application', error); return }
-    setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: 'cancelled' } : b))
-    if (booking) {
-      setGigs(prev => {
-        if (prev.some(g => g.id === booking.gig.id)) return prev
-        return [...prev, booking.gig].sort((a, b) => a.rawDate.localeCompare(b.rawDate))
-      })
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ status: 'cancelled' })
+        .eq('id', bookingId)
+        .eq('musician_id', userId)
+      if (error) throw error
+
+      setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: 'cancelled' } : b))
+      if (booking) {
+        setGigs(prev => {
+          if (prev.some(g => g.id === booking.gig.id)) return prev
+          return [...prev, booking.gig].sort((a, b) => a.rawDate.localeCompare(b.rawDate))
+        })
+      }
+      toast.success('Application cancelled.')
+    } catch (err) {
+      console.error('Failed to cancel application:', err)
+      toast.error('Could not cancel application. Please try again.')
     }
   }
 
@@ -406,7 +526,6 @@ export default function MusicianDashboard() {
     const matchGenre = !gigGenreFilter || g.genres.includes(gigGenreFilter)
     return matchSearch && matchGenre
   })
-  const filteredBookings = bookingFilter === 'all' ? bookings : bookings.filter(b => b.status === bookingFilter)
   const applyGig = gigs.find(g => g.id === applyGigId)
 
   return (
@@ -481,7 +600,7 @@ export default function MusicianDashboard() {
                   : <div className="w-14 h-14 rounded-2xl bg-chestnut/20 border border-chestnut/30 flex items-center justify-center text-2xl shrink-0 shadow-inner">♪</div>}
                 <div className="flex-1 min-w-0">
                   <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">For Musicians</p>
-                  <p className="text-snow font-black text-lg leading-tight truncate">{profile.name}</p>
+                  <p className="text-snow font-black text-lg leading-tight truncate">{profile.name || 'Your Name'}</p>
                   <p className="text-snow/50 text-xs mt-0.5 truncate">
                     {profile.genres.length > 0 ? profile.genres.slice(0, 3).join(' · ') : 'Set your genres in Profile'}
                   </p>
@@ -496,14 +615,22 @@ export default function MusicianDashboard() {
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-3 gap-2.5 mb-7">
-              <StatCard value={upcomingGigs} label="Upcoming" color="text-teal" icon="✅" />
-              <StatCard value={pendingApps} label="Pending" color="text-chestnut" icon="📬" />
-              <StatCard value={`$${totalEarned}`} label="Earned" color="text-graphite" icon="💰" highlight />
-            </div>
+            {dataLoading ? (
+              <div className="grid grid-cols-3 gap-2.5 mb-7">
+                <SkeletonStatCard />
+                <SkeletonStatCard />
+                <SkeletonStatCard />
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-2.5 mb-7">
+                <StatCard value={upcomingGigs} label="Upcoming" color="text-teal" icon="✅" />
+                <StatCard value={pendingApps} label="Pending" color="text-chestnut" icon="📬" />
+                <StatCard value={`$${totalEarned}`} label="Earned" color="text-graphite" icon="💰" highlight />
+              </div>
+            )}
 
             {/* Upcoming confirmed gigs */}
-            {upcomingGigs > 0 && (
+            {!dataLoading && upcomingGigs > 0 && (
               <>
                 <SectionHeader eyebrow="The Calendar" title="Upcoming" accent="Gigs." />
                 <div className="space-y-3 mb-6">
@@ -541,7 +668,13 @@ export default function MusicianDashboard() {
 
             {/* Pending applications */}
             <SectionHeader eyebrow="Sent" title="Pending" accent="Applications." />
-            {pendingApps === 0 ? (
+            {dataLoading ? (
+              <div className="space-y-3">
+                <SkeletonBookingCard />
+                <SkeletonBookingCard />
+                <SkeletonBookingCard />
+              </div>
+            ) : pendingApps === 0 ? (
               <EmptyState
                 icon="🎸"
                 title="No pending applications"
@@ -567,7 +700,7 @@ export default function MusicianDashboard() {
                     </div>
                     {b.note && (
                       <div className="bg-snow rounded-xl px-3 py-2 mb-2">
-                        <p className="text-charcoal text-xs italic">Your note: "{b.note}"</p>
+                        <p className="text-charcoal text-xs italic">Your note: &ldquo;{b.note}&rdquo;</p>
                       </div>
                     )}
                     <div className="flex justify-end mt-1">
@@ -620,9 +753,16 @@ export default function MusicianDashboard() {
                 </button>
               ))}
             </div>
-            {filteredGigs.length === 0 ? (
+            {gigsLoading ? (
+              <div className="space-y-3">
+                <SkeletonMusicianCard />
+                <SkeletonMusicianCard />
+                <SkeletonMusicianCard />
+                <SkeletonMusicianCard />
+              </div>
+            ) : filteredGigs.length === 0 ? (
               <EmptyState
-                icon="🎵"
+                icon="🔍"
                 title="No open gigs right now"
                 body="Restaurants post available slots here. Check back soon — new gigs appear as venues look for talent."
               />
@@ -650,7 +790,7 @@ export default function MusicianDashboard() {
                       ))}
                     </div>
                     {gig.description && (
-                      <p className="text-charcoal text-xs mb-3 italic">"{gig.description}"</p>
+                      <p className="text-charcoal text-xs mb-3 italic">&ldquo;{gig.description}&rdquo;</p>
                     )}
                     <div className="flex gap-2">
                       <button
@@ -759,10 +899,15 @@ export default function MusicianDashboard() {
                 </h2>
               </div>
 
-              {/* Section 1 — Pending Applications */}
+              {/* Pending */}
               <div className="mb-8">
                 <SectionHeader eyebrow="Waiting to Hear Back" title="Pending" accent="Applications." />
-                {pendingBookings.length === 0 ? (
+                {dataLoading ? (
+                  <div className="space-y-3">
+                    <SkeletonBookingCard />
+                    <SkeletonBookingCard />
+                  </div>
+                ) : pendingBookings.length === 0 ? (
                   <EmptyState
                     icon="📬"
                     title="No pending applications"
@@ -795,7 +940,7 @@ export default function MusicianDashboard() {
                         </div>
                         {b.note && (
                           <div className="bg-snow rounded-xl px-3 py-2 mb-2">
-                            <p className="text-charcoal text-xs italic">Your note: "{b.note}"</p>
+                            <p className="text-charcoal text-xs italic">Your note: &ldquo;{b.note}&rdquo;</p>
                           </div>
                         )}
                         <div className="flex items-center justify-between mt-1">
@@ -818,10 +963,15 @@ export default function MusicianDashboard() {
                 )}
               </div>
 
-              {/* Section 2 — Upcoming Confirmed Gigs */}
+              {/* Upcoming Confirmed */}
               <div className="mb-8">
                 <SectionHeader eyebrow="Confirmed" title="Upcoming" accent="Gigs." />
-                {upcomingConfirmed.length === 0 ? (
+                {dataLoading ? (
+                  <div className="space-y-3">
+                    <SkeletonBookingCard />
+                    <SkeletonBookingCard />
+                  </div>
+                ) : upcomingConfirmed.length === 0 ? (
                   <EmptyState
                     icon="🎸"
                     title="No upcoming gigs"
@@ -870,10 +1020,14 @@ export default function MusicianDashboard() {
                 )}
               </div>
 
-              {/* Section 3 — Past Gigs */}
+              {/* Past Gigs */}
               <div>
                 <SectionHeader eyebrow="History" title="Past" accent="Gigs." />
-                {pastGigs.length === 0 ? (
+                {dataLoading ? (
+                  <div className="space-y-3">
+                    <SkeletonBookingCard />
+                  </div>
+                ) : pastGigs.length === 0 ? (
                   <EmptyState
                     icon="🕐"
                     title="No past gigs yet"
@@ -917,111 +1071,121 @@ export default function MusicianDashboard() {
         {/* ---- PROFILE TAB ---- */}
         {activeTab === 'profile' && (
           <>
-            <div className="flex items-end justify-between mb-5 gap-3">
-              <div>
-                <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">The Artist</p>
-                <h2 className="text-graphite text-3xl font-black tracking-tight leading-none">
-                  Your <span className="text-chestnut italic">Profile.</span>
-                </h2>
-              </div>
-              {!editingProfile ? (
-                <button onClick={() => { setEditingProfile(true); setProfileDraft(profile) }} className="text-chestnut text-sm font-bold hover:underline shrink-0">Edit</button>
-              ) : (
-                <div className="flex gap-3 shrink-0">
-                  <button onClick={() => setEditingProfile(false)} disabled={savingProfile} className="text-charcoal text-sm font-medium hover:underline disabled:opacity-50">Cancel</button>
-                  <button onClick={saveProfile} disabled={savingProfile} className="bg-chestnut text-snow px-4 py-1.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50">{savingProfile ? 'Saving…' : 'Save'}</button>
-                </div>
-              )}
+            {/* Header */}
+            <div className="mb-6">
+              <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-1">· The Artist</p>
+              <h2 className="text-graphite text-3xl font-black tracking-tight leading-none">
+                Your <span className="text-chestnut italic">Analytics.</span>
+              </h2>
             </div>
 
-            <button
-              onClick={() => router.push('/profile/' + userId)}
-              className="flex items-center gap-1 text-chestnut text-sm font-bold hover:underline mb-4"
-            >
-              View Public Profile →
-            </button>
+            {/* Action buttons */}
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <button
+                onClick={() => router.push('/profile/' + userId)}
+                className="flex items-center justify-center gap-2 bg-graphite text-snow py-3.5 rounded-2xl font-bold text-sm hover:opacity-90 transition-opacity shadow-sm"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                View Profile
+              </button>
+              <button
+                onClick={() => router.push('/settings')}
+                className="flex items-center justify-center gap-2 bg-white text-graphite py-3.5 rounded-2xl font-bold text-sm hover:shadow-md transition-shadow shadow-sm border border-charcoal/[0.07]"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Edit Profile
+              </button>
+            </div>
 
-            <div className="relative bg-graphite rounded-3xl overflow-hidden mb-4 shadow-xl">
-              <div className="absolute inset-x-0 bottom-0 top-1/2 flex items-end justify-around opacity-[0.10] pointer-events-none">
-                {Array.from({ length: 16 }).map((_, i) => (
+            {/* Profile Views card */}
+            <div className="bg-graphite rounded-2xl p-5 shadow-sm mb-4 relative overflow-hidden">
+              <div className="absolute inset-x-0 bottom-0 top-1/3 flex items-end justify-around opacity-[0.08] pointer-events-none">
+                {Array.from({ length: 14 }).map((_, i) => (
                   <div key={i} className="eq-bar w-1.5 bg-chestnut rounded-t" style={eqBarStyle(i, 41)} />
                 ))}
               </div>
-              <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-72 h-72 rounded-full bg-chestnut opacity-15 blur-3xl pointer-events-none" />
-              <div className="absolute -bottom-20 -right-10 w-40 h-40 rounded-full bg-teal opacity-15 blur-2xl pointer-events-none" />
-              <span className="absolute top-3 right-3 bg-chestnut text-snow text-[9px] font-bold tracking-[0.2em] px-2.5 py-1 rounded-full shadow-md uppercase z-20">★ Headliner</span>
-              <div className="relative z-10 p-8 flex flex-col items-center text-center">
-                {profile.avatar
-                  ? <img src={profile.avatar} alt="" className="w-24 h-24 rounded-2xl object-cover mb-4 shadow-inner border-2 border-chestnut/30" />
-                  : <div className="w-24 h-24 bg-chestnut/20 border-2 border-chestnut/30 rounded-2xl flex items-center justify-center text-5xl mb-4 shadow-inner">♪</div>}
-                <p className="text-snow font-black text-2xl tracking-tight">{profile.name}</p>
-                {profile.genres.length > 0 && (
-                  <p className="text-snow/50 text-sm mt-1">{profile.genres.slice(0, 3).join(' · ')}</p>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl p-5 shadow-sm space-y-4 mb-4">
-              <ProfileField
-                label="Display Name"
-                value={editingProfile ? profileDraft.name : profile.name}
-                editing={editingProfile}
-                onChange={v => setProfileDraft(p => ({ ...p, name: v }))}
-              />
-              <ProfileField
-                label="Bio"
-                value={editingProfile ? profileDraft.bio : profile.bio}
-                editing={editingProfile}
-                onChange={v => setProfileDraft(p => ({ ...p, bio: v }))}
-                multiline
-                placeholder="Tell venues about your style and experience..."
-              />
-            </div>
-
-            <div className="bg-white rounded-2xl p-5 shadow-sm mb-4">
-              <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-3">Genres</p>
-              {editingProfile ? (
-                <div className="flex flex-wrap gap-2">
-                  {GENRES.map(g => (
-                    <button
-                      key={g}
-                      onClick={() => setProfileDraft(p => ({
-                        ...p,
-                        genres: p.genres.includes(g) ? p.genres.filter(x => x !== g) : [...p.genres, g],
-                      }))}
-                      className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                        profileDraft.genres.includes(g)
-                          ? 'bg-chestnut text-snow'
-                          : 'bg-snow text-charcoal hover:bg-[#E8E4E0] border border-charcoal/10'
-                      }`}
-                    >
-                      {g}
-                    </button>
-                  ))}
-                </div>
-              ) : profile.genres.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {profile.genres.map(g => (
-                    <span key={g} className="px-3 py-1 rounded-full text-xs font-semibold bg-chestnut/10 text-chestnut">{g}</span>
-                  ))}
+              <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">Profile Views</p>
+              {analyticsLoading ? (
+                <div className="flex gap-6">
+                  {[0, 1, 2].map(i => <div key={i} className="h-10 w-16 bg-white/10 rounded-xl animate-pulse" />)}
                 </div>
               ) : (
-                <p className="text-charcoal/50 text-sm">No genres set — tap Edit to add some.</p>
+                <div className="grid grid-cols-3 divide-x divide-white/10">
+                  <div className="pr-4">
+                    <p className="text-snow text-3xl font-black">{analyticsViews7d ?? '—'}</p>
+                    <p className="text-snow/40 text-xs font-semibold uppercase tracking-wider mt-0.5">Last 7 days</p>
+                  </div>
+                  <div className="px-4">
+                    <p className="text-snow text-3xl font-black">{analyticsViews30d ?? '—'}</p>
+                    <p className="text-snow/40 text-xs font-semibold uppercase tracking-wider mt-0.5">Last 30 days</p>
+                  </div>
+                  <div className="pl-4">
+                    <p className="text-chestnut text-3xl font-black">{analyticsFollowers ?? '—'}</p>
+                    <p className="text-snow/40 text-xs font-semibold uppercase tracking-wider mt-0.5">Followers</p>
+                  </div>
+                </div>
               )}
             </div>
 
-            <div className="bg-white rounded-2xl p-5 shadow-sm space-y-4 mb-4">
-              <p className="text-charcoal text-xs font-semibold uppercase tracking-wide">Social & Links</p>
-              <ProfileField label="Instagram" value={editingProfile ? profileDraft.instagram : profile.instagram} editing={editingProfile} onChange={v => setProfileDraft(p => ({ ...p, instagram: v }))} placeholder="https://instagram.com/yourhandle" />
-              <ProfileField label="YouTube" value={editingProfile ? profileDraft.youtube : profile.youtube} editing={editingProfile} onChange={v => setProfileDraft(p => ({ ...p, youtube: v }))} placeholder="https://youtube.com/yourchannel" />
-              <ProfileField label="Spotify" value={editingProfile ? profileDraft.spotify : profile.spotify} editing={editingProfile} onChange={v => setProfileDraft(p => ({ ...p, spotify: v }))} placeholder="https://open.spotify.com/artist/..." />
-              <ProfileField label="Website" value={editingProfile ? profileDraft.website : profile.website} editing={editingProfile} onChange={v => setProfileDraft(p => ({ ...p, website: v }))} placeholder="https://yourwebsite.com" />
+            {/* Stats strip */}
+            <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-4">
+              <div className="grid grid-cols-3 divide-x divide-charcoal/[0.07]">
+                <div className="py-5 flex flex-col items-center">
+                  {analyticsLoading ? (
+                    <div className="h-7 w-10 bg-snow rounded animate-pulse mb-1" />
+                  ) : (
+                    <p className="text-chestnut text-2xl font-black">{analyticsGigs ?? '—'}</p>
+                  )}
+                  <p className="text-charcoal/60 text-[10px] font-semibold uppercase tracking-wider mt-0.5">Gigs Played</p>
+                </div>
+                <div className="py-5 flex flex-col items-center">
+                  {analyticsLoading ? (
+                    <div className="h-7 w-10 bg-snow rounded animate-pulse mb-1" />
+                  ) : (
+                    <p className="text-chestnut text-2xl font-black">{analyticsRating != null ? analyticsRating.toFixed(1) : '—'}</p>
+                  )}
+                  <p className="text-charcoal/60 text-[10px] font-semibold uppercase tracking-wider mt-0.5">Avg Rating</p>
+                </div>
+                <div className="py-5 flex flex-col items-center">
+                  {analyticsLoading ? (
+                    <div className="h-7 w-10 bg-snow rounded animate-pulse mb-1" />
+                  ) : (
+                    <p className="text-chestnut text-2xl font-black">{analyticsReviewCount ?? '—'}</p>
+                  )}
+                  <p className="text-charcoal/60 text-[10px] font-semibold uppercase tracking-wider mt-0.5">Reviews</p>
+                </div>
+              </div>
             </div>
 
+            {/* Profile preview card */}
+            <div className="bg-white rounded-2xl p-5 shadow-sm mb-4">
+              <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">Your Profile</p>
+              <div className="flex items-center gap-4">
+                {profile.avatar
+                  ? <img src={profile.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover shadow-sm border border-charcoal/[0.07]" />
+                  : <div className="w-14 h-14 bg-chestnut/10 rounded-2xl flex items-center justify-center text-3xl">♪</div>}
+                <div className="flex-1 min-w-0">
+                  <p className="text-graphite font-black text-base truncate">{profile.name || 'Your Name'}</p>
+                  {profile.genres.length > 0 && (
+                    <p className="text-charcoal/60 text-sm mt-0.5">{profile.genres.slice(0, 3).join(' · ')}</p>
+                  )}
+                </div>
+                <svg className="w-4 h-4 text-charcoal/30 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Account */}
             <div className="bg-white rounded-2xl p-5 shadow-sm">
-              <h3 className="text-graphite font-bold mb-3">Account</h3>
-              <button onClick={handleLogout} className="w-full text-left text-sm text-charcoal hover:text-chestnut transition-colors py-1 font-medium">
-                Log Out
+              <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">Account</p>
+              <button onClick={handleLogout} className="text-sm text-charcoal hover:text-chestnut transition-colors font-medium">
+                Log out
               </button>
             </div>
           </>
@@ -1029,7 +1193,7 @@ export default function MusicianDashboard() {
 
       </main>
 
-      {/* ---- MESSAGING (always mounted so ref is available) ---- */}
+      {/* ---- MESSAGING ---- */}
       <div className={activeTab !== 'messages' ? 'hidden' : ''}>
         <div className="max-w-2xl mx-auto px-4" style={{ paddingBottom: '96px' }}>
           {userId && (
@@ -1065,7 +1229,6 @@ export default function MusicianDashboard() {
               >✕</button>
             </div>
             <div className="p-6">
-              {/* Slot summary */}
               <div className="bg-white rounded-xl p-4 mb-5 space-y-3">
                 <div className="flex items-center gap-3">
                   <Avatar src={applyGig.venue.avatar} className="w-10 h-10 rounded-full" textSize="text-xl" />
@@ -1098,8 +1261,14 @@ export default function MusicianDashboard() {
               <button
                 onClick={handleApply}
                 disabled={applying}
-                className="w-full bg-chestnut text-snow py-3.5 rounded-xl font-black text-sm shadow-md hover:opacity-90 transition-opacity disabled:opacity-40"
+                className={`w-full bg-chestnut text-snow py-3.5 rounded-xl font-black text-sm shadow-md hover:opacity-90 transition-opacity flex items-center justify-center gap-2 ${applying ? 'opacity-60 cursor-not-allowed' : ''}`}
               >
+                {applying && (
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                )}
                 {applying ? 'Sending…' : 'Submit Application →'}
               </button>
             </div>

@@ -5,6 +5,8 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { milesBetween } from '@/lib/distance'
 import { Avatar } from '@/components/Avatar'
+import { useToast } from '@/components/Toast'
+import { SkeletonProfilePageMusician, SkeletonProfilePageLight } from '@/components/Skeleton'
 
 // ---- Types ----
 
@@ -74,6 +76,11 @@ interface FollowedProfile {
 // ---- Helpers ----
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function toAbsoluteUrl(url: string): string {
+  if (!url) return url
+  return /^https?:\/\//.test(url) ? url : 'https://' + url
+}
 
 function getYouTubeEmbedUrl(url: string): string | null {
   const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/)
@@ -158,7 +165,9 @@ export default function ProfilePage() {
   const slug = params.username as string
 
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [profile, setProfile] = useState<ProfileData | null>(null)
+  const { toast } = useToast()
   const [viewer, setViewer] = useState<ViewerData | null>(null)
   const [viewerId, setViewerId] = useState('')
 
@@ -188,22 +197,31 @@ export default function ProfilePage() {
 
   useEffect(() => {
     const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      try {
+      const { data: { user }, error: authErr } = await supabase.auth.getUser()
+      if (authErr) throw authErr
       if (!user) { router.push('/auth/login'); return }
       setViewerId(user.id)
 
-      const { data: vp } = await supabase.from('profiles')
+      const { data: vp, error: vpErr } = await supabase.from('profiles')
         .select('id, user_type, latitude, longitude').eq('id', user.id).maybeSingle()
+      if (vpErr) throw vpErr
       if (vp) setViewer(vp as ViewerData)
 
       const q = UUID_RE.test(slug)
         ? supabase.from('profiles').select('*').eq('id', slug)
         : supabase.from('profiles').select('*').eq('username', slug)
-      const { data: pd } = await q.maybeSingle()
+      const { data: pd, error: pdErr } = await q.maybeSingle()
+      if (pdErr) throw pdErr
       setLoading(false)
       if (!pd) return
       setProfile(pd as ProfileData)
       const pid = pd.id
+
+      // Track profile view — fire and forget, ignore if table doesn't exist yet
+      if (user.id !== pid) {
+        supabase.from('profile_views').insert({ profile_id: pid, viewer_id: user.id }).then(() => {})
+      }
 
       const [{ count: fc }, { count: fng }, { data: frow }] = await Promise.all([
         supabase.from('follows').select('id', { count: 'exact', head: true }).eq('following_id', pid),
@@ -321,6 +339,11 @@ export default function ProfilePage() {
           }
         }
       }
+      } catch (err) {
+        console.error('Failed to load profile:', err)
+        setLoadError('Could not load this profile. Please try again.')
+        setLoading(false)
+      }
     }
     load()
   }, [slug, router])
@@ -328,14 +351,22 @@ export default function ProfilePage() {
   const handleToggleFollow = async () => {
     if (!viewerId || !profile) return
     setFollowLoading(true)
-    if (isFollowing) {
-      await supabase.from('follows').delete().eq('follower_id', viewerId).eq('following_id', profile.id)
-      setIsFollowing(false); setFollowersCount(c => c - 1)
-    } else {
-      await supabase.from('follows').insert({ follower_id: viewerId, following_id: profile.id })
-      setIsFollowing(true); setFollowersCount(c => c + 1)
+    try {
+      if (isFollowing) {
+        const { error } = await supabase.from('follows').delete().eq('follower_id', viewerId).eq('following_id', profile.id)
+        if (error) throw error
+        setIsFollowing(false); setFollowersCount(c => c - 1)
+      } else {
+        const { error } = await supabase.from('follows').insert({ follower_id: viewerId, following_id: profile.id })
+        if (error) throw error
+        setIsFollowing(true); setFollowersCount(c => c + 1)
+      }
+    } catch (err) {
+      console.error('Follow toggle failed:', err)
+      toast.error('Could not update follow. Please try again.')
+    } finally {
+      setFollowLoading(false)
     }
-    setFollowLoading(false)
   }
 
   const handleMessage = () => {
@@ -353,25 +384,41 @@ export default function ProfilePage() {
   const handleSubmitReview = async () => {
     if (!viewerId || !profile || !eligibleBookingId) return
     setSubmittingReview(true)
-    const { error } = await supabase.from('reviews').insert({
-      reviewer_id: viewerId, reviewee_id: profile.id, booking_id: eligibleBookingId,
-      rating: reviewRating, review_text: reviewText.trim() || null, verified: true,
-    })
-    setSubmittingReview(false)
-    if (error) { console.error('Review submit failed', error); return }
-    setReviewModalOpen(false); setHasReviewed(true); setEligibleBookingId(null)
-    setReviews(prev => [{
-      id: 'new-' + Date.now(), rating: reviewRating, review_text: reviewText.trim() || null,
-      created_at: new Date().toISOString(), verified: true,
-      reviewer_name: 'You', reviewer_avatar: null, reviewer_id: viewerId,
-    }, ...prev])
+    try {
+      const { error } = await supabase.from('reviews').insert({
+        reviewer_id: viewerId, reviewee_id: profile.id, booking_id: eligibleBookingId,
+        rating: reviewRating, review_text: reviewText.trim() || null, verified: true,
+      })
+      if (error) throw error
+      setReviewModalOpen(false); setHasReviewed(true); setEligibleBookingId(null)
+      setReviews(prev => [{
+        id: 'new-' + Date.now(), rating: reviewRating, review_text: reviewText.trim() || null,
+        created_at: new Date().toISOString(), verified: true,
+        reviewer_name: 'You', reviewer_avatar: null, reviewer_id: viewerId,
+      }, ...prev])
+      toast.success('Review submitted!')
+    } catch (err) {
+      console.error('Review submit failed:', err)
+      toast.error('Could not submit your review. Please try again.')
+    } finally {
+      setSubmittingReview(false)
+    }
   }
 
   // ---- Loading ----
   if (loading) {
+    return <SkeletonProfilePageMusician />
+  }
+
+  if (loadError) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#333333' }}>
-        <div className="w-12 h-12 border-4 border-chestnut border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-graphite">
+        <div className="text-4xl mb-4">🎵</div>
+        <p className="text-snow font-black text-lg mb-1">Something went wrong</p>
+        <p className="text-snow/60 text-sm mb-6">{loadError}</p>
+        <button onClick={() => window.location.reload()} className="bg-chestnut text-snow px-6 py-2.5 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity">
+          Try Again
+        </button>
       </div>
     )
   }
@@ -381,8 +428,8 @@ export default function ProfilePage() {
       <div className="min-h-screen flex flex-col items-center justify-center px-4" style={{ background: '#E8E4E0' }}>
         <div className="bg-white rounded-3xl p-10 shadow-xl text-center max-w-sm w-full">
           <div className="text-6xl mb-4">🎵</div>
-          <h1 className="text-graphite text-2xl font-black mb-2">User not found</h1>
-          <p className="text-charcoal text-sm mb-6 leading-relaxed">This profile doesn't exist or the link may have changed.</p>
+          <h1 className="text-graphite text-2xl font-black mb-2">Profile not found</h1>
+          <p className="text-charcoal text-sm mb-6 leading-relaxed">This profile doesn&apos;t exist — but the music plays on.</p>
           <button onClick={() => router.back()} className="bg-chestnut text-snow px-6 py-2.5 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity">
             ← Go Back
           </button>
@@ -393,6 +440,7 @@ export default function ProfilePage() {
 
   // ---- Derived ----
   const meta = (profile.role_metadata ?? {}) as Record<string, unknown>
+  const bannerUrl = (meta.banner_url as string | undefined) ?? ''
   const genres = Array.isArray(meta.genres) ? meta.genres as string[] : []
   const instruments = (meta.instruments as string | undefined) ?? ''
   const soloOrBand = (meta.solo_or_band as string | undefined) ?? ''
@@ -412,43 +460,45 @@ export default function ProfilePage() {
 
   if (profile.user_type === 'musician') {
     return (
-      <div className="min-h-screen" style={{ background: '#333333' }}>
+      <div className="min-h-screen" style={{ background: '#2A2A2A' }}>
 
-        {/* Floating back button */}
+        {/* Floating nav — back left, DU logo right */}
         <div className="fixed top-0 left-0 right-0 z-50 pointer-events-none">
-          <div className="max-w-2xl mx-auto px-4 pt-safe pt-4 flex justify-between pointer-events-auto">
-            <button
-              onClick={() => router.back()}
+          <div className="max-w-2xl mx-auto px-4 pt-4 flex justify-between items-start pointer-events-auto">
+            <button onClick={() => router.back()}
               className="w-10 h-10 rounded-full flex items-center justify-center"
-              style={{ background: 'rgba(51,51,51,0.7)', backdropFilter: 'blur(8px)' }}
-            >
+              style={{ background: 'rgba(42,42,42,0.80)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)' }}>
               <svg className="w-4 h-4 text-snow" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
               </svg>
             </button>
+            <div className="rounded-xl p-1.5" style={{ background: 'rgba(42,42,42,0.80)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <img src="/orange-drum-up.png" alt="Drum Up" className="w-7 h-7 object-contain" />
+            </div>
           </div>
         </div>
 
-        {/* Hero */}
-        <section className="relative w-full" style={{ minHeight: '58vh' }}>
-          {profile.avatar_url && /^https?:\/\//.test(profile.avatar_url) ? (
-            <img src={profile.avatar_url} alt="" className="absolute inset-0 w-full h-full object-cover" />
-          ) : (
-            <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, #DC7F41 0%, #333333 100%)' }} />
-          )}
-          {/* Edge blur / fade */}
-          <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at center, transparent 30%, rgba(51,51,51,0.4) 100%)' }} />
-          {/* Bottom gradient to page bg */}
-          <div className="absolute inset-x-0 bottom-0 h-3/4" style={{ background: 'linear-gradient(to bottom, transparent, rgba(51,51,51,0.85) 60%, #333333 100%)' }} />
+        {/* Hero — full-bleed photo, name overlaid at bottom */}
+        <section className="relative" style={{ minHeight: '56vh' }}>
+          {(() => {
+            const heroSrc = /^https?:\/\//.test(bannerUrl) ? bannerUrl
+              : (profile.avatar_url && /^https?:\/\//.test(profile.avatar_url)) ? profile.avatar_url
+              : null
+            return heroSrc ? (
+              <img src={heroSrc} alt="" className="absolute inset-0 w-full h-full object-cover" />
+            ) : (
+              <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, #DC7F41 0%, #2A2A2A 100%)' }} />
+            )
+          })()}
+          <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at center, transparent 30%, rgba(42,42,42,0.45) 100%)' }} />
+          <div className="absolute inset-x-0 bottom-0 h-3/4" style={{ background: 'linear-gradient(to bottom, transparent, rgba(42,42,42,0.88) 55%, #2A2A2A 100%)' }} />
 
-          {/* Hero content */}
           <div className="absolute bottom-0 left-0 right-0 px-5 pb-6 max-w-2xl mx-auto w-full">
-            <h1 className="text-snow font-black leading-none mb-2" style={{ fontSize: 'clamp(2.5rem, 8vw, 3.5rem)' }}>
+            <h1 className="text-snow font-black leading-none mb-1.5" style={{ fontSize: 'clamp(2.5rem, 8vw, 3.5rem)' }}>
               {displayName}
             </h1>
-
             {profile.location_text && (
-              <p className="text-snow/60 text-sm mb-3 flex items-center gap-1.5">
+              <p className="text-snow/55 text-sm mb-3 flex items-center gap-1.5">
                 <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -459,8 +509,6 @@ export default function ProfilePage() {
                 )}
               </p>
             )}
-
-            {/* Genre & instrument tags */}
             {(genres.length > 0 || instruments) && (
               <div className="flex flex-wrap gap-1.5 mb-4">
                 {genres.map(g => (
@@ -471,85 +519,51 @@ export default function ProfilePage() {
                 ))}
               </div>
             )}
-
-            {/* Social icons */}
-            {(profile.instagram_url || profile.tiktok_url || profile.spotify_url || profile.youtube_url || profile.website) && (
-              <div className="flex items-center gap-4 mb-5">
-                {profile.instagram_url && (
-                  <a href={profile.instagram_url} target="_blank" rel="noopener noreferrer" className="text-snow/50 hover:text-chestnut transition-colors">
-                    <SocialIcon type="instagram" />
-                  </a>
-                )}
-                {profile.tiktok_url && (
-                  <a href={profile.tiktok_url} target="_blank" rel="noopener noreferrer" className="text-snow/50 hover:text-chestnut transition-colors">
-                    <SocialIcon type="tiktok" />
-                  </a>
-                )}
-                {profile.spotify_url && (
-                  <a href={profile.spotify_url} target="_blank" rel="noopener noreferrer" className="text-snow/50 hover:text-chestnut transition-colors">
-                    <SocialIcon type="spotify" />
-                  </a>
-                )}
-                {profile.youtube_url && (
-                  <a href={profile.youtube_url} target="_blank" rel="noopener noreferrer" className="text-snow/50 hover:text-chestnut transition-colors">
-                    <SocialIcon type="youtube" />
-                  </a>
-                )}
-                {profile.website && (
-                  <a href={profile.website} target="_blank" rel="noopener noreferrer" className="text-snow/50 hover:text-chestnut transition-colors">
-                    <SocialIcon type="website" />
-                  </a>
+            {/* Socials left · Actions right */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-4">
+                {profile.instagram_url && <a href={toAbsoluteUrl(profile.instagram_url)} target="_blank" rel="noopener noreferrer" className="text-snow/40 hover:text-chestnut transition-colors"><SocialIcon type="instagram" /></a>}
+                {profile.tiktok_url && <a href={toAbsoluteUrl(profile.tiktok_url)} target="_blank" rel="noopener noreferrer" className="text-snow/40 hover:text-chestnut transition-colors"><SocialIcon type="tiktok" /></a>}
+                {profile.spotify_url && <a href={toAbsoluteUrl(profile.spotify_url)} target="_blank" rel="noopener noreferrer" className="text-snow/40 hover:text-chestnut transition-colors"><SocialIcon type="spotify" /></a>}
+                {profile.youtube_url && <a href={toAbsoluteUrl(profile.youtube_url)} target="_blank" rel="noopener noreferrer" className="text-snow/40 hover:text-chestnut transition-colors"><SocialIcon type="youtube" /></a>}
+                {profile.website && <a href={toAbsoluteUrl(profile.website)} target="_blank" rel="noopener noreferrer" className="text-snow/40 hover:text-chestnut transition-colors"><SocialIcon type="website" /></a>}
+              </div>
+              <div className="flex gap-2 flex-wrap justify-end">
+                {isOwnProfile ? (
+                  <button onClick={() => router.push('/settings')}
+                    className="px-5 py-2.5 rounded-xl font-bold text-sm"
+                    style={{ background: 'rgba(255,255,255,0.12)', color: '#FCFAF9', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.2)' }}>
+                    Edit Profile
+                  </button>
+                ) : (
+                  <>
+                    {viewer?.user_type === 'restaurant' && (
+                      <button onClick={() => router.push('/dashboard')}
+                        className="bg-chestnut text-snow px-5 py-2.5 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity">
+                        Apply to Book
+                      </button>
+                    )}
+                    <button onClick={handleToggleFollow} disabled={followLoading}
+                      className="px-5 py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
+                      style={isFollowing
+                        ? { background: 'rgba(108,154,139,0.2)', color: '#6C9A8B', border: '1px solid rgba(108,154,139,0.35)' }
+                        : { background: '#DC7F41', color: '#FCFAF9' }}>
+                      {followLoading ? '…' : isFollowing ? '✓ Following' : '+ Follow'}
+                    </button>
+                    <button onClick={handleMessage}
+                      className="px-5 py-2.5 rounded-xl font-bold text-sm"
+                      style={{ background: 'rgba(255,255,255,0.10)', color: '#FCFAF9', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)' }}>
+                      Message
+                    </button>
+                  </>
                 )}
               </div>
-            )}
-
-            {/* Action buttons */}
-            <div className="flex flex-wrap gap-3">
-              {isOwnProfile ? (
-                <button
-                  onClick={() => router.push('/dashboard')}
-                  className="px-6 py-2.5 rounded-xl font-bold text-sm transition-opacity"
-                  style={{ background: 'rgba(255,255,255,0.15)', color: '#FCFAF9', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.2)' }}
-                >
-                  Edit Profile
-                </button>
-              ) : (
-                <>
-                  {viewer?.user_type === 'restaurant' && (
-                    <button
-                      onClick={() => router.push('/dashboard')}
-                      className="bg-chestnut text-snow px-6 py-2.5 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity"
-                    >
-                      Apply to Book
-                    </button>
-                  )}
-                  <button
-                    onClick={handleToggleFollow}
-                    disabled={followLoading}
-                    className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${
-                      isFollowing
-                        ? 'text-teal'
-                        : 'bg-chestnut text-snow hover:opacity-90'
-                    }`}
-                    style={isFollowing ? { background: 'rgba(108,154,139,0.2)', border: '1px solid rgba(108,154,139,0.4)' } : {}}
-                  >
-                    {followLoading ? '…' : isFollowing ? '✓ Following' : '+ Follow'}
-                  </button>
-                  <button
-                    onClick={handleMessage}
-                    className="px-6 py-2.5 rounded-xl font-bold text-sm transition-opacity"
-                    style={{ background: 'rgba(255,255,255,0.12)', color: '#FCFAF9', border: '1px solid rgba(255,255,255,0.25)', backdropFilter: 'blur(8px)' }}
-                  >
-                    Message
-                  </button>
-                </>
-              )}
             </div>
           </div>
         </section>
 
-        {/* Stats strip */}
-        <section style={{ background: '#3D3D3D' }}>
+        {/* Stats strip — dark */}
+        <section style={{ background: '#333333', borderTop: '1px solid rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
           <div className="max-w-2xl mx-auto grid grid-cols-4 divide-x divide-snow/10 py-5">
             {[
               { value: pastGigs.length, label: 'Gigs Played' },
@@ -567,58 +581,33 @@ export default function ProfilePage() {
 
         {/* Content */}
         <div className="max-w-2xl mx-auto px-5 pb-16">
-
-          {/* About */}
-          <section className="py-10 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-            <p className="text-snow/40 text-[10px] font-bold uppercase tracking-[0.3em] mb-4">About</p>
-            {(profile.bio || soloOrBand || yearsPerforming) ? (
+          <section className="py-8 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+            <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-4">· About</p>
+            {(profile.bio || soloOrBand || yearsPerforming || instruments) ? (
               <div className="space-y-4">
-                {profile.bio && (
-                  <p className="text-snow/80 text-base leading-relaxed">{profile.bio}</p>
-                )}
+                {profile.bio && <p className="text-snow/80 text-base leading-relaxed">{profile.bio}</p>}
                 <div className="flex flex-wrap gap-6">
-                  {soloOrBand && (
-                    <div>
-                      <p className="text-snow/30 text-[10px] font-semibold uppercase tracking-wide">Format</p>
-                      <p className="text-snow font-bold mt-0.5">{soloOrBand}</p>
-                    </div>
-                  )}
-                  {yearsPerforming && (
-                    <div>
-                      <p className="text-snow/30 text-[10px] font-semibold uppercase tracking-wide">Experience</p>
-                      <p className="text-snow font-bold mt-0.5">{yearsPerforming} years</p>
-                    </div>
-                  )}
-                  {instruments && (
-                    <div>
-                      <p className="text-snow/30 text-[10px] font-semibold uppercase tracking-wide">Instruments</p>
-                      <p className="text-snow font-bold mt-0.5">{instruments}</p>
-                    </div>
-                  )}
+                  {soloOrBand && <div><p className="text-snow/30 text-[10px] font-semibold uppercase tracking-wide">Format</p><p className="text-snow font-bold mt-0.5">{soloOrBand}</p></div>}
+                  {yearsPerforming && <div><p className="text-snow/30 text-[10px] font-semibold uppercase tracking-wide">Experience</p><p className="text-snow font-bold mt-0.5">{yearsPerforming} yrs</p></div>}
+                  {instruments && <div><p className="text-snow/30 text-[10px] font-semibold uppercase tracking-wide">Instruments</p><p className="text-snow font-bold mt-0.5">{instruments}</p></div>}
                 </div>
               </div>
             ) : (
-              <p className="text-snow/30 italic">No details yet.</p>
+              <p className="text-snow/30 italic text-sm">No details yet.</p>
             )}
           </section>
 
-          {/* Watch & Listen */}
-          <section className="py-10 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-            <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-5">Watch & Listen</p>
+          <section className="py-8 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+            <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-5">· Watch & Listen</p>
             {embedUrl ? (
               <div className="rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: '16/9', border: '1px solid rgba(255,255,255,0.08)' }}>
-                <iframe
-                  src={embedUrl}
-                  className="w-full h-full"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen title="Performance video"
-                />
+                <iframe src={embedUrl} className="w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title="Performance video" />
               </div>
             ) : profile.youtube_url ? (
-              <a href={profile.youtube_url} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-4 p-4 rounded-2xl transition-colors group"
+              <a href={toAbsoluteUrl(profile.youtube_url)} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-4 p-4 rounded-2xl group"
                 style={{ background: '#3D3D3D', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <div className="w-12 h-12 bg-red-600 rounded-xl flex items-center justify-center shrink-0">
+                <div className="w-12 h-12 bg-red-600 rounded-xl flex items-center justify-center shrink-0 text-snow">
                   <SocialIcon type="youtube" />
                 </div>
                 <div>
@@ -628,28 +617,27 @@ export default function ProfilePage() {
               </a>
             ) : (
               <div className="p-8 rounded-2xl text-center" style={{ background: '#3D3D3D', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <p className="text-snow/30 text-sm">No videos yet.</p>
+                <p className="text-2xl mb-2">🎬</p>
+                <p className="text-snow/60 font-bold text-sm mb-1">No video yet</p>
+                <p className="text-snow/30 text-xs">Add a YouTube link in settings.</p>
               </div>
             )}
           </section>
 
-          {/* Live History */}
-          <section className="py-10 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-            <p className="text-snow/40 text-[10px] font-bold uppercase tracking-[0.3em] mb-5">Live History</p>
+          <section className="py-8 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+            <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-5">· Live History</p>
             {pastGigs.length === 0 ? (
               <div className="p-8 rounded-2xl text-center" style={{ background: '#3D3D3D', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <p className="text-snow font-bold mb-1">No gigs yet.</p>
-                <p className="text-snow/40 text-sm">Their story starts somewhere.</p>
+                <p className="text-2xl mb-2">🎤</p>
+                <p className="text-snow/60 font-bold text-sm mb-1">No gigs yet</p>
+                <p className="text-snow/30 text-xs">Their story starts somewhere.</p>
               </div>
             ) : (
               <div>
                 {pastGigs.map((gig, idx) => (
-                  <button
-                    key={gig.bookingId}
-                    onClick={() => router.push('/profile/' + gig.venueId)}
-                    className="w-full flex items-center justify-between py-4 text-left hover:opacity-80 transition-opacity"
-                    style={{ borderBottom: idx < pastGigs.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}
-                  >
+                  <button key={gig.bookingId} onClick={() => router.push('/profile/' + gig.venueId)}
+                    className="w-full flex items-center justify-between py-4 text-left hover:opacity-75 transition-opacity"
+                    style={{ borderBottom: idx < pastGigs.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
                     <div>
                       <p className="text-snow font-semibold text-sm">{gig.venueName}</p>
                       <p className="text-snow/40 text-xs mt-0.5">{gig.dateLabel}</p>
@@ -661,11 +649,10 @@ export default function ProfilePage() {
             )}
           </section>
 
-          {/* Reviews */}
-          <section className="py-10">
+          <section className="py-8">
             <div className="flex items-center justify-between mb-5">
               <div>
-                <p className="text-snow/40 text-[10px] font-bold uppercase tracking-[0.3em] mb-2">Reviews</p>
+                <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-2">· Reviews</p>
                 {avgRating != null && (
                   <div className="flex items-center gap-2">
                     <span className="text-chestnut text-3xl font-black">{avgRating.toFixed(1)} ★</span>
@@ -674,18 +661,15 @@ export default function ProfilePage() {
                 )}
               </div>
               {eligibleBookingId && !hasReviewed && (
-                <button
-                  onClick={() => { setReviewRating(5); setReviewText(''); setReviewModalOpen(true) }}
-                  className="border border-chestnut/50 text-chestnut px-4 py-2 rounded-xl text-sm font-bold hover:bg-chestnut/10 transition-colors"
-                >
+                <button onClick={() => { setReviewRating(5); setReviewText(''); setReviewModalOpen(true) }}
+                  className="border border-chestnut/50 text-chestnut px-4 py-2 rounded-xl text-sm font-bold hover:bg-chestnut/10 transition-colors">
                   + Leave a Review
                 </button>
               )}
             </div>
-
             {reviews.length === 0 ? (
               <div className="p-6 rounded-2xl text-center" style={{ background: '#3D3D3D', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <p className="text-snow/40 text-sm">No reviews yet.</p>
+                <p className="text-snow/30 text-sm">No reviews yet.</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -698,17 +682,13 @@ export default function ProfilePage() {
                           <p className="text-snow font-bold text-sm">{r.reviewer_name}</p>
                           <div className="flex items-center gap-2">
                             {r.verified && <VerifiedBadge dark />}
-                            <span className="text-snow/30 text-xs">
-                              {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
-                            </span>
+                            <span className="text-snow/30 text-xs">{new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
                           </div>
                         </div>
                         <Stars rating={r.rating} dark />
                       </div>
                     </div>
-                    {r.review_text && (
-                      <p className="text-snow/70 text-sm leading-relaxed pl-12">{r.review_text}</p>
-                    )}
+                    {r.review_text && <p className="text-snow/70 text-sm leading-relaxed pl-12">{r.review_text}</p>}
                   </div>
                 ))}
               </div>
@@ -716,275 +696,337 @@ export default function ProfilePage() {
           </section>
         </div>
 
-        {/* Review modal */}
         {reviewModalOpen && (
-          <ReviewModal
-            displayName={displayName}
-            reviewRating={reviewRating}
-            reviewText={reviewText}
-            submitting={submittingReview}
-            onClose={() => setReviewModalOpen(false)}
-            onRating={setReviewRating}
-            onText={setReviewText}
-            onSubmit={handleSubmitReview}
-          />
+          <ReviewModal displayName={displayName} reviewRating={reviewRating} reviewText={reviewText}
+            submitting={submittingReview} onClose={() => setReviewModalOpen(false)}
+            onRating={setReviewRating} onText={setReviewText} onSubmit={handleSubmitReview} />
         )}
       </div>
     )
   }
 
   // ==============================
-  // RESTAURANT PROFILE — Light/Editorial
+  // RESTAURANT PROFILE — Warm/Editorial
   // ==============================
 
   if (profile.user_type === 'restaurant') {
     const tonight = upcomingShows.some(s => s.date === new Date().toISOString().slice(0, 10))
-    return (
-      <div className="min-h-screen" style={{ background: '#FCFAF9' }}>
+    const restaurantBg = 'radial-gradient(ellipse 50% 40% at 12% 8%, rgba(220,127,65,0.10), transparent 70%), radial-gradient(ellipse 50% 40% at 88% 92%, rgba(108,154,139,0.08), transparent 70%), #E8E4E0'
 
-        {/* Sticky header */}
-        <header className="sticky top-0 z-40 backdrop-blur-md bg-graphite/95 border-b border-charcoal/30">
-          <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
-            <button onClick={() => router.back()}
-              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors text-snow/60 hover:text-snow shrink-0">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+    return (
+      <div className="min-h-screen" style={{ background: restaurantBg }}>
+
+        {/* Floating nav — back left, DU logo right */}
+        <div className="fixed top-0 left-0 right-0 z-50 pointer-events-none">
+          <div className="max-w-2xl mx-auto px-4 pt-4 flex justify-between items-start pointer-events-auto">
+            <button
+              onClick={() => router.back()}
+              className="w-10 h-10 rounded-full flex items-center justify-center"
+              style={{ background: 'rgba(232,228,224,0.85)', backdropFilter: 'blur(10px)', border: '1px solid rgba(220,127,65,0.20)', boxShadow: '0 2px 8px rgba(0,0,0,0.10)' }}
+            >
+              <svg className="w-4 h-4 text-graphite" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="bg-white rounded-lg p-1 shrink-0">
-                <img src="/orange-drum-up.png" alt="Drum Up" className="w-5 h-5 object-contain" />
-              </div>
-              <p className="text-snow font-black text-sm truncate">{displayName}</p>
+            <div
+              className="rounded-xl p-1.5"
+              style={{ background: 'rgba(232,228,224,0.85)', backdropFilter: 'blur(10px)', border: '1px solid rgba(220,127,65,0.20)', boxShadow: '0 2px 8px rgba(0,0,0,0.10)' }}
+            >
+              <img src="/orange-drum-up.png" alt="Drum Up" className="w-7 h-7 object-contain" />
             </div>
           </div>
-        </header>
+        </div>
 
-        <main className="max-w-2xl mx-auto pb-16">
+        {/* Hero — tall gradient strip (or banner photo) with venue name overlaid */}
+        <div className="relative" style={{ height: '56vw', maxHeight: 260, minHeight: 200 }}>
+          {/^https?:\/\//.test(bannerUrl) ? (
+            <>
+              <img src={bannerUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+              <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.10) 0%, rgba(30,15,5,0.55) 55%, rgba(20,10,0,0.82) 100%)' }} />
+            </>
+          ) : (
+            <>
+              <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, #DC7F41 0%, #3D2419 55%, #2A1A0A 100%)' }} />
+              <div className="absolute inset-0 flex items-center justify-center text-[9rem] opacity-[0.07] select-none pointer-events-none">🍽</div>
+            </>
+          )}
+          {/* Bottom fade to page bg */}
+          <div className="absolute inset-x-0 bottom-0 h-20" style={{ background: 'linear-gradient(to bottom, transparent, #E8E4E0)' }} />
+          {/* Live tonight badge */}
+          {tonight && (
+            <div className="absolute top-16 right-4 flex items-center gap-1.5 bg-white/15 backdrop-blur-sm text-snow text-[10px] font-bold px-2.5 py-1 rounded-full border border-white/25">
+              <span className="w-1.5 h-1.5 rounded-full bg-snow animate-pulse inline-block" />
+              Live Tonight
+            </div>
+          )}
+          {/* Venue name at bottom of hero */}
+          <div className="absolute bottom-6 left-5 right-5">
+            <h1 className="text-snow text-3xl font-black tracking-tight leading-tight drop-shadow-sm">{displayName}</h1>
+            {profile.location_text && (
+              <p className="text-snow/70 text-sm flex items-center gap-1 mt-0.5">
+                <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                {profile.location_text}
+              </p>
+            )}
+          </div>
+        </div>
 
-          {/* Banner */}
-          <div className="relative" style={{ height: 200 }}>
+        {/* Avatar + actions row, overlapping hero bottom */}
+        <div className="max-w-2xl mx-auto px-5 -mt-6 flex items-end justify-between mb-4 relative z-10">
+          <div
+            className="w-16 h-16 rounded-2xl overflow-hidden shrink-0 shadow-lg"
+            style={{ border: '2.5px solid #E8E4E0' }}
+          >
             {profile.avatar_url && /^https?:\/\//.test(profile.avatar_url) ? (
               <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
             ) : (
-              <div className="w-full h-full" style={{ background: 'linear-gradient(135deg, #DC7F41 0%, #333333 100%)' }}>
-                <div className="absolute inset-0 flex items-center justify-center text-7xl opacity-20">🍽</div>
+              <div className="w-full h-full flex items-center justify-center text-snow text-2xl font-black" style={{ background: 'linear-gradient(135deg, #DC7F41, #3D2419)' }}>
+                {displayName[0]?.toUpperCase()}
               </div>
             )}
           </div>
-
-          {/* Below banner: name, tags, buttons */}
-          <div className="px-5 pt-5 pb-6 bg-white border-b border-charcoal/[0.06]">
-            <div className="flex items-start justify-between gap-3 mb-3">
-              <div className="flex-1 min-w-0">
-                <h1 className="text-graphite text-2xl font-black tracking-tight leading-tight">{displayName}</h1>
-                {profile.location_text && (
-                  <p className="text-charcoal text-sm mt-1 flex items-center gap-1.5">
-                    <svg className="w-3.5 h-3.5 shrink-0 text-chestnut" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    {profile.location_text}
-                  </p>
-                )}
-              </div>
-              <div className="flex gap-2 flex-wrap justify-end shrink-0">
-                {isOwnProfile ? (
-                  <button onClick={() => router.push('/dashboard')}
-                    className="bg-graphite text-snow px-4 py-2 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">
-                    Edit Profile
-                  </button>
-                ) : (
-                  <>
-                    <button onClick={handleToggleFollow} disabled={followLoading}
-                      className={`px-4 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-50 ${
-                        isFollowing ? 'bg-white text-teal border border-teal/30' : 'bg-chestnut text-snow hover:opacity-90'
-                      }`}>
-                      {followLoading ? '…' : isFollowing ? '✓ Following' : '+ Follow'}
-                    </button>
-                    {viewer?.user_type === 'musician' && (
-                      <button onClick={handleMessage}
-                        className="bg-graphite text-snow px-4 py-2 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">
-                        Message
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Tags */}
-            <div className="flex flex-wrap gap-2 mb-3">
-              {cuisineType && (
-                <span className="bg-chestnut/10 text-chestnut text-xs font-semibold px-3 py-1 rounded-full">{cuisineType}</span>
-              )}
-              {capacity && (
-                <span className="bg-graphite/10 text-graphite text-xs font-semibold px-3 py-1 rounded-full">Cap. {capacity}</span>
-              )}
-              {musicNights.map(n => (
-                <span key={n} className="bg-teal/10 text-teal text-xs font-semibold px-3 py-1 rounded-full">{n}</span>
-              ))}
-            </div>
-
-            {/* Website + follow stats */}
-            <div className="flex flex-wrap items-center gap-4">
-              {profile.website && (
-                <a href={profile.website} target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-chestnut text-sm font-semibold hover:underline">
-                  <SocialIcon type="website" />
-                  {profile.website.replace(/^https?:\/\//, '').split('/')[0]}
-                </a>
-              )}
-              <span className="text-charcoal text-sm">
-                <span className="font-bold text-graphite">{followersCount}</span> followers
-              </span>
-            </div>
-          </div>
-
-          {/* About */}
-          <div className="px-5 py-6 space-y-6">
-            {profile.bio && (
-              <section className="bg-white rounded-2xl p-5 shadow-sm">
-                <p className="text-charcoal/50 text-[10px] font-semibold uppercase tracking-wide mb-2">About</p>
-                <p className="text-charcoal text-sm leading-relaxed">{profile.bio}</p>
-                {(capacity || musicNights.length > 0) && (
-                  <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4 pt-4 border-t border-charcoal/[0.08]">
-                    {capacity && (
-                      <div>
-                        <p className="text-charcoal/50 text-[10px] font-semibold uppercase tracking-wide">Capacity</p>
-                        <p className="text-graphite font-bold text-sm mt-0.5">{capacity} guests</p>
-                      </div>
-                    )}
-                    {musicNights.length > 0 && (
-                      <div>
-                        <p className="text-charcoal/50 text-[10px] font-semibold uppercase tracking-wide">Music Nights</p>
-                        <p className="text-graphite font-bold text-sm mt-0.5">{musicNights.join(', ')}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </section>
-            )}
-
-            {/* Upcoming Live Music */}
-            <section>
-              <div className="flex items-center gap-2 mb-3">
-                <p className="text-graphite text-xl font-black tracking-tight">Upcoming Live Music</p>
-                {tonight && (
-                  <span className="flex items-center gap-1.5 bg-red-50 text-red-500 text-[10px] font-bold px-2.5 py-1 rounded-full">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block" />
-                    Tonight
-                  </span>
-                )}
-              </div>
-              {upcomingShows.length === 0 ? (
-                <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
-                  <p className="text-charcoal/50 text-sm">No upcoming shows scheduled.</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {upcomingShows.map(show => {
-                    const [, datePart] = show.dateLabel.split(', ')
-                    const [mon, day] = (datePart || '').split(' ')
-                    return (
-                      <div key={show.bookingId} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3">
-                        <div className="bg-chestnut/10 rounded-xl px-3 py-2.5 text-center shrink-0 min-w-[52px]">
-                          <p className="text-chestnut text-[10px] font-black uppercase">{mon}</p>
-                          <p className="text-chestnut text-xl font-black leading-tight">{day}</p>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <button
-                            onClick={() => router.push('/profile/' + show.musicianId)}
-                            className="text-graphite font-bold text-sm hover:text-chestnut transition-colors text-left truncate block"
-                          >
-                            {show.musicianName}
-                          </button>
-                          <p className="text-charcoal/60 text-xs mt-0.5">{show.time}</p>
-                        </div>
-                        {show.musicianAvatar && (
-                          <Avatar src={show.musicianAvatar} className="w-10 h-10 rounded-full shrink-0" textSize="text-lg" />
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </section>
-
-            {/* Past Shows */}
-            {pastShows.length > 0 && (
-              <section>
-                <p className="text-graphite text-xl font-black tracking-tight mb-3">Past Shows</p>
-                <div className="bg-white rounded-2xl shadow-sm overflow-hidden divide-y divide-charcoal/[0.06]">
-                  {pastShows.map(show => (
-                    <button
-                      key={show.bookingId}
-                      onClick={() => router.push('/profile/' + show.musicianId)}
-                      className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-snow transition-colors"
-                    >
-                      <div>
-                        <p className="text-graphite font-semibold text-sm">{show.musicianName}</p>
-                        <p className="text-charcoal/50 text-xs mt-0.5">{show.dateLabel}</p>
-                      </div>
-                      <VerifiedBadge />
-                    </button>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Reviews */}
-            <section>
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-graphite text-xl font-black tracking-tight">Reviews</p>
-                {eligibleBookingId && !hasReviewed && (
+          <div className="flex gap-2 pb-1">
+            {isOwnProfile ? (
+              <button
+                onClick={() => router.push('/settings')}
+                className="bg-graphite text-snow px-4 py-2 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity shadow-sm"
+              >
+                Edit Profile
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={handleToggleFollow}
+                  disabled={followLoading}
+                  className={`px-4 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-50 shadow-sm ${
+                    isFollowing
+                      ? 'bg-white text-chestnut border border-chestnut/25'
+                      : 'bg-chestnut text-snow hover:opacity-90'
+                  }`}
+                >
+                  {followLoading ? '…' : isFollowing ? '✓ Following' : '+ Follow'}
+                </button>
+                {viewer?.user_type === 'musician' && (
                   <button
-                    onClick={() => { setReviewRating(5); setReviewText(''); setReviewModalOpen(true) }}
-                    className="bg-chestnut text-snow px-4 py-2 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
+                    onClick={handleMessage}
+                    className="bg-graphite text-snow px-4 py-2 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity shadow-sm"
                   >
-                    + Leave a Review
+                    Message
                   </button>
                 )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Tags row */}
+        {(cuisineType || capacity || musicNights.length > 0) && (
+          <div className="max-w-2xl mx-auto px-5 flex flex-wrap gap-2 mb-5">
+            {cuisineType && (
+              <span className="bg-chestnut/12 text-chestnut text-xs font-semibold px-3 py-1.5 rounded-full border border-chestnut/15">{cuisineType}</span>
+            )}
+            {capacity && (
+              <span className="bg-graphite/8 text-graphite text-xs font-semibold px-3 py-1.5 rounded-full border border-graphite/10">Cap. {capacity}</span>
+            )}
+            {musicNights.map(n => (
+              <span key={n} className="bg-teal/10 text-teal text-xs font-semibold px-3 py-1.5 rounded-full border border-teal/15">{n}</span>
+            ))}
+          </div>
+        )}
+
+        {/* Stats strip — white card, 4 columns */}
+        <div className="max-w-2xl mx-auto px-5 mb-5">
+          <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <div className="grid grid-cols-4 divide-x divide-charcoal/[0.07]">
+              <div className="py-4 flex flex-col items-center">
+                <p className="text-chestnut text-xl font-black">{upcomingShows.length + pastShows.length}</p>
+                <p className="text-charcoal/60 text-[10px] font-semibold uppercase tracking-wider mt-0.5">Shows</p>
               </div>
-              {avgRating != null && (
-                <div className="flex items-center gap-2 mb-4">
-                  <Stars rating={Math.round(avgRating)} />
-                  <span className="text-graphite font-black text-lg">{avgRating.toFixed(1)}</span>
-                  <span className="text-charcoal text-sm">({reviews.length} review{reviews.length !== 1 ? 's' : ''})</span>
-                </div>
-              )}
-              {reviews.length === 0 ? (
-                <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
-                  <p className="text-charcoal/50 text-sm">No reviews yet.</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {reviews.map(r => (
-                    <div key={r.id} className="bg-white rounded-2xl p-4 shadow-sm">
-                      <div className="flex items-start gap-3 mb-2">
-                        <Avatar src={r.reviewer_avatar ?? ''} className="w-9 h-9 rounded-full shrink-0" textSize="text-sm" bg="bg-chestnut/10" />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2 flex-wrap">
-                            <p className="text-graphite font-bold text-sm">{r.reviewer_name}</p>
-                            <div className="flex items-center gap-2">
-                              {r.verified && <VerifiedBadge />}
-                              <span className="text-charcoal/40 text-xs">
-                                {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
-                              </span>
-                            </div>
-                          </div>
-                          <Stars rating={r.rating} />
-                        </div>
+              <div className="py-4 flex flex-col items-center">
+                <p className="text-chestnut text-xl font-black">{followersCount}</p>
+                <p className="text-charcoal/60 text-[10px] font-semibold uppercase tracking-wider mt-0.5">Followers</p>
+              </div>
+              <div className="py-4 flex flex-col items-center">
+                <p className="text-chestnut text-xl font-black">{avgRating != null ? avgRating.toFixed(1) : '—'}</p>
+                <p className="text-charcoal/60 text-[10px] font-semibold uppercase tracking-wider mt-0.5">Rating</p>
+              </div>
+              <div className="py-4 flex flex-col items-center">
+                <p className="text-chestnut text-xl font-black">{capacity || '—'}</p>
+                <p className="text-charcoal/60 text-[10px] font-semibold uppercase tracking-wider mt-0.5">Capacity</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <main className="max-w-2xl mx-auto px-5 pb-20 space-y-0">
+
+          {/* Bio */}
+          {profile.bio && (
+            <section className="py-6 border-b border-charcoal/[0.08]">
+              <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">· About</p>
+              <p className="text-charcoal text-sm leading-relaxed">{profile.bio}</p>
+            </section>
+          )}
+
+          {/* Social links */}
+          {(profile.instagram_url || profile.website || profile.tiktok_url || profile.youtube_url || profile.spotify_url) && (
+            <section className="py-6 border-b border-charcoal/[0.08]">
+              <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">· Connect</p>
+              <div className="flex flex-wrap gap-3">
+                {profile.instagram_url && (
+                  <a href={toAbsoluteUrl(profile.instagram_url)} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 bg-white text-graphite text-sm font-semibold px-4 py-2 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                    <SocialIcon type="instagram" />
+                    Instagram
+                  </a>
+                )}
+                {profile.tiktok_url && (
+                  <a href={toAbsoluteUrl(profile.tiktok_url)} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 bg-white text-graphite text-sm font-semibold px-4 py-2 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                    <SocialIcon type="tiktok" />
+                    TikTok
+                  </a>
+                )}
+                {profile.youtube_url && (
+                  <a href={toAbsoluteUrl(profile.youtube_url)} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 bg-white text-graphite text-sm font-semibold px-4 py-2 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                    <SocialIcon type="youtube" />
+                    YouTube
+                  </a>
+                )}
+                {profile.spotify_url && (
+                  <a href={toAbsoluteUrl(profile.spotify_url)} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 bg-white text-graphite text-sm font-semibold px-4 py-2 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                    <SocialIcon type="spotify" />
+                    Spotify
+                  </a>
+                )}
+                {profile.website && (
+                  <a href={toAbsoluteUrl(profile.website)} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 bg-white text-graphite text-sm font-semibold px-4 py-2 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                    <SocialIcon type="website" />
+                    {profile.website.replace(/^https?:\/\//, '').split('/')[0]}
+                  </a>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* Upcoming Live Music */}
+          <section className="py-6 border-b border-charcoal/[0.08]">
+            <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-1">· Schedule</p>
+            <h2 className="text-graphite text-xl font-black tracking-tight mb-4">Upcoming Live Music</h2>
+            {upcomingShows.length === 0 ? (
+              <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
+                <p className="text-3xl mb-2">🎵</p>
+                <p className="text-graphite font-bold text-sm mb-1">Nothing booked yet</p>
+                <p className="text-charcoal/50 text-xs">Check back soon for upcoming shows.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {upcomingShows.map(show => {
+                  const [, datePart] = show.dateLabel.split(', ')
+                  const [mon, day] = (datePart || '').split(' ')
+                  return (
+                    <div key={show.bookingId} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3">
+                      <div className="rounded-xl px-3 py-2.5 text-center shrink-0 min-w-[52px]" style={{ background: 'rgba(220,127,65,0.10)' }}>
+                        <p className="text-chestnut text-[10px] font-black uppercase">{mon}</p>
+                        <p className="text-chestnut text-xl font-black leading-tight">{day}</p>
                       </div>
-                      {r.review_text && (
-                        <p className="text-charcoal text-sm leading-relaxed pl-12">{r.review_text}</p>
+                      <div className="flex-1 min-w-0">
+                        <button
+                          onClick={() => router.push('/profile/' + show.musicianId)}
+                          className="text-graphite font-bold text-sm hover:text-chestnut transition-colors text-left truncate block"
+                        >
+                          {show.musicianName}
+                        </button>
+                        <p className="text-charcoal/60 text-xs mt-0.5">{show.time}</p>
+                      </div>
+                      {show.musicianAvatar && (
+                        <Avatar src={show.musicianAvatar} className="w-10 h-10 rounded-full shrink-0" textSize="text-lg" />
                       )}
                     </div>
-                  ))}
-                </div>
-              )}
+                  )
+                })}
+              </div>
+            )}
+          </section>
+
+          {/* Past Shows */}
+          {pastShows.length > 0 && (
+            <section className="py-6 border-b border-charcoal/[0.08]">
+              <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-1">· History</p>
+              <h2 className="text-graphite text-xl font-black tracking-tight mb-4">Past Shows</h2>
+              <div className="bg-white rounded-2xl shadow-sm overflow-hidden divide-y divide-charcoal/[0.06]">
+                {pastShows.map(show => (
+                  <button
+                    key={show.bookingId}
+                    onClick={() => router.push('/profile/' + show.musicianId)}
+                    className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-[#F5F2EF] transition-colors"
+                  >
+                    <div>
+                      <p className="text-graphite font-semibold text-sm">{show.musicianName}</p>
+                      <p className="text-charcoal/50 text-xs mt-0.5">{show.dateLabel}</p>
+                    </div>
+                    <VerifiedBadge />
+                  </button>
+                ))}
+              </div>
             </section>
-          </div>
+          )}
+
+          {/* Reviews */}
+          <section className="py-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-1">· Reputation</p>
+                <h2 className="text-graphite text-xl font-black tracking-tight">Reviews</h2>
+              </div>
+              {eligibleBookingId && !hasReviewed && (
+                <button
+                  onClick={() => { setReviewRating(5); setReviewText(''); setReviewModalOpen(true) }}
+                  className="bg-chestnut text-snow px-4 py-2 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity shadow-sm"
+                >
+                  + Leave a Review
+                </button>
+              )}
+            </div>
+            {reviews.length === 0 ? (
+              <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
+                <p className="text-3xl mb-2">⭐</p>
+                <p className="text-graphite font-bold text-sm mb-1">No reviews yet</p>
+                <p className="text-charcoal/50 text-xs">Be the first to leave a review after a show.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {reviews.map(r => (
+                  <div key={r.id} className="bg-white rounded-2xl p-4 shadow-sm">
+                    <div className="flex items-start gap-3 mb-2">
+                      <Avatar src={r.reviewer_avatar ?? ''} className="w-9 h-9 rounded-full shrink-0" textSize="text-sm" bg="bg-chestnut/10" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <p className="text-graphite font-bold text-sm">{r.reviewer_name}</p>
+                          <div className="flex items-center gap-2">
+                            {r.verified && <VerifiedBadge />}
+                            <span className="text-charcoal/40 text-xs">
+                              {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                            </span>
+                          </div>
+                        </div>
+                        <Stars rating={r.rating} />
+                      </div>
+                    </div>
+                    {r.review_text && (
+                      <p className="text-charcoal text-sm leading-relaxed pl-12">{r.review_text}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         </main>
 
         {reviewModalOpen && (

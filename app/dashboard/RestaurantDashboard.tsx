@@ -7,6 +7,8 @@ import { eqBarStyle } from '@/lib/eq'
 import { milesBetween } from '@/lib/distance'
 import { Avatar } from '@/components/Avatar'
 import MessagingTab, { MessagingTabRef } from '@/components/MessagingTab'
+import { useToast } from '@/components/Toast'
+import { SkeletonStatCard, SkeletonBookingCard, SkeletonMusicianCard } from '@/components/Skeleton'
 
 // ---- Types ----
 
@@ -136,6 +138,19 @@ export default function RestaurantDashboard() {
   const [liveMusicians, setLiveMusicians] = useState<LiveMusician[]>([])
   const [browseLoading, setBrowseLoading] = useState(false)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
+  const [dataLoading, setDataLoading] = useState(true)
+  const { toast } = useToast()
+
+  // Analytics
+  const [analyticsViews7d, setAnalyticsViews7d] = useState<number | null>(null)
+  const [analyticsViews30d, setAnalyticsViews30d] = useState<number | null>(null)
+  const [analyticsFollowers, setAnalyticsFollowers] = useState<number | null>(null)
+  const [analyticsShows, setAnalyticsShows] = useState<number | null>(null)
+  const [analyticsOpenSlots, setAnalyticsOpenSlots] = useState<number | null>(null)
+  const [analyticsRating, setAnalyticsRating] = useState<number | null>(null)
+  const [analyticsReviewCount, setAnalyticsReviewCount] = useState<number | null>(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(false)
+  const [analyticsLoaded, setAnalyticsLoaded] = useState(false)
 
   // ---- Data loading ----
 
@@ -143,11 +158,13 @@ export default function RestaurantDashboard() {
     const lat = resLat !== undefined ? resLat : restaurantCoords.lat
     const lon = resLon !== undefined ? resLon : restaurantCoords.lon
 
-    const { data } = await supabase
+    try {
+    const { data, error: slotsErr } = await supabase
       .from('availability')
       .select('*')
       .eq('restaurant_id', rid)
       .order('date', { ascending: true })
+    if (slotsErr) throw slotsErr
     if (!data) return
 
     const mapped: Slot[] = data.map(row => {
@@ -224,16 +241,21 @@ export default function RestaurantDashboard() {
     }
 
     setSlots(mapped)
+    } catch (err) {
+      console.error('Failed to load slots:', err)
+      toast.error('Could not load your availability slots. Please refresh.')
+    }
   }
 
   const loadMusicians = async (lat: number, lon: number, radius: number) => {
     setBrowseLoading(true)
-    const { data } = await supabase
+    try {
+    const { data, error: musErr } = await supabase
       .from('profiles')
       .select('id, full_name, avatar_url, bio, location_text, latitude, longitude, instagram_url, youtube_url, spotify_url, role_metadata')
       .eq('user_type', 'musician')
-    setBrowseLoading(false)
-    if (!data) return
+    if (musErr) throw musErr
+    if (!data) { setBrowseLoading(false); return }
 
     const results: LiveMusician[] = data
       .filter(m => m.latitude != null && m.longitude != null)
@@ -258,15 +280,24 @@ export default function RestaurantDashboard() {
       .sort((a, b) => a.distance - b.distance)
 
     setLiveMusicians(results)
+    } catch (err) {
+      console.error('Failed to load musicians:', err)
+      toast.error('Could not load musicians. Please try again.')
+    } finally {
+      setBrowseLoading(false)
+    }
   }
 
   useEffect(() => {
     const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      try {
+      const { data: { user }, error: authErr } = await supabase.auth.getUser()
+      if (authErr) throw authErr
       if (!user) return
       setUserId(user.id)
-      const { data } = await supabase
+      const { data, error: profileErr } = await supabase
         .from('profiles').select('*').eq('id', user.id).maybeSingle()
+      if (profileErr) throw profileErr
       if (!data) return
       const meta = (data.role_metadata ?? {}) as Record<string, unknown>
       setProfile({
@@ -286,6 +317,12 @@ export default function RestaurantDashboard() {
       await loadSlots(user.id, lat, lon)
       if (lat != null && lon != null) {
         void loadMusicians(lat, lon, radius)
+      }
+      } catch (err) {
+        console.error('Failed to load restaurant dashboard:', err)
+        toast.error('Failed to load your dashboard. Please refresh.')
+      } finally {
+        setDataLoading(false)
       }
     }
     load()
@@ -315,52 +352,114 @@ export default function RestaurantDashboard() {
     if (activeTab === 'slots' && userId) loadSlots(userId)
   }, [activeTab, userId])
 
+  // Load analytics when profile tab is first opened
+  useEffect(() => {
+    if (activeTab === 'profile' && userId) loadAnalytics(userId)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, userId])
+
   // ---- Actions ----
 
   const saveProfile = async () => {
     if (!userId) return
     setSavingProfile(true)
-    const { data: existing } = await supabase
-      .from('profiles').select('role_metadata').eq('id', userId).maybeSingle()
-    const meta = {
-      ...(existing?.role_metadata ?? {}),
-      venue_name: profileDraft.name || null,
-      cuisine_type: profileDraft.type || null,
+    try {
+      const { data: existing, error: fetchErr } = await supabase
+        .from('profiles').select('role_metadata').eq('id', userId).maybeSingle()
+      if (fetchErr) throw fetchErr
+      const meta = {
+        ...(existing?.role_metadata ?? {}),
+        venue_name: profileDraft.name || null,
+        cuisine_type: profileDraft.type || null,
+      }
+      const { error: upErr } = await supabase.from('profiles').update({
+        full_name: profileDraft.name || null,
+        bio: profileDraft.description || null,
+        location_text: profileDraft.address || null,
+        website: profileDraft.website || null,
+        role_metadata: meta,
+      }).eq('id', userId)
+      if (upErr) throw upErr
+      setProfile(profileDraft)
+      setEditingProfile(false)
+      setProfileSaved(true)
+      setTimeout(() => setProfileSaved(false), 2000)
+      toast.success('Profile saved!')
+    } catch (err) {
+      console.error('Profile save failed:', err)
+      toast.error('Could not save your profile. Please try again.')
+    } finally {
+      setSavingProfile(false)
     }
-    const { error: upErr } = await supabase.from('profiles').update({
-      full_name: profileDraft.name || null,
-      bio: profileDraft.description || null,
-      location_text: profileDraft.address || null,
-      website: profileDraft.website || null,
-      role_metadata: meta,
-    }).eq('id', userId)
-    setSavingProfile(false)
-    if (upErr) { console.error('Profile save failed', upErr); return }
-    setProfile(profileDraft)
-    setEditingProfile(false)
-    setProfileSaved(true)
-    setTimeout(() => setProfileSaved(false), 2000)
   }
 
   const saveRadius = async () => {
     if (!userId) return
     setSavingRadius(true)
-    const { error } = await supabase.from('profiles').update({
-      discovery_radius_miles: radiusDraft,
-    }).eq('id', userId)
-    setSavingRadius(false)
-    if (error) { console.error('Failed to save radius', error); return }
-    setDiscoveryRadius(radiusDraft)
-    setRadiusSaved(true)
-    setTimeout(() => setRadiusSaved(false), 2000)
-    if (restaurantCoords.lat != null && restaurantCoords.lon != null) {
-      await loadMusicians(restaurantCoords.lat, restaurantCoords.lon, radiusDraft)
+    try {
+      const { error } = await supabase.from('profiles').update({
+        discovery_radius_miles: radiusDraft,
+      }).eq('id', userId)
+      if (error) throw error
+      setDiscoveryRadius(radiusDraft)
+      setRadiusSaved(true)
+      setTimeout(() => setRadiusSaved(false), 2000)
+      if (restaurantCoords.lat != null && restaurantCoords.lon != null) {
+        await loadMusicians(restaurantCoords.lat, restaurantCoords.lon, radiusDraft)
+      }
+      toast.success('Discovery radius updated!')
+    } catch (err) {
+      console.error('Failed to save radius:', err)
+      toast.error('Could not save discovery radius. Please try again.')
+    } finally {
+      setSavingRadius(false)
     }
   }
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/')
+    try {
+      await supabase.auth.signOut()
+      router.push('/')
+    } catch (err) {
+      console.error('Logout failed:', err)
+      toast.error('Logout failed. Please try again.')
+    }
+  }
+
+  const loadAnalytics = async (uid: string) => {
+    if (analyticsLoaded) return
+    setAnalyticsLoading(true)
+    try {
+      const now = Date.now()
+      const d7 = new Date(now - 7 * 86400000).toISOString()
+      const d30 = new Date(now - 30 * 86400000).toISOString()
+      const [v7, v30, fol, shows, open, revs] = await Promise.all([
+        supabase.from('profile_views').select('id', { count: 'exact', head: true }).eq('profile_id', uid).gte('viewed_at', d7),
+        supabase.from('profile_views').select('id', { count: 'exact', head: true }).eq('profile_id', uid).gte('viewed_at', d30),
+        supabase.from('follows').select('id', { count: 'exact', head: true }).eq('following_id', uid),
+        supabase.from('bookings').select('id', { count: 'exact', head: true }).eq('restaurant_id', uid).eq('status', 'confirmed'),
+        supabase.from('availability').select('id', { count: 'exact', head: true }).eq('restaurant_id', uid).eq('status', 'open'),
+        supabase.from('reviews').select('rating').eq('reviewee_id', uid),
+      ])
+      setAnalyticsViews7d(v7.count ?? 0)
+      setAnalyticsViews30d(v30.count ?? 0)
+      setAnalyticsFollowers(fol.count ?? 0)
+      setAnalyticsShows(shows.count ?? 0)
+      setAnalyticsOpenSlots(open.count ?? 0)
+      if (revs.data && revs.data.length > 0) {
+        const avg = revs.data.reduce((s, r) => s + r.rating, 0) / revs.data.length
+        setAnalyticsRating(parseFloat(avg.toFixed(1)))
+        setAnalyticsReviewCount(revs.data.length)
+      } else {
+        setAnalyticsRating(null)
+        setAnalyticsReviewCount(0)
+      }
+      setAnalyticsLoaded(true)
+    } catch (err) {
+      console.error('Analytics load failed:', err)
+    } finally {
+      setAnalyticsLoading(false)
+    }
   }
 
   const [postingSlot, setPostingSlot] = useState(false)
@@ -373,8 +472,6 @@ export default function RestaurantDashboard() {
   const [cancelSlotId, setCancelSlotId] = useState<string | null>(null)
   const [cancellingSlot, setCancellingSlot] = useState(false)
 
-  const [bookingConfirmedMsg, setBookingConfirmedMsg] = useState<string | null>(null)
-
   const handlePostSlot = async () => {
     if (!newSlot.date || !newSlot.startTime || !newSlot.endTime || !newSlot.budget) return
     if (!userId) return
@@ -384,97 +481,126 @@ export default function RestaurantDashboard() {
     }
     setPostingSlot(true)
     setPostSlotError('')
-    const { error: insertErr } = await supabase.from('availability').insert({
-      restaurant_id: userId,
-      date: newSlot.date,
-      start_time: newSlot.startTime,
-      end_time: newSlot.endTime,
-      description: newSlot.notes || null,
-      pay: parseInt(newSlot.budget),
-      status: 'open',
-      genres: newSlot.genres,
-      latitude: restaurantCoords.lat,
-      longitude: restaurantCoords.lon,
-    })
-    setPostingSlot(false)
-    if (insertErr) { console.error('Slot insert failed', insertErr); setPostSlotError(insertErr.message); return }
-    setPostSlotOpen(false)
-    setNewSlot({ date: '', startTime: '', endTime: '', genres: [], budget: '', notes: '' })
-    await loadSlots(userId)
-    setActiveTab('slots')
+    try {
+      const { error: insertErr } = await supabase.from('availability').insert({
+        restaurant_id: userId,
+        date: newSlot.date,
+        start_time: newSlot.startTime,
+        end_time: newSlot.endTime,
+        description: newSlot.notes || null,
+        pay: parseInt(newSlot.budget),
+        status: 'open',
+        genres: newSlot.genres,
+        latitude: restaurantCoords.lat,
+        longitude: restaurantCoords.lon,
+      })
+      if (insertErr) throw insertErr
+      setPostSlotOpen(false)
+      setNewSlot({ date: '', startTime: '', endTime: '', genres: [], budget: '', notes: '' })
+      await loadSlots(userId)
+      setActiveTab('slots')
+      toast.success('Slot posted! Musicians can now apply.')
+    } catch (err) {
+      console.error('Slot insert failed:', err)
+      const msg = err instanceof Error ? err.message : 'Something went wrong'
+      setPostSlotError(msg)
+      toast.error('Failed to post slot. Please try again.')
+    } finally {
+      setPostingSlot(false)
+    }
   }
 
   const handleApplicationAction = async (slotId: string, appId: string, action: 'accept' | 'decline') => {
     const newStatus = action === 'accept' ? 'confirmed' : 'cancelled'
-    const { error } = await supabase
-      .from('bookings')
-      .update({ status: newStatus })
-      .eq('id', appId)
-    if (error) { console.error('Failed to update booking', error); return }
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ status: newStatus })
+        .eq('id', appId)
+      if (error) throw error
 
-    if (action === 'accept') {
-      await supabase.from('availability').update({ status: 'filled' }).eq('id', slotId)
-      // Auto-decline all other pending applications for this slot
-      await supabase.from('bookings')
-        .update({ status: 'cancelled' })
-        .eq('availability_id', slotId)
-        .eq('status', 'pending')
-        .neq('id', appId)
+      if (action === 'accept') {
+        await supabase.from('availability').update({ status: 'filled' }).eq('id', slotId)
+        await supabase.from('bookings')
+          .update({ status: 'cancelled' })
+          .eq('availability_id', slotId)
+          .eq('status', 'pending')
+          .neq('id', appId)
 
-      const slot = slots.find(s => s.id === slotId)
-      const app = slot?.applications.find(a => a.id === appId)
-      if (slot && app) {
-        setBookingConfirmedMsg(`Booking confirmed! ${app.musicianName} has been booked for ${slot.date}.`)
-        setTimeout(() => setBookingConfirmedMsg(null), 4000)
+        const slot = slots.find(s => s.id === slotId)
+        const app = slot?.applications.find(a => a.id === appId)
+        if (slot && app) {
+          toast.success(`Booking confirmed! ${app.musicianName} has been booked for ${slot.date}.`)
+        }
+      } else {
+        toast.info('Application declined.')
       }
+
+      setSlots(prev => prev.map(slot => {
+        if (slot.id !== slotId) return slot
+        const app = slot.applications.find(a => a.id === appId)
+        return {
+          ...slot,
+          status: action === 'accept' ? 'booked' : slot.status,
+          bookedMusician: action === 'accept' ? app?.musicianName : slot.bookedMusician,
+          applications: slot.applications.map(a => {
+            if (a.id === appId) return { ...a, status: action === 'accept' ? 'confirmed' : 'cancelled' }
+            if (action === 'accept' && a.status === 'pending') return { ...a, status: 'cancelled' as AppStatus }
+            return a
+          }),
+        }
+      }))
+    } catch (err) {
+      console.error('Failed to update booking:', err)
+      toast.error('Could not update the application. Please try again.')
     }
-
-    setSlots(prev => prev.map(slot => {
-      if (slot.id !== slotId) return slot
-      const app = slot.applications.find(a => a.id === appId)
-      return {
-        ...slot,
-        status: action === 'accept' ? 'booked' : slot.status,
-        bookedMusician: action === 'accept' ? app?.musicianName : slot.bookedMusician,
-        applications: slot.applications.map(a => {
-          if (a.id === appId) return { ...a, status: action === 'accept' ? 'confirmed' : 'cancelled' }
-          if (action === 'accept' && a.status === 'pending') return { ...a, status: 'cancelled' as AppStatus }
-          return a
-        }),
-      }
-    }))
   }
 
   const handleEditSlot = async () => {
     if (!editingSlot || !userId) return
     setSavingEdit(true)
-    const { error } = await supabase.from('availability').update({
-      date: editDraft.date,
-      start_time: editDraft.startTime,
-      end_time: editDraft.endTime,
-      pay: parseInt(editDraft.budget) || 0,
-      description: editDraft.notes || null,
-    }).eq('id', editingSlot.id).eq('restaurant_id', userId)
-    setSavingEdit(false)
-    if (error) { console.error('Edit slot failed', error); return }
-    setEditingSlot(null)
-    await loadSlots(userId)
+    try {
+      const { error } = await supabase.from('availability').update({
+        date: editDraft.date,
+        start_time: editDraft.startTime,
+        end_time: editDraft.endTime,
+        pay: parseInt(editDraft.budget) || 0,
+        description: editDraft.notes || null,
+      }).eq('id', editingSlot.id).eq('restaurant_id', userId)
+      if (error) throw error
+      setEditingSlot(null)
+      await loadSlots(userId)
+      toast.success('Slot updated!')
+    } catch (err) {
+      console.error('Edit slot failed:', err)
+      toast.error('Could not update slot. Please try again.')
+    } finally {
+      setSavingEdit(false)
+    }
   }
 
   const handleCancelSlot = async () => {
     if (!cancelSlotId || !userId) return
     setCancellingSlot(true)
-    const slot = slots.find(s => s.id === cancelSlotId)
-    if (slot && slot.applications.some(a => a.status === 'pending' || a.status === 'confirmed')) {
-      await supabase.from('bookings')
-        .update({ status: 'cancelled' })
-        .eq('availability_id', cancelSlotId)
-        .in('status', ['pending', 'confirmed'])
+    try {
+      const slot = slots.find(s => s.id === cancelSlotId)
+      if (slot && slot.applications.some(a => a.status === 'pending' || a.status === 'confirmed')) {
+        await supabase.from('bookings')
+          .update({ status: 'cancelled' })
+          .eq('availability_id', cancelSlotId)
+          .in('status', ['pending', 'confirmed'])
+      }
+      const { error } = await supabase.from('availability').update({ status: 'cancelled' }).eq('id', cancelSlotId)
+      if (error) throw error
+      setCancelSlotId(null)
+      await loadSlots(userId)
+      toast.info('Slot cancelled.')
+    } catch (err) {
+      console.error('Cancel slot failed:', err)
+      toast.error('Could not cancel slot. Please try again.')
+    } finally {
+      setCancellingSlot(false)
     }
-    await supabase.from('availability').update({ status: 'cancelled' }).eq('id', cancelSlotId)
-    setCancelSlotId(null)
-    setCancellingSlot(false)
-    await loadSlots(userId)
   }
 
   const openConversation = (musician: { id: string; name: string; avatar: string }) => {
@@ -583,12 +709,18 @@ export default function RestaurantDashboard() {
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-4 gap-2.5 mb-7">
-              <StatCard value={openSlots} label="Open" color="text-teal" icon="🎵" />
-              <StatCard value={pendingApps} label="Pending" color="text-chestnut" icon="📬" highlight />
-              <StatCard value={upcomingGigs} label="Booked" color="text-graphite" icon="✅" />
-              <StatCard value={pastGigs} label="Past" color="text-charcoal" icon="🕐" />
-            </div>
+            {dataLoading ? (
+              <div className="grid grid-cols-4 gap-2.5 mb-7">
+                <SkeletonStatCard /><SkeletonStatCard /><SkeletonStatCard /><SkeletonStatCard />
+              </div>
+            ) : (
+              <div className="grid grid-cols-4 gap-2.5 mb-7">
+                <StatCard value={openSlots} label="Open" color="text-teal" icon="🎵" />
+                <StatCard value={pendingApps} label="Pending" color="text-chestnut" icon="📬" highlight />
+                <StatCard value={upcomingGigs} label="Booked" color="text-graphite" icon="✅" />
+                <StatCard value={pastGigs} label="Past" color="text-charcoal" icon="🕐" />
+              </div>
+            )}
 
             {/* Pending alert */}
             {pendingApps > 0 && (
@@ -643,7 +775,11 @@ export default function RestaurantDashboard() {
 
             {/* Pending applications */}
             <SectionHeader eyebrow="Inbox" title="Pending" accent="Applications." />
-            {pendingApps === 0 ? (
+            {dataLoading ? (
+              <div className="space-y-3">
+                <SkeletonBookingCard /><SkeletonBookingCard /><SkeletonBookingCard />
+              </div>
+            ) : pendingApps === 0 ? (
               <EmptyState
                 icon="🎵"
                 title="No pending applications"
@@ -981,22 +1117,7 @@ export default function RestaurantDashboard() {
             {/* Loading skeleton */}
             {browseLoading && (
               <div className="space-y-3">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="bg-white rounded-2xl p-4 shadow-sm animate-pulse">
-                    <div className="flex items-start gap-4 mb-3">
-                      <div className="w-14 h-14 rounded-full bg-charcoal/10 shrink-0" />
-                      <div className="flex-1 space-y-2 pt-1">
-                        <div className="h-4 bg-charcoal/10 rounded w-2/3" />
-                        <div className="h-3 bg-charcoal/10 rounded w-1/2" />
-                        <div className="h-3 bg-charcoal/10 rounded w-3/4" />
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <div className="h-9 bg-charcoal/10 rounded-xl flex-1" />
-                      <div className="h-9 bg-charcoal/10 rounded-xl flex-1" />
-                    </div>
-                  </div>
-                ))}
+                <SkeletonMusicianCard /><SkeletonMusicianCard /><SkeletonMusicianCard />
               </div>
             )}
 
@@ -1133,120 +1254,113 @@ export default function RestaurantDashboard() {
           </div>
         )}
 
-        {/* ---- PROFILE TAB ---- */}
+        {/* ---- ANALYTICS TAB ---- */}
         {activeTab === 'profile' && (
           <>
-            <div className="flex items-end justify-between mb-5 gap-3">
-              <div>
-                <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">The Room</p>
-                <h2 className="text-graphite text-3xl font-black tracking-tight leading-none">
-                  Venue <span className="text-chestnut italic">Profile.</span>
-                </h2>
+            {/* Header */}
+            <div className="mb-6">
+              <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-1">· The Room</p>
+              <h2 className="text-graphite text-3xl font-black tracking-tight leading-none">
+                Your <span className="text-chestnut italic">Analytics.</span>
+              </h2>
+            </div>
+
+            {/* Action buttons */}
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <button
+                onClick={() => router.push('/profile/' + userId)}
+                className="flex items-center justify-center gap-2 bg-graphite text-snow py-3.5 rounded-2xl font-bold text-sm hover:opacity-90 transition-opacity shadow-sm"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                View Profile
+              </button>
+              <button
+                onClick={() => router.push('/settings')}
+                className="flex items-center justify-center gap-2 bg-white text-graphite py-3.5 rounded-2xl font-bold text-sm hover:shadow-md transition-shadow shadow-sm border border-charcoal/[0.07]"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Edit Profile
+              </button>
+            </div>
+
+            {/* Profile Views card */}
+            <div className="bg-graphite rounded-2xl p-5 shadow-sm mb-4 relative overflow-hidden">
+              <div className="absolute inset-x-0 bottom-0 top-1/3 flex items-end justify-around opacity-[0.08] pointer-events-none">
+                {Array.from({ length: 14 }).map((_, i) => (
+                  <div key={i} className="eq-bar w-1.5 bg-chestnut rounded-t" style={eqBarStyle(i, 31)} />
+                ))}
               </div>
-              {!editingProfile ? (
-                <div className="flex items-center gap-3 shrink-0">
-                  {profileSaved && (
-                    <span className="flex items-center gap-1 text-teal text-xs font-semibold">
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                      Saved!
-                    </span>
-                  )}
-                  <button onClick={() => { setEditingProfile(true); setProfileDraft(profile) }} className="text-chestnut text-sm font-bold hover:underline">Edit</button>
+              <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">Profile Views</p>
+              {analyticsLoading ? (
+                <div className="flex gap-6">
+                  {[0, 1, 2].map(i => <div key={i} className="h-10 w-16 bg-white/10 rounded-xl animate-pulse" />)}
                 </div>
               ) : (
-                <div className="flex gap-3 shrink-0">
-                  <button onClick={() => setEditingProfile(false)} disabled={savingProfile} className="text-charcoal text-sm font-medium hover:underline disabled:opacity-50">Cancel</button>
-                  <button onClick={saveProfile} disabled={savingProfile} className="bg-chestnut text-snow px-4 py-1.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50">{savingProfile ? 'Saving…' : 'Save'}</button>
+                <div className="grid grid-cols-3 divide-x divide-white/10">
+                  <div className="pr-4">
+                    <p className="text-snow text-3xl font-black">{analyticsViews7d ?? '—'}</p>
+                    <p className="text-snow/40 text-xs font-semibold uppercase tracking-wider mt-0.5">Last 7 days</p>
+                  </div>
+                  <div className="px-4">
+                    <p className="text-snow text-3xl font-black">{analyticsViews30d ?? '—'}</p>
+                    <p className="text-snow/40 text-xs font-semibold uppercase tracking-wider mt-0.5">Last 30 days</p>
+                  </div>
+                  <div className="pl-4">
+                    <p className="text-chestnut text-3xl font-black">{analyticsFollowers ?? '—'}</p>
+                    <p className="text-snow/40 text-xs font-semibold uppercase tracking-wider mt-0.5">Followers</p>
+                  </div>
                 </div>
               )}
             </div>
 
-            <button
-              onClick={() => router.push('/profile/' + userId)}
-              className="flex items-center gap-1 text-chestnut text-sm font-bold hover:underline mb-4"
-            >
-              View Public Profile →
-            </button>
-
-            <div className="relative bg-graphite rounded-3xl overflow-hidden mb-4 shadow-xl">
-              <div className="absolute inset-x-0 bottom-0 top-1/2 flex items-end justify-around opacity-[0.10] pointer-events-none">
-                {Array.from({ length: 16 }).map((_, i) => (
-                  <div key={i} className="eq-bar w-1.5 bg-chestnut rounded-t" style={eqBarStyle(i, 31)} />
+            {/* Stats strip */}
+            <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-4">
+              <div className="grid grid-cols-4 divide-x divide-charcoal/[0.07]">
+                {[
+                  { value: analyticsShows, label: 'Shows' },
+                  { value: analyticsOpenSlots, label: 'Open Slots' },
+                  { value: analyticsRating != null ? analyticsRating.toFixed(1) : null, label: 'Avg Rating' },
+                  { value: analyticsReviewCount, label: 'Reviews' },
+                ].map(s => (
+                  <div key={s.label} className="py-5 flex flex-col items-center">
+                    {analyticsLoading ? (
+                      <div className="h-7 w-8 bg-snow rounded animate-pulse mb-1" />
+                    ) : (
+                      <p className="text-chestnut text-2xl font-black">{s.value ?? '—'}</p>
+                    )}
+                    <p className="text-charcoal/60 text-[10px] font-semibold uppercase tracking-wider mt-0.5">{s.label}</p>
+                  </div>
                 ))}
               </div>
-              <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-72 h-72 rounded-full bg-chestnut opacity-15 blur-3xl pointer-events-none" />
-              <div className="absolute -bottom-20 -right-10 w-40 h-40 rounded-full bg-teal opacity-15 blur-2xl pointer-events-none" />
-              <div className="relative z-10 p-8 flex flex-col items-center text-center">
-                {profile.avatar
-                  ? <img src={profile.avatar} alt="" className="w-24 h-24 rounded-2xl object-cover mb-4 shadow-inner border-2 border-chestnut/30" />
-                  : <div className="w-24 h-24 bg-chestnut/20 border-2 border-chestnut/30 rounded-2xl flex items-center justify-center text-5xl mb-4 shadow-inner">🍽</div>}
-                <p className="text-snow font-black text-2xl tracking-tight">{profile.name}</p>
-                <p className="text-snow/50 text-sm mt-1">{profile.type}</p>
-                {editingProfile && (
-                  <button className="text-chestnut text-xs font-bold uppercase tracking-[0.2em] mt-3 hover:underline">Change Photo</button>
-                )}
-              </div>
             </div>
 
-            <div className="bg-white rounded-2xl p-5 shadow-sm space-y-4 mb-4">
-              <ProfileField label="Venue Name" value={editingProfile ? profileDraft.name : profile.name} editing={editingProfile} onChange={v => setProfileDraft(p => ({ ...p, name: v }))} />
-              <ProfileField label="Venue Type" value={editingProfile ? profileDraft.type : profile.type} editing={editingProfile} onChange={v => setProfileDraft(p => ({ ...p, type: v }))} />
-              <ProfileField label="Address" value={editingProfile ? profileDraft.address : profile.address} editing={editingProfile} onChange={v => setProfileDraft(p => ({ ...p, address: v }))} />
-              <ProfileField label="About" value={editingProfile ? profileDraft.description : profile.description} editing={editingProfile} onChange={v => setProfileDraft(p => ({ ...p, description: v }))} multiline />
-              <ProfileField label="Website" value={editingProfile ? profileDraft.website : profile.website} editing={editingProfile} onChange={v => setProfileDraft(p => ({ ...p, website: v }))} placeholder="https://yourrestaurant.com" />
-            </div>
-
-            {/* Discovery Radius */}
+            {/* Venue preview card */}
             <div className="bg-white rounded-2xl p-5 shadow-sm mb-4">
-              <div className="flex items-center gap-2 mb-1">
-                <svg className="w-4 h-4 text-chestnut shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">Your Venue</p>
+              <div className="flex items-center gap-4">
+                {profile.avatar
+                  ? <img src={profile.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover shadow-sm border border-charcoal/[0.07]" />
+                  : <div className="w-14 h-14 bg-chestnut/10 rounded-2xl flex items-center justify-center text-3xl">🍽</div>}
+                <div className="flex-1 min-w-0">
+                  <p className="text-graphite font-black text-base truncate">{profile.name || 'Your Venue'}</p>
+                  {profile.type && <p className="text-charcoal/60 text-sm mt-0.5">{profile.type}</p>}
+                </div>
+                <svg className="w-4 h-4 text-charcoal/30 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                 </svg>
-                <h3 className="text-graphite font-bold">Discovery Radius</h3>
-              </div>
-              <p className="text-charcoal/60 text-xs mb-5 leading-relaxed">Musicians within this radius will appear in your browse tab</p>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-charcoal text-xs font-medium">5 mi</span>
-                <span className="text-graphite font-black text-xl">{radiusDraft} miles</span>
-                <span className="text-charcoal text-xs font-medium">100 mi</span>
-              </div>
-              <input
-                type="range"
-                min={5}
-                max={100}
-                step={5}
-                value={radiusDraft}
-                onChange={e => setRadiusDraft(Number(e.target.value))}
-                className="w-full h-2 rounded-full appearance-none cursor-pointer"
-                style={{
-                  accentColor: '#DC7F41',
-                  background: `linear-gradient(to right, #DC7F41 ${((radiusDraft - 5) / 95) * 100}%, #E8E4E0 ${((radiusDraft - 5) / 95) * 100}%)`,
-                }}
-              />
-              <div className="mt-4 flex items-center gap-3">
-                <button
-                  onClick={saveRadius}
-                  disabled={savingRadius || radiusDraft === discoveryRadius}
-                  className="bg-chestnut text-snow px-5 py-2 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-40"
-                >
-                  {savingRadius ? 'Saving…' : 'Save Radius'}
-                </button>
-                {radiusSaved && (
-                  <span className="flex items-center gap-1.5 text-teal text-sm font-semibold">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                    Saved!
-                  </span>
-                )}
               </div>
             </div>
 
+            {/* Account */}
             <div className="bg-white rounded-2xl p-5 shadow-sm">
-              <h3 className="text-graphite font-bold mb-3">Account</h3>
-              <button onClick={handleLogout} className="w-full text-left text-sm text-charcoal hover:text-chestnut transition-colors py-1 font-medium">
-                Log Out
+              <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">Account</p>
+              <button onClick={handleLogout} className="text-sm text-charcoal hover:text-chestnut transition-colors font-medium">
+                Log out
               </button>
             </div>
           </>
@@ -1273,19 +1387,6 @@ export default function RestaurantDashboard() {
           <TabButton icon="🍽" label="Profile" active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
         </div>
       </nav>
-
-      {/* ---- BOOKING CONFIRMED TOAST ---- */}
-      {bookingConfirmedMsg && (
-        <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-50 max-w-sm w-[calc(100%-2rem)]">
-          <div className="bg-graphite text-snow rounded-2xl px-5 py-4 shadow-2xl flex items-start gap-3">
-            <span className="text-2xl shrink-0">🎉</span>
-            <div>
-              <p className="font-black text-sm">Booking Confirmed!</p>
-              <p className="text-snow/70 text-xs mt-0.5 leading-relaxed">{bookingConfirmedMsg}</p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ---- EDIT SLOT MODAL ---- */}
       {editingSlot && (

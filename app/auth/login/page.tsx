@@ -30,25 +30,33 @@ export default function LoginPage() {
 
   const handleLogin = async () => {
     setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) {
-      setError(error.message)
-      setLoading(false)
-    } else {
+    setError('')
+    try {
+      const { error: authErr } = await supabase.auth.signInWithPassword({ email, password })
+      if (authErr) throw authErr
       router.push('/dashboard')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Login failed. Please try again.'
+      setError(msg)
+    } finally {
+      setLoading(false)
     }
   }
 
   const handleGoogleLogin = async () => {
     setGoogleLoading(true)
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    })
-    if (error) {
-      setError(error.message)
+    setError('')
+    try {
+      const { error: authErr } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      })
+      if (authErr) throw authErr
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Google sign-in failed. Please try again.'
+      setError(msg)
       setGoogleLoading(false)
     }
   }
@@ -174,7 +182,9 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full bg-chestnut text-snow py-3.5 rounded-xl font-bold shadow-md hover:shadow-lg hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2 group"
           >
-            {loading ? 'Logging in...' : (<>Log In <span className="group-hover:translate-x-1 transition-transform">→</span></>)}
+            {loading
+              ? <><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg> Logging in…</>
+              : <>Log In <span className="group-hover:translate-x-1 transition-transform">→</span></>}
           </button>
 
           <p className="text-center text-charcoal mt-6 text-sm">
