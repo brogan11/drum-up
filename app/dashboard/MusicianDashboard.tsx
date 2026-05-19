@@ -116,6 +116,9 @@ export default function MusicianDashboard() {
   const messagingRef = useRef<MessagingTabRef>(null)
   const [msgUnread, setMsgUnread] = useState(0)
 
+  // Newly confirmed gigs (unseen acceptances)
+  const [newlyConfirmed, setNewlyConfirmed] = useState(0)
+
   // Profile
   const [editingProfile, setEditingProfile] = useState(false)
   const [profileDraft, setProfileDraft] = useState<MusicianProfile>(INITIAL_PROFILE)
@@ -335,13 +338,33 @@ export default function MusicianDashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, userId])
 
+  // Clear newly-confirmed badge when musician opens bookings tab
+  useEffect(() => {
+    if (activeTab === 'bookings') setNewlyConfirmed(0)
+  }, [activeTab])
+
   // Realtime: bookings table changes
   useEffect(() => {
     if (!userId) return
     const sub = supabase
       .channel(`bookings-musician-${userId}`)
       .on('postgres_changes', {
-        event: '*',
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'bookings',
+        filter: `musician_id=eq.${userId}`,
+      }, (payload) => {
+        const updated = payload.new as { status?: string }
+        if (updated.status === 'confirmed') {
+          setNewlyConfirmed(n => n + 1)
+          toast.success('Gig confirmed! A restaurant accepted your application.')
+        }
+        supabase.from('profiles').select('latitude, longitude, max_distance_miles').eq('id', userId).maybeSingle().then(({ data }) => {
+          loadMyBookings(userId, (data?.latitude as number | null) ?? null, (data?.longitude as number | null) ?? null)
+        })
+      })
+      .on('postgres_changes', {
+        event: 'INSERT',
         schema: 'public',
         table: 'bookings',
         filter: `musician_id=eq.${userId}`,
@@ -626,6 +649,22 @@ export default function MusicianDashboard() {
                 <StatCard value={upcomingGigs} label="Upcoming" color="text-teal" icon="✅" />
                 <StatCard value={pendingApps} label="Pending" color="text-chestnut" icon="📬" />
                 <StatCard value={`$${totalEarned}`} label="Earned" color="text-graphite" icon="💰" highlight />
+              </div>
+            )}
+
+            {/* Newly confirmed notification banner */}
+            {newlyConfirmed > 0 && (
+              <div className="bg-teal/10 border border-teal/30 rounded-2xl px-4 py-3 mb-5 flex items-center gap-3">
+                <span className="text-2xl">🎉</span>
+                <p className="text-teal font-bold text-sm">
+                  <span className="font-black">{newlyConfirmed}</span> application{newlyConfirmed !== 1 ? 's were' : ' was'} accepted — you have a new confirmed gig!
+                </p>
+                <button
+                  onClick={() => setActiveTab('bookings')}
+                  className="ml-auto shrink-0 text-teal font-black text-xs underline hover:opacity-70 transition-opacity"
+                >
+                  View →
+                </button>
               </div>
             )}
 
@@ -1207,7 +1246,7 @@ export default function MusicianDashboard() {
         <div className="max-w-2xl mx-auto grid grid-cols-5 px-2 py-2">
           <TabButton icon="🏠" label="Home"     active={activeTab === 'home'}     onClick={() => setActiveTab('home')} />
           <TabButton icon="🎵" label="Gigs"     active={activeTab === 'gigs'}     onClick={() => setActiveTab('gigs')} />
-          <TabButton icon="📋" label="Bookings" active={activeTab === 'bookings'} onClick={() => setActiveTab('bookings')} />
+          <TabButton icon="📋" label="Bookings" active={activeTab === 'bookings'} onClick={() => setActiveTab('bookings')} badge={newlyConfirmed > 0 ? newlyConfirmed : undefined} />
           <TabButton icon="💬" label="Messages" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} badge={msgUnread} />
           <TabButton icon="♪"  label="Profile"  active={activeTab === 'profile'}  onClick={() => setActiveTab('profile')} />
         </div>

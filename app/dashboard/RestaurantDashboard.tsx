@@ -1428,8 +1428,10 @@ export default function RestaurantDashboard() {
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-charcoal font-bold text-sm pointer-events-none">$</span>
                 <input
                   type="number"
+                  min="0"
+                  step="1"
                   value={editDraft.budget}
-                  onChange={e => setEditDraft(p => ({ ...p, budget: e.target.value }))}
+                  onChange={e => setEditDraft(p => ({ ...p, budget: e.target.value.replace(/[^0-9]/g, '') }))}
                   className="w-full bg-white rounded-xl pl-8 pr-4 py-2.5 shadow-sm focus:outline-none text-sm border border-charcoal/10"
                 />
               </div>
@@ -1515,8 +1517,10 @@ export default function RestaurantDashboard() {
                 <input
                   type="number"
                   placeholder="e.g. 200"
+                  min="0"
+                  step="1"
                   value={newSlot.budget}
-                  onChange={e => setNewSlot(p => ({ ...p, budget: e.target.value }))}
+                  onChange={e => setNewSlot(p => ({ ...p, budget: e.target.value.replace(/[^0-9]/g, '') }))}
                   className="w-full bg-white rounded-xl pl-8 pr-4 py-2.5 shadow-sm focus:outline-none text-sm border border-charcoal/10"
                 />
               </div>
