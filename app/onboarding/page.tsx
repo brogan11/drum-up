@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 
 type UserType = 'restaurant' | 'musician' | 'fan'
 
-const TOTAL_STEPS = 4
+const BASE_STEPS = 4
 
 const PANEL_BG = `
   radial-gradient(ellipse 50% 40% at 12% 8%, rgba(108, 154, 139, 0.10), transparent 70%),
@@ -87,6 +87,9 @@ export default function OnboardingPage() {
   const [locationLoading, setLocationLoading] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const [savedAvatarUrl, setSavedAvatarUrl] = useState('')
+  const [stripeConnecting, setStripeConnecting] = useState(false)
+
+  const totalSteps = userType === 'musician' ? BASE_STEPS + 1 : BASE_STEPS
 
   const [basic, setBasic] = useState<BasicInfo>({
     fullName: '',
@@ -222,7 +225,7 @@ export default function OnboardingPage() {
       setError('Please enter your name and location to continue.')
       return
     }
-    if (step < TOTAL_STEPS) setStep(s => s + 1)
+    if (step < totalSteps) setStep(s => s + 1)
     else finish()
   }
   const back = () => {
@@ -230,68 +233,64 @@ export default function OnboardingPage() {
     if (step > 1) setStep(s => s - 1)
   }
 
+  const saveProfileToSupabase = async (): Promise<string> => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('You\'re no longer signed in. Please log in again.')
+
+    let avatarUrl = basic.avatarPreview.startsWith('blob:') ? '' : basic.avatarPreview
+    if (basic.avatarFile) {
+      const ext = basic.avatarFile.name.split('.').pop()?.toLowerCase() || 'jpg'
+      const path = `${user.id}/avatar-${Date.now()}.${ext}`
+      const { error: upErr } = await supabase.storage
+        .from('avatars')
+        .upload(path, basic.avatarFile, { upsert: true, contentType: basic.avatarFile.type })
+      if (upErr) { console.error('Avatar upload failed', upErr); throw upErr }
+      const { data } = supabase.storage.from('avatars').getPublicUrl(path)
+      avatarUrl = data.publicUrl
+    }
+
+    const roleMetadata: Record<string, unknown> = {}
+    if (userType === 'restaurant') {
+      roleMetadata.venue_name = role.venueName || null
+      roleMetadata.capacity = role.capacity ? Number(role.capacity) : null
+      roleMetadata.cuisine_type = role.cuisineType || null
+      roleMetadata.music_nights = role.musicNights
+    } else if (userType === 'musician') {
+      roleMetadata.genres = role.genres
+      roleMetadata.instruments = role.instruments || null
+      roleMetadata.solo_or_band = role.soloOrBand || null
+      roleMetadata.years_performing = role.yearsPerforming ? Number(role.yearsPerforming) : null
+    } else {
+      roleMetadata.favorite_genres = role.favoriteGenres
+    }
+
+    const profileRow = {
+      id: user.id,
+      user_type: userType,
+      full_name: basic.fullName || null,
+      avatar_url: avatarUrl || null,
+      location_text: basic.locationText || null,
+      latitude: basic.latitude,
+      longitude: basic.longitude,
+      bio: social.bio || null,
+      instagram_url: social.instagram || null,
+      tiktok_url: social.tiktok || null,
+      spotify_url: social.spotify || null,
+      youtube_url: social.youtube || null,
+      website: social.website || null,
+      role_metadata: roleMetadata,
+    }
+
+    const { error: upsertErr } = await supabase.from('profiles').upsert(profileRow)
+    if (upsertErr) { console.error('Profile upsert failed', upsertErr); throw upsertErr }
+    return avatarUrl
+  }
+
   const finish = async () => {
     setSubmitting(true)
     setError('')
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('You\'re no longer signed in. Please log in again.')
-      if (user.id !== userId) {
-        console.warn('Auth user id changed since mount', { mounted: userId, current: user.id })
-      }
-
-      let avatarUrl = basic.avatarPreview.startsWith('blob:') ? '' : basic.avatarPreview
-      if (basic.avatarFile) {
-        const ext = basic.avatarFile.name.split('.').pop()?.toLowerCase() || 'jpg'
-        const path = `${user.id}/avatar-${Date.now()}.${ext}`
-        const { error: upErr } = await supabase.storage
-          .from('avatars')
-          .upload(path, basic.avatarFile, { upsert: true, contentType: basic.avatarFile.type })
-        if (upErr) {
-          console.error('Avatar upload failed', upErr)
-          throw upErr
-        }
-        const { data } = supabase.storage.from('avatars').getPublicUrl(path)
-        avatarUrl = data.publicUrl
-      }
-
-      const roleMetadata: Record<string, unknown> = {}
-      if (userType === 'restaurant') {
-        roleMetadata.venue_name = role.venueName || null
-        roleMetadata.capacity = role.capacity ? Number(role.capacity) : null
-        roleMetadata.cuisine_type = role.cuisineType || null
-        roleMetadata.music_nights = role.musicNights
-      } else if (userType === 'musician') {
-        roleMetadata.genres = role.genres
-        roleMetadata.instruments = role.instruments || null
-        roleMetadata.solo_or_band = role.soloOrBand || null
-        roleMetadata.years_performing = role.yearsPerforming ? Number(role.yearsPerforming) : null
-      } else {
-        roleMetadata.favorite_genres = role.favoriteGenres
-      }
-
-      const profileRow = {
-        id: user.id,
-        user_type: userType,
-        full_name: basic.fullName || null,
-        avatar_url: avatarUrl || null,
-        location_text: basic.locationText || null,
-        latitude: basic.latitude,
-        longitude: basic.longitude,
-        bio: social.bio || null,
-        instagram_url: social.instagram || null,
-        tiktok_url: social.tiktok || null,
-        spotify_url: social.spotify || null,
-        youtube_url: social.youtube || null,
-        website: social.website || null,
-        role_metadata: roleMetadata,
-      }
-
-      const { error: upsertErr } = await supabase.from('profiles').upsert(profileRow)
-      if (upsertErr) {
-        console.error('Profile upsert failed', upsertErr)
-        throw upsertErr
-      }
+      const avatarUrl = await saveProfileToSupabase()
       setSavedAvatarUrl(avatarUrl)
       setShowSuccess(true)
       setSubmitting(false)
@@ -299,6 +298,27 @@ export default function OnboardingPage() {
       console.error('Onboarding finish failed', e)
       setError(formatError(e))
       setSubmitting(false)
+    }
+  }
+
+  const connectStripe = async () => {
+    setStripeConnecting(true)
+    setError('')
+    try {
+      await saveProfileToSupabase()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Not signed in.')
+      const res = await fetch('/api/stripe/connect', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+      const data = await res.json() as { url?: string; error?: string }
+      if (!res.ok || !data.url) throw new Error(data.error ?? 'Failed to start Stripe setup.')
+      window.location.href = data.url
+    } catch (e) {
+      console.error('Stripe connect failed', e)
+      setError(formatError(e))
+      setStripeConnecting(false)
     }
   }
 
@@ -373,7 +393,7 @@ export default function OnboardingPage() {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-charcoal text-xs uppercase tracking-[0.25em] font-bold">
-            Step {step} of {TOTAL_STEPS}
+            Step {step} of {totalSteps}
           </span>
         </div>
       </header>
@@ -383,7 +403,7 @@ export default function OnboardingPage() {
         <div className="h-1.5 bg-white/70 rounded-full overflow-hidden shadow-inner">
           <div
             className="h-full bg-chestnut transition-all duration-500 ease-out rounded-full"
-            style={{ width: `${(step / TOTAL_STEPS) * 100}%` }}
+            style={{ width: `${(step / totalSteps) * 100}%` }}
           />
         </div>
       </div>
@@ -732,12 +752,49 @@ export default function OnboardingPage() {
               </div>
             )}
 
+            {/* Step 5 — Stripe Connect (musicians only) */}
+            {step === 5 && userType === 'musician' && (
+              <div>
+                <div className="w-16 h-16 bg-chestnut/10 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-5">🏦</div>
+                <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.35em] mb-3 text-center">— Get paid</p>
+                <h2 className="text-graphite text-3xl md:text-4xl font-black tracking-tight mb-2 text-center">
+                  Set up <span className="text-chestnut italic">payouts.</span>
+                </h2>
+                <p className="text-charcoal mb-6 text-center leading-relaxed">
+                  Connect your bank account to receive payment for gigs directly through Drum Up.
+                  It only takes a couple of minutes.
+                </p>
+                <button
+                  type="button"
+                  onClick={connectStripe}
+                  disabled={stripeConnecting}
+                  className="w-full bg-chestnut text-snow font-bold py-3.5 rounded-xl shadow-md hover:shadow-lg hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2 mb-4"
+                >
+                  {stripeConnecting
+                    ? <><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg> Connecting…</>
+                    : <>🔗 Connect Bank Account</>}
+                </button>
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={finish}
+                    disabled={submitting || stripeConnecting}
+                    className="text-charcoal/60 text-sm hover:text-charcoal transition-colors disabled:opacity-50"
+                  >
+                    {submitting ? 'Saving…' : 'Skip for now'}
+                  </button>
+                  <p className="text-charcoal/40 text-xs mt-1">You won't receive payment until this is set up.</p>
+                </div>
+              </div>
+            )}
+
             {error && (
               <p className="bg-red-100 text-red-600 p-3 rounded-xl mt-6 text-sm">{error}</p>
             )}
           </div>
 
-          {/* Footer nav */}
+          {/* Footer nav — hidden on Step 5 (has its own action buttons) */}
+          {!(userType === 'musician' && step === 5) && (
           <div className="flex items-center justify-between mt-5 px-1">
             <button
               type="button"
@@ -767,12 +824,13 @@ export default function OnboardingPage() {
               >
                 {submitting
                   ? <><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg> Saving…</>
-                  : step === TOTAL_STEPS
+                  : step === totalSteps
                     ? <>Finish <span className="group-hover:translate-x-0.5 transition-transform">✓</span></>
                     : <>Next <span className="group-hover:translate-x-0.5 transition-transform">→</span></>}
               </button>
             </div>
           </div>
+          )}
         </div>
       </main>
     </div>

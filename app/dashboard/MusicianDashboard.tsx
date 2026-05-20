@@ -44,6 +44,8 @@ interface Booking {
   status: BookingStatus
   price: number
   note: string
+  paymentStatus: string | null
+  payoutReleased: boolean
 }
 
 interface MusicianProfile {
@@ -136,13 +138,18 @@ export default function MusicianDashboard() {
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
   const [analyticsLoaded, setAnalyticsLoaded] = useState(false)
 
+  // Stripe Connect
+  const [stripeOnboarded, setStripeOnboarded] = useState<boolean | null>(null)
+  const [stripeConnecting, setStripeConnecting] = useState(false)
+  const [stripeSuccess, setStripeSuccess] = useState(false)
+
   // ---- Data loading ----
 
   const loadMyBookings = async (uid: string, myLat: number | null, myLon: number | null) => {
     try {
       const { data: myBookings, error: bookingsErr } = await supabase
         .from('bookings')
-        .select('id, availability_id, restaurant_id, status, pay_amount, note, created_at')
+        .select('id, availability_id, restaurant_id, status, pay_amount, note, created_at, payment_status, payout_released')
         .eq('musician_id', uid)
         .order('created_at', { ascending: false })
 
@@ -202,6 +209,8 @@ export default function MusicianDashboard() {
           status: b.status as BookingStatus,
           price: Number(b.pay_amount) || 0,
           note: b.note ?? '',
+          paymentStatus: (b as Record<string, unknown>).payment_status as string | null ?? null,
+          payoutReleased: ((b as Record<string, unknown>).payout_released as boolean | null) ?? false,
         }
       })
       setBookings(mapped)
@@ -236,6 +245,7 @@ export default function MusicianDashboard() {
           spotify: data.spotify_url ?? '',
           website: data.website ?? '',
         })
+        setStripeOnboarded((data as Record<string, unknown>).stripe_onboarded as boolean | null ?? false)
 
         const myLat = data.latitude as number | null
         const myLon = data.longitude as number | null
@@ -422,6 +432,55 @@ export default function MusicianDashboard() {
     }
   }
 
+  const checkStripeStatus = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const res = await fetch('/api/stripe/connect/status', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+      const data = await res.json() as { onboarded: boolean }
+      if (res.ok) setStripeOnboarded(data.onboarded)
+    } catch (err) {
+      console.error('Stripe status check failed:', err)
+    }
+  }
+
+  const connectStripe = async () => {
+    setStripeConnecting(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { toast.error('Please log in again.'); return }
+      const res = await fetch('/api/stripe/connect', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+      const data = await res.json() as { url?: string; error?: string }
+      if (!res.ok || !data.url) throw new Error(data.error ?? 'Failed to start Stripe setup')
+      window.location.href = data.url
+    } catch (err) {
+      console.error('Stripe connect failed:', err)
+      toast.error(err instanceof Error ? err.message : 'Could not start Stripe setup.')
+      setStripeConnecting(false)
+    }
+  }
+
+  // Handle Stripe redirect back from onboarding
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const stripeParam = params.get('stripe')
+    if (stripeParam === 'success') {
+      checkStripeStatus().then(() => setStripeSuccess(true))
+      // Clean URL
+      window.history.replaceState({}, '', window.location.pathname)
+    } else if (stripeParam === 'refresh') {
+      connectStripe()
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const loadAnalytics = async (uid: string) => {
     if (analyticsLoaded) return
     setAnalyticsLoading(true)
@@ -487,6 +546,8 @@ export default function MusicianDashboard() {
         status: 'pending',
         price: gig.budget,
         note: applyNote,
+        paymentStatus: null,
+        payoutReleased: false,
       }
       setBookings(prev => [booking, ...prev])
       setGigs(prev => prev.filter(g => g.id !== gig.id))
@@ -603,6 +664,33 @@ export default function MusicianDashboard() {
       </header>
 
       <main className="max-w-2xl mx-auto px-4 py-5">
+
+        {/* Stripe Connect success toast */}
+        {stripeSuccess && (
+          <div className="bg-teal/10 border border-teal/30 rounded-2xl px-4 py-3 mb-4 flex items-center gap-3">
+            <span className="text-2xl">🎉</span>
+            <p className="text-teal font-bold text-sm flex-1">Bank account connected! You're all set to receive payments.</p>
+            <button onClick={() => setStripeSuccess(false)} className="text-teal/60 hover:text-teal text-lg leading-none">✕</button>
+          </div>
+        )}
+
+        {/* Payout setup banner */}
+        {stripeOnboarded === false && (
+          <div className="bg-chestnut rounded-2xl px-4 py-4 mb-4 flex items-center gap-3">
+            <span className="text-2xl shrink-0">⚠️</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-snow font-bold text-sm leading-snug">Set up payouts to receive payment for your gigs</p>
+              <p className="text-snow/70 text-xs mt-0.5">You won't be paid until your bank account is connected.</p>
+            </div>
+            <button
+              onClick={connectStripe}
+              disabled={stripeConnecting}
+              className="shrink-0 bg-snow text-chestnut font-bold text-xs px-3 py-2 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 whitespace-nowrap"
+            >
+              {stripeConnecting ? 'Connecting…' : 'Connect Bank →'}
+            </button>
+          </div>
+        )}
 
         {/* ---- HOME TAB ---- */}
         {activeTab === 'home' && (
@@ -929,6 +1017,15 @@ export default function MusicianDashboard() {
           const pastGigs = bookings
             .filter(b => b.status === 'confirmed' && new Date(b.gig.rawEndDatetime || b.gig.rawDate + 'T23:59') < tabNow)
             .sort((a, b) => b.gig.rawEndDatetime.localeCompare(a.gig.rawEndDatetime))
+          const pendingEarnings = bookings
+            .filter(b => b.status === 'confirmed' && b.paymentStatus === 'authorized' && !b.payoutReleased)
+            .reduce((s, b) => s + b.price, 0)
+          const releasedEarnings = bookings
+            .filter(b => b.status === 'confirmed' && b.paymentStatus === 'paid' && b.payoutReleased)
+            .reduce((s, b) => s + b.price, 0)
+          const totalConfirmedEarnings = bookings
+            .filter(b => b.status === 'confirmed')
+            .reduce((s, b) => s + b.price, 0)
           return (
             <>
               <div className="mb-6">
@@ -937,6 +1034,32 @@ export default function MusicianDashboard() {
                   My <span className="text-chestnut italic">Bookings.</span>
                 </h2>
               </div>
+
+              {/* Earnings summary */}
+              {totalConfirmedEarnings > 0 && (
+                <div className="bg-graphite rounded-2xl p-4 mb-6 shadow-sm">
+                  <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">Earnings</p>
+                  <div className="grid grid-cols-3 divide-x divide-white/10">
+                    <div className="pr-3">
+                      <p className="text-snow text-2xl font-black">${totalConfirmedEarnings}</p>
+                      <p className="text-snow/40 text-[10px] font-semibold uppercase tracking-wider mt-0.5">Total</p>
+                    </div>
+                    <div className="px-3">
+                      <p className="text-chestnut text-2xl font-black">${pendingEarnings}</p>
+                      <p className="text-snow/40 text-[10px] font-semibold uppercase tracking-wider mt-0.5">Authorized</p>
+                    </div>
+                    <div className="pl-3">
+                      <p className="text-teal text-2xl font-black">${releasedEarnings}</p>
+                      <p className="text-snow/40 text-[10px] font-semibold uppercase tracking-wider mt-0.5">Released</p>
+                    </div>
+                  </div>
+                  {pendingEarnings > 0 && (
+                    <p className="text-snow/50 text-xs mt-3 leading-relaxed">
+                      ${pendingEarnings} is authorized and will be released to your bank after each gig date passes.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Pending */}
               <div className="mb-8">
@@ -1044,6 +1167,11 @@ export default function MusicianDashboard() {
                             </div>
                             <div className="text-right shrink-0">
                               <p className="text-teal font-black">${b.price}</p>
+                              {b.paymentStatus === 'paid' ? (
+                                <span className="inline-block bg-teal/10 text-teal text-[10px] font-black px-2 py-0.5 rounded-full mt-1">Paid</span>
+                              ) : b.paymentStatus === 'authorized' ? (
+                                <span className="inline-block bg-chestnut/10 text-chestnut text-[10px] font-black px-2 py-0.5 rounded-full mt-1">Auth'd</span>
+                              ) : null}
                               <button
                                 onClick={() => openConversationWithVenue(b.gig)}
                                 className="text-charcoal/60 text-[10px] font-medium hover:text-chestnut transition-colors mt-1 block"

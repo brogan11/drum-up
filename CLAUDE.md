@@ -36,7 +36,7 @@ Drum Up is a two-sided marketplace platform (web + mobile) that connects restaur
 | `teal` | `#6C9A8B` | Secondary buttons, success states |
 | `charcoal` | `#5E5E5E` | Body text, borders, icons |
 
-Also: `#E8E4E0` is used as the darker right-side background on auth pages.
+Also: `#E8E4E0` is used as the darker right-side background on auth pages and as the base for the dashboard/app page background (see below).
 
 ---
 
@@ -48,6 +48,11 @@ Also: `#E8E4E0` is used as the darker right-side background on auth pages.
 - **Cards:** White background, rounded-2xl, shadow-sm
 - **Buttons:** chestnut for primary, teal for secondary, with `font-bold`
 - **Logo:** DU monogram in chestnut. Located at `public/logo.png` (transparent bg). Use `next/image` to render. Always pair with "Drum Up" text in the navbar so first-time visitors know the brand name.
+- **Dashboard/app page background:** `#E8E4E0` base with two soft radial glows — teal at top-left and chestnut at bottom-right. Apply as an inline style on the root wrapper:
+  ```
+  style={{ background: 'radial-gradient(ellipse 50% 40% at 12% 8%, rgba(108,154,139,0.10), transparent 70%), radial-gradient(ellipse 50% 40% at 88% 92%, rgba(220,127,65,0.12), transparent 70%), #E8E4E0' }}
+  ```
+  Used on every authenticated app screen (restaurant, musician, fan dashboards, onboarding, settings). Provides warmth while keeping the UI light and readable.
 
 ---
 

@@ -9,6 +9,8 @@ import { Avatar } from '@/components/Avatar'
 import MessagingTab, { MessagingTabRef } from '@/components/MessagingTab'
 import { useToast } from '@/components/Toast'
 import { SkeletonStatCard, SkeletonBookingCard, SkeletonMusicianCard } from '@/components/Skeleton'
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
+import { stripePromise } from '@/lib/stripe-client'
 
 // ---- Types ----
 
@@ -30,6 +32,14 @@ interface Application {
   note: string
   avatar: string
   status: AppStatus
+  stripeOnboarded: boolean
+  paymentStatus: string | null
+  payoutReleased: boolean
+}
+
+interface PaymentModalData {
+  slot: Slot
+  app: Application
 }
 
 interface Slot {
@@ -98,6 +108,149 @@ function StatusBadge({ status }: { status: SlotStatus }) {
   if (status === 'booked') return <span className="bg-chestnut/10 text-chestnut text-[10px] font-black px-2.5 py-1 rounded-full tracking-widest uppercase">Booked</span>
   if (status === 'cancelled') return <span className="bg-red-100 text-red-500 text-[10px] font-black px-2.5 py-1 rounded-full tracking-widest uppercase">Cancelled</span>
   return <span className="bg-charcoal/10 text-charcoal text-[10px] font-black px-2.5 py-1 rounded-full tracking-widest uppercase">Past</span>
+}
+
+// ---- Payment Modal ----
+
+function PaymentModalInner({ slot, app, onClose, onConfirmed }: {
+  slot: Slot
+  app: Application
+  onClose: () => void
+  onConfirmed: (paymentIntentId: string) => void
+}) {
+  const stripe = useStripe()
+  const elements = useElements()
+  const [processing, setProcessing] = useState(false)
+  const [error, setError] = useState('')
+  const [cardComplete, setCardComplete] = useState(false)
+
+  const handlePay = async () => {
+    if (!stripe || !elements || processing) return
+    setProcessing(true)
+    setError('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Not authenticated')
+
+      const res = await fetch('/api/stripe/payment-intent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          booking_id: app.id,
+          availability_id: slot.id,
+          musician_id: app.musicianId,
+          amount: slot.budget * 100,
+        }),
+      })
+      const data = await res.json() as { client_secret?: string; error?: string }
+      if (!res.ok) throw new Error(data.error ?? 'Failed to initialize payment.')
+
+      const cardElement = elements.getElement(CardElement)
+      if (!cardElement) throw new Error('Card element unavailable.')
+
+      const { error: stripeErr, paymentIntent } = await stripe.confirmCardPayment(
+        data.client_secret!,
+        { payment_method: { card: cardElement } },
+      )
+      if (stripeErr) throw new Error(stripeErr.message ?? 'Payment was declined.')
+      if (paymentIntent?.status === 'requires_capture') {
+        onConfirmed(paymentIntent.id)
+      } else {
+        throw new Error(`Unexpected payment status: ${paymentIntent?.status}`)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Payment failed.')
+      setProcessing(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
+      <div className="bg-snow w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
+        <div className="bg-graphite rounded-t-3xl px-6 py-4 flex items-center justify-between relative overflow-hidden">
+          <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-chestnut opacity-25 blur-2xl pointer-events-none" />
+          <div className="relative z-10">
+            <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em]">Confirm & Pay</p>
+            <h3 className="text-snow text-xl font-black tracking-tight">Confirm <span className="text-chestnut italic">Booking.</span></h3>
+          </div>
+          <button onClick={onClose} className="text-snow/60 hover:text-snow transition-colors text-xl leading-none relative z-10">✕</button>
+        </div>
+        <div className="p-6">
+          {/* Summary card */}
+          <div className="bg-white rounded-2xl p-4 mb-5 shadow-sm">
+            <div className="flex items-center gap-3 mb-4">
+              <Avatar src={app.avatar} className="w-11 h-11 rounded-full" textSize="text-xl" bg="bg-chestnut/10" />
+              <div className="flex-1 min-w-0">
+                <p className="text-graphite font-bold text-sm truncate">{app.musicianName}</p>
+                <p className="text-charcoal text-xs mt-0.5">{slot.date} · {slot.time}</p>
+              </div>
+            </div>
+            <div className="space-y-1.5 border-t border-charcoal/[0.08] pt-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-charcoal">Gig pay</span>
+                <span className="text-graphite font-semibold">${slot.budget}.00</span>
+              </div>
+              <div className="flex justify-between text-xs text-charcoal/60">
+                <span>Platform fee (8%)</span>
+                <span>Absorbed by Drum Up</span>
+              </div>
+              <div className="flex justify-between text-sm font-black border-t border-charcoal/[0.08] pt-2 mt-1">
+                <span className="text-graphite">Total charged</span>
+                <span className="text-chestnut">${slot.budget}.00</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card input */}
+          <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-2">Payment</p>
+          <div className="bg-white rounded-xl px-4 py-3.5 mb-5 shadow-sm border border-charcoal/10">
+            <CardElement
+              onChange={(e) => setCardComplete(e.complete)}
+              options={{
+                style: {
+                  base: {
+                    fontSize: '15px',
+                    color: '#333333',
+                    fontFamily: 'Inter, sans-serif',
+                    '::placeholder': { color: '#a0a0a0' },
+                  },
+                  invalid: { color: '#ef4444' },
+                },
+              }}
+            />
+          </div>
+
+          {error && (
+            <div className="bg-red-100 text-red-600 px-4 py-3 rounded-xl mb-4 text-sm">{error}</div>
+          )}
+
+          <p className="text-charcoal/50 text-xs text-center mb-4">
+            Payment is authorized now and released to {app.musicianName} after the gig on {slot.date}.
+          </p>
+
+          <button
+            onClick={handlePay}
+            disabled={!cardComplete || processing || !stripe}
+            className="w-full bg-chestnut text-snow py-3.5 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed mb-2"
+          >
+            {processing
+              ? <span className="flex items-center justify-center gap-2"><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg> Processing…</span>
+              : `Confirm & Pay $${slot.budget}`}
+          </button>
+          <button
+            onClick={onClose}
+            disabled={processing}
+            className="w-full bg-white text-charcoal py-3 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ---- Main Component ----
@@ -195,7 +348,7 @@ export default function RestaurantDashboard() {
     if (slotIds.length > 0) {
       const { data: bookingsData } = await supabase
         .from('bookings')
-        .select('id, availability_id, musician_id, status, pay_amount, note')
+        .select('id, availability_id, musician_id, status, pay_amount, note, payment_status, payout_released')
         .eq('restaurant_id', rid)
         .in('status', ['pending', 'confirmed'])
         .in('availability_id', slotIds)
@@ -204,7 +357,7 @@ export default function RestaurantDashboard() {
         const musicianIds = [...new Set(bookingsData.map(b => b.musician_id))]
         const { data: musicianData } = await supabase
           .from('profiles')
-          .select('id, full_name, avatar_url, role_metadata, location_text, latitude, longitude, instagram_url, youtube_url, spotify_url')
+          .select('id, full_name, avatar_url, role_metadata, location_text, latitude, longitude, instagram_url, youtube_url, spotify_url, stripe_onboarded')
           .in('id', musicianIds)
         const musicianById = new Map((musicianData ?? []).map(m => [m.id, m]))
 
@@ -231,6 +384,9 @@ export default function RestaurantDashboard() {
               note: b.note ?? '',
               avatar: musician?.avatar_url ?? '',
               status: b.status as AppStatus,
+              stripeOnboarded: ((musician as Record<string, unknown>)?.stripe_onboarded as boolean | null) ?? false,
+              paymentStatus: (b as Record<string, unknown>).payment_status as string | null ?? null,
+              payoutReleased: ((b as Record<string, unknown>).payout_released as boolean | null) ?? false,
             }
           })
           return { ...slot, applications }
@@ -472,6 +628,9 @@ export default function RestaurantDashboard() {
   const [cancelSlotId, setCancelSlotId] = useState<string | null>(null)
   const [cancellingSlot, setCancellingSlot] = useState(false)
 
+  // Payment modal
+  const [paymentModalData, setPaymentModalData] = useState<PaymentModalData | null>(null)
+
   const handlePostSlot = async () => {
     if (!newSlot.date || !newSlot.startTime || !newSlot.endTime || !newSlot.budget) return
     if (!userId) return
@@ -601,6 +760,50 @@ export default function RestaurantDashboard() {
     } finally {
       setCancellingSlot(false)
     }
+  }
+
+  const handlePaymentConfirmed = async (paymentIntentId: string) => {
+    if (!paymentModalData) return
+    const { slot, app } = paymentModalData
+    try {
+      await supabase.from('bookings').update({
+        status: 'confirmed',
+        stripe_payment_intent_id: paymentIntentId,
+        payment_status: 'authorized',
+      }).eq('id', app.id)
+      await supabase.from('availability').update({ status: 'filled' }).eq('id', slot.id)
+      await supabase.from('bookings')
+        .update({ status: 'cancelled' })
+        .eq('availability_id', slot.id)
+        .eq('status', 'pending')
+        .neq('id', app.id)
+      setSlots(prev => prev.map(s => {
+        if (s.id !== slot.id) return s
+        return {
+          ...s,
+          status: 'booked' as SlotStatus,
+          bookedMusician: app.musicianName,
+          applications: s.applications.map(a => {
+            if (a.id === app.id) return { ...a, status: 'confirmed' as AppStatus }
+            if (a.status === 'pending') return { ...a, status: 'cancelled' as AppStatus }
+            return a
+          }),
+        }
+      }))
+      setPaymentModalData(null)
+      toast.success(`Booking confirmed! Payment authorized and will be released to ${app.musicianName} after the gig on ${slot.date}.`)
+    } catch (err) {
+      console.error('Failed to confirm booking after payment:', err)
+      toast.error('Payment succeeded but booking save failed. Please contact support.')
+    }
+  }
+
+  const openPaymentModal = (slot: Slot, app: Application) => {
+    if (!app.stripeOnboarded) {
+      toast.error("This musician hasn't set up their payout account yet. Message them to complete their Stripe setup, or choose another musician.")
+      return
+    }
+    setPaymentModalData({ slot, app })
   }
 
   const openConversation = (musician: { id: string; name: string; avatar: string }) => {
@@ -824,7 +1027,7 @@ export default function RestaurantDashboard() {
                           </div>
                         )}
                         <div className="flex gap-2">
-                          <button onClick={() => handleApplicationAction(slot.id, app.id, 'accept')} className="flex-1 bg-teal text-snow py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">Accept</button>
+                          <button onClick={() => openPaymentModal(slot, app)} className="flex-1 bg-teal text-snow py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">Accept</button>
                           <button onClick={() => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })} className="px-4 py-2.5 rounded-xl text-sm font-bold bg-graphite/10 text-graphite hover:bg-graphite/20 transition-colors">💬</button>
                           <button onClick={() => handleApplicationAction(slot.id, app.id, 'decline')} className="flex-1 bg-snow text-charcoal py-2.5 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10">Decline</button>
                         </div>
@@ -906,7 +1109,7 @@ export default function RestaurantDashboard() {
                           </div>
                         )}
                         <div className="flex gap-2">
-                          <button onClick={() => handleApplicationAction(slot.id, app.id, 'accept')} className="flex-1 bg-chestnut text-snow py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">Accept</button>
+                          <button onClick={() => openPaymentModal(slot, app)} className="flex-1 bg-chestnut text-snow py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">Accept</button>
                           <button onClick={() => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })} className="px-4 py-2.5 rounded-xl text-sm font-bold bg-graphite/10 text-graphite hover:bg-graphite/20 transition-colors">💬</button>
                           <button onClick={() => handleApplicationAction(slot.id, app.id, 'decline')} className="flex-1 bg-snow text-charcoal py-2.5 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10">Decline</button>
                         </div>
@@ -957,6 +1160,11 @@ export default function RestaurantDashboard() {
                                 </div>
                                 <div className="text-right shrink-0">
                                   <p className="text-teal font-black">${slot.budget}</p>
+                                  {confirmedApp?.paymentStatus === 'paid' ? (
+                                    <span className="inline-block bg-teal/10 text-teal text-[9px] font-black px-2 py-0.5 rounded-full mt-0.5">Released</span>
+                                  ) : confirmedApp?.paymentStatus === 'authorized' ? (
+                                    <span className="inline-block bg-chestnut/10 text-chestnut text-[9px] font-black px-2 py-0.5 rounded-full mt-0.5">Authorized</span>
+                                  ) : null}
                                   <button
                                     onClick={() => confirmedApp && openConversation({ id: confirmedApp.musicianId, name: confirmedApp.musicianName, avatar: confirmedApp.avatar })}
                                     className="text-charcoal/60 text-[10px] font-medium hover:text-chestnut transition-colors mt-1 block"
@@ -1035,6 +1243,7 @@ export default function RestaurantDashboard() {
                             selectedSlotId={selectedSlotId}
                             setSelectedSlotId={setSelectedSlotId}
                             handleApplicationAction={handleApplicationAction}
+                            onAccept={(app) => openPaymentModal(slot, app)}
                             onMessage={(app) => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })}
                             onEdit={slot.status === 'open' ? () => { setEditingSlot(slot); setEditDraft({ date: slot.rawDate, startTime: slot.rawStartTime, endTime: slot.rawEndTime, budget: String(slot.budget), notes: slot.notes }) } : undefined}
                             onCancel={(slot.status === 'open' || slot.status === 'booked') ? () => setCancelSlotId(slot.id) : undefined}
@@ -1053,6 +1262,10 @@ export default function RestaurantDashboard() {
                     selectedSlotId={selectedSlotId}
                     setSelectedSlotId={setSelectedSlotId}
                     handleApplicationAction={handleApplicationAction}
+                    onAccept={(app) => {
+                      const slot = slots.find(s => s.applications.some(a => a.id === app.id))
+                      if (slot) openPaymentModal(slot, app)
+                    }}
                     onMessage={(app) => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })}
                     onEditSlot={(slot) => { setEditingSlot(slot); setEditDraft({ date: slot.rawDate, startTime: slot.rawStartTime, endTime: slot.rawEndTime, budget: String(slot.budget), notes: slot.notes }) }}
                     onCancelSlot={(slotId) => setCancelSlotId(slotId)}
@@ -1592,6 +1805,30 @@ export default function RestaurantDashboard() {
         </div>
       )}
 
+      {/* ---- PAYMENT MODAL ---- */}
+      {paymentModalData && (
+        <Elements
+          stripe={stripePromise}
+          options={{
+            appearance: {
+              theme: 'stripe',
+              variables: {
+                colorPrimary: '#DC7F41',
+                fontFamily: 'Inter, sans-serif',
+                borderRadius: '12px',
+              },
+            },
+          }}
+        >
+          <PaymentModalInner
+            slot={paymentModalData.slot}
+            app={paymentModalData.app}
+            onClose={() => setPaymentModalData(null)}
+            onConfirmed={handlePaymentConfirmed}
+          />
+        </Elements>
+      )}
+
     </div>
   )
 }
@@ -1671,11 +1908,12 @@ function TabButton({ icon, label, active, onClick, badge }: { icon: string; labe
   )
 }
 
-function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAction, onMessage, onEdit, onCancel }: {
+function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAction, onAccept, onMessage, onEdit, onCancel }: {
   slot: Slot
   selectedSlotId: string | null
   setSelectedSlotId: (id: string | null) => void
   handleApplicationAction: (slotId: string, appId: string, action: 'accept' | 'decline') => void
+  onAccept: (app: Application) => void
   onMessage: (app: Application) => void
   onEdit?: () => void
   onCancel?: () => void
@@ -1750,7 +1988,7 @@ function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAc
               {app.note && <div className="bg-snow rounded-lg px-3 py-2 mb-2"><p className="text-charcoal text-sm italic">"{app.note}"</p></div>}
               {app.status === 'pending' ? (
                 <div className="flex gap-2">
-                  <button onClick={() => handleApplicationAction(slot.id, app.id, 'accept')} className="flex-1 bg-teal text-snow py-2 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity">Accept</button>
+                  <button onClick={() => onAccept(app)} className="flex-1 bg-teal text-snow py-2 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity">Accept</button>
                   <button onClick={() => onMessage(app)} className="px-3 py-2 rounded-lg text-xs font-medium bg-graphite/10 text-graphite hover:bg-graphite/20">💬</button>
                   <button onClick={() => handleApplicationAction(slot.id, app.id, 'decline')} className="flex-1 bg-snow text-charcoal py-2 rounded-lg text-xs font-medium hover:bg-[#E8E4E0] border border-charcoal/10">Decline</button>
                 </div>
@@ -1767,7 +2005,7 @@ function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAc
   )
 }
 
-function SlotCalendar({ slots, calendarMonth, setCalendarMonth, calendarSelectedDay, setCalendarSelectedDay, selectedSlotId, setSelectedSlotId, handleApplicationAction, onMessage, onEditSlot, onCancelSlot }: {
+function SlotCalendar({ slots, calendarMonth, setCalendarMonth, calendarSelectedDay, setCalendarSelectedDay, selectedSlotId, setSelectedSlotId, handleApplicationAction, onAccept, onMessage, onEditSlot, onCancelSlot }: {
   slots: Slot[]
   calendarMonth: Date
   setCalendarMonth: (d: Date) => void
@@ -1776,6 +2014,7 @@ function SlotCalendar({ slots, calendarMonth, setCalendarMonth, calendarSelected
   selectedSlotId: string | null
   setSelectedSlotId: (id: string | null) => void
   handleApplicationAction: (slotId: string, appId: string, action: 'accept' | 'decline') => void
+  onAccept: (app: Application) => void
   onMessage: (app: Application) => void
   onEditSlot?: (slot: Slot) => void
   onCancelSlot?: (slotId: string) => void
@@ -1865,6 +2104,7 @@ function SlotCalendar({ slots, calendarMonth, setCalendarMonth, calendarSelected
                   selectedSlotId={selectedSlotId}
                   setSelectedSlotId={setSelectedSlotId}
                   handleApplicationAction={handleApplicationAction}
+                  onAccept={onAccept}
                   onMessage={onMessage}
                   onEdit={slot.status === 'open' && onEditSlot ? () => onEditSlot(slot) : undefined}
                   onCancel={(slot.status === 'open' || slot.status === 'booked') && onCancelSlot ? () => onCancelSlot(slot.id) : undefined}
