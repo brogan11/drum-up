@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   try {
     const { data: bookings, error: fetchErr } = await supabaseAdmin
       .from('bookings')
-      .select('id, stripe_payment_intent_id, availability_id')
+      .select('id, stripe_payment_intent_id, availability_id, pay_amount')
       .eq('payment_status', 'authorized')
       .eq('payout_released', false)
       .eq('status', 'confirmed')
@@ -45,7 +45,18 @@ export async function POST(request: Request) {
 
     for (const booking of due) {
       try {
-        await stripe.paymentIntents.capture(booking.stripe_payment_intent_id as string)
+        console.log('[Payout] Processing booking:', {
+          bookingId: booking.id,
+          paymentIntentId: booking.stripe_payment_intent_id,
+          gigDate: avails?.find(a => a.id === booking.availability_id)?.date,
+          amount: booking.pay_amount,
+        })
+        const captured = await stripe.paymentIntents.capture(booking.stripe_payment_intent_id as string)
+        console.log('[Payout] Capture result:', {
+          id: captured.id,
+          status: captured.status,
+          amountCaptured: captured.amount_received / 100,
+        })
         await supabaseAdmin
           .from('bookings')
           .update({ payment_status: 'paid', payout_released: true })

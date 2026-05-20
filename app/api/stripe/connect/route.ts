@@ -29,7 +29,12 @@ export async function POST(request: Request) {
         type: 'express',
         country: 'US',
         email: user.email,
+        business_type: 'individual',
+        individual: {
+          email: user.email,
+        },
         capabilities: {
+          card_payments: { requested: false },
           transfers: { requested: true },
         },
       })

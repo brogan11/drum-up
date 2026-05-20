@@ -31,6 +31,14 @@ export async function GET(request: Request) {
       account.charges_enabled === true &&
       account.payouts_enabled === true
 
+    console.log('[Stripe Connect] Account status:', {
+      accountId: account.id,
+      detailsSubmitted: account.details_submitted,
+      chargesEnabled: account.charges_enabled,
+      payoutsEnabled: account.payouts_enabled,
+      onboarded,
+    })
+
     await supabaseAdmin
       .from('profiles')
       .update({ stripe_onboarded: onboarded })

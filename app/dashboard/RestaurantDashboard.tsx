@@ -191,15 +191,19 @@ function PaymentModalInner({ slot, app, onClose, onConfirmed }: {
             <div className="space-y-1.5 border-t border-charcoal/[0.08] pt-3">
               <div className="flex justify-between text-sm">
                 <span className="text-charcoal">Gig pay</span>
-                <span className="text-graphite font-semibold">${slot.budget}.00</span>
+                <span className="text-graphite font-semibold">${slot.budget.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-xs text-charcoal/60">
-                <span>Platform fee (8%)</span>
-                <span>Absorbed by Drum Up</span>
+                <span>Platform fee (8%, absorbed by Drum Up)</span>
+                <span>${(slot.budget * 0.08).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-xs text-charcoal/60">
+                <span>Musician receives</span>
+                <span>${(slot.budget * 0.92).toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm font-black border-t border-charcoal/[0.08] pt-2 mt-1">
-                <span className="text-graphite">Total charged</span>
-                <span className="text-chestnut">${slot.budget}.00</span>
+                <span className="text-graphite">You pay</span>
+                <span className="text-chestnut">${slot.budget.toFixed(2)}</span>
               </div>
             </div>
           </div>

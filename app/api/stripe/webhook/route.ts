@@ -30,15 +30,18 @@ export async function POST(request: Request) {
     return new Response('Invalid signature', { status: 400 })
   }
 
+  console.log('[Webhook] Received event:', { type: event.type, id: event.id })
+
   try {
     switch (event.type) {
+      // fires after stripe.paymentIntents.capture() — gig has passed and payout released
       case 'payment_intent.succeeded': {
         const pi = event.data.object as Stripe.PaymentIntent
         const bookingId = pi.metadata?.booking_id
         if (bookingId) {
           await supabaseAdmin
             .from('bookings')
-            .update({ payment_status: 'authorized' })
+            .update({ payment_status: 'paid', payout_released: true })
             .eq('id', bookingId)
         }
         break

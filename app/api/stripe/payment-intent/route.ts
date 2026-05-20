@@ -55,6 +55,14 @@ export async function POST(request: Request) {
     const totalAmount = amount
     const platformFee = Math.round(totalAmount * 0.08)
 
+    console.log('[Stripe] Creating payment intent:', {
+      totalAmountCents: totalAmount,
+      applicationFeeCents: platformFee,
+      musicianReceivesCents: totalAmount - platformFee,
+      destination: musician.stripe_account_id,
+      bookingId: booking_id,
+    })
+
     const paymentIntent = await stripe.paymentIntents.create({
       amount: totalAmount,
       currency: 'usd',
@@ -69,6 +77,15 @@ export async function POST(request: Request) {
         musician_id,
         restaurant_id: user.id,
       },
+    })
+
+    console.log('[Stripe] Payment intent created:', {
+      id: paymentIntent.id,
+      amount: paymentIntent.amount,
+      applicationFeeAmount: paymentIntent.application_fee_amount,
+      transferDestination: paymentIntent.transfer_data?.destination,
+      captureMethod: paymentIntent.capture_method,
+      status: paymentIntent.status,
     })
 
     return NextResponse.json({ client_secret: paymentIntent.client_secret })
