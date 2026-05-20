@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 
 type UserType = 'restaurant' | 'musician' | 'fan'
 
-const TOTAL_STEPS = 3
+const TOTAL_STEPS = 4
 
 const PANEL_BG = `
   radial-gradient(ellipse 50% 40% at 12% 8%, rgba(108, 154, 139, 0.10), transparent 70%),
@@ -77,6 +77,8 @@ interface SocialInfo {
 export default function OnboardingPage() {
   const router = useRouter()
   const [step, setStep] = useState(1)
+  const [tosAccepted, setTosAccepted] = useState(false)
+  const [privacyAccepted, setPrivacyAccepted] = useState(false)
   const [userType, setUserType] = useState<UserType>('fan')
   const [userId, setUserId] = useState('')
   const [loading, setLoading] = useState(true)
@@ -207,11 +209,16 @@ export default function OnboardingPage() {
   const toggleArrayItem = (arr: string[], item: string) =>
     arr.includes(item) ? arr.filter(x => x !== item) : [...arr, item]
 
-  const step1Valid = basic.fullName.trim().length > 0 && basic.locationText.trim().length > 0
+  const step1Valid = tosAccepted && privacyAccepted
+  const step2Valid = basic.fullName.trim().length > 0 && basic.locationText.trim().length > 0
 
   const next = () => {
     setError('')
     if (step === 1 && !step1Valid) {
+      setError('You must accept both the Terms of Service and Privacy Policy to continue.')
+      return
+    }
+    if (step === 2 && !step2Valid) {
       setError('Please enter your name and location to continue.')
       return
     }
@@ -388,6 +395,89 @@ export default function OnboardingPage() {
 
             {step === 1 && (
               <div>
+                <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.35em] mb-3">— Before you begin</p>
+                <h2 className="text-graphite text-3xl md:text-4xl font-black tracking-tight mb-2">
+                  Review & <span className="text-chestnut italic">agree.</span>
+                </h2>
+                <p className="text-charcoal mb-6">Please read and accept our terms before creating your profile.</p>
+
+                {/* Terms of Service */}
+                <div className="bg-snow rounded-xl p-4 mb-3 shadow-sm">
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div>
+                      <p className="text-graphite font-bold text-sm">Terms of Service</p>
+                      <p className="text-charcoal/70 text-xs mt-0.5">Effective May 19, 2026 · Version 1.0</p>
+                    </div>
+                  </div>
+                  <div className="h-40 overflow-y-auto bg-white rounded-lg p-3 text-xs text-charcoal leading-relaxed space-y-2 shadow-inner mb-3">
+                    <p><strong>1. Introduction.</strong> Welcome to Drum Up. By creating an account you agree to these Terms. Drum Up is operated as a sole proprietorship in Pennsylvania, United States.</p>
+                    <p><strong>2. Eligibility.</strong> You must be at least 18 years old, have legal capacity to enter a contract, and provide accurate registration information.</p>
+                    <p><strong>3. Description.</strong> Drum Up is a marketplace connecting restaurants and musicians. We act solely as a facilitator — we do not employ or endorse any user.</p>
+                    <p><strong>4. Accounts.</strong> You are responsible for your account credentials and all activity under your account.</p>
+                    <p><strong>5. Booking & Payments.</strong> Drum Up charges an 8% platform fee on confirmed bookings. All payments must flow through the Platform via Stripe. Arranging off-platform payments to bypass the fee is a violation and may result in account termination.</p>
+                    <p><strong>6. User Conduct.</strong> You agree not to provide false information, harass other users, circumvent fees, scrape the Platform, or otherwise violate these Terms.</p>
+                    <p><strong>7. Content.</strong> You retain ownership of your content but grant Drum Up a license to display and distribute it on the Platform.</p>
+                    <p><strong>8. Third-Party Services.</strong> The Platform integrates with Stripe, Google, Supabase, and Vercel. Your use of those services is subject to their own terms.</p>
+                    <p><strong>9. Disclaimers.</strong> The Platform is provided "as is." Drum Up is not liable for indirect, incidental, or consequential damages. Total liability is capped at platform fees paid in the prior six months.</p>
+                    <p><strong>10. Termination.</strong> Drum Up may suspend or terminate your account at any time for violations of these Terms.</p>
+                    <p><strong>11. Governing Law.</strong> These Terms are governed by Pennsylvania law. Disputes will be resolved in Pennsylvania courts.</p>
+                    <p><strong>12. Contact.</strong> support@drum-up.app</p>
+                  </div>
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <div
+                      onClick={() => setTosAccepted(v => !v)}
+                      className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
+                        tosAccepted ? 'bg-chestnut border-chestnut' : 'border-charcoal/30 bg-white group-hover:border-chestnut/60'
+                      }`}
+                    >
+                      {tosAccepted && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                    </div>
+                    <span className="text-charcoal text-sm font-semibold select-none" onClick={() => setTosAccepted(v => !v)}>
+                      I have read and agree to the <span className="text-chestnut">Terms of Service</span>
+                    </span>
+                  </label>
+                </div>
+
+                {/* Privacy Policy */}
+                <div className="bg-snow rounded-xl p-4 mb-1 shadow-sm">
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div>
+                      <p className="text-graphite font-bold text-sm">Privacy Policy</p>
+                      <p className="text-charcoal/70 text-xs mt-0.5">Effective May 19, 2026 · Version 1.0</p>
+                    </div>
+                  </div>
+                  <div className="h-40 overflow-y-auto bg-white rounded-lg p-3 text-xs text-charcoal leading-relaxed space-y-2 shadow-inner mb-3">
+                    <p><strong>1. Introduction.</strong> Drum Up is committed to protecting your privacy. This Policy explains how we collect, use, disclose, and safeguard your personal information.</p>
+                    <p><strong>2. Information We Collect.</strong> We collect your name, email, profile photo, location (city and coordinates), user type, social media links, booking information, messages, and reviews. We also collect usage data automatically (IP, device, browser, pages visited).</p>
+                    <p><strong>3. How We Use It.</strong> We use your information to operate the Platform, connect restaurants with musicians, process bookings, enable messaging, send notifications, improve the service, prevent fraud, and comply with legal obligations.</p>
+                    <p><strong>4. How We Share It.</strong> Your public profile is visible to other logged-in users. We share data with Supabase, Stripe, Google, and Vercel only as needed to operate the Platform. We do not sell your data to third parties or allow ad targeting.</p>
+                    <p><strong>5. Location Data.</strong> We store your city and coordinates to power location-based matching. Your precise coordinates are never shown to other users — only your general location (e.g. "Philadelphia, PA") is displayed.</p>
+                    <p><strong>6. Data Retention.</strong> Data is retained while your account is active. On deletion, personal data is removed within 30 days. Booking and payment records may be retained up to 7 years for compliance.</p>
+                    <p><strong>7. Your Rights.</strong> You may request access, correction, deletion, or portability of your data by contacting privacy@drum-up.app. We respond within 30 days.</p>
+                    <p><strong>8. Cookies.</strong> We use essential cookies (required for the Platform) and analytics cookies. You can control these through your browser.</p>
+                    <p><strong>9. Children.</strong> The Platform is not intended for users under 18. We do not knowingly collect data from minors.</p>
+                    <p><strong>10. Security.</strong> We use HTTPS, encrypted password storage, and access controls. No internet transmission is 100% secure.</p>
+                    <p><strong>11. Contact.</strong> privacy@drum-up.app</p>
+                  </div>
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <div
+                      onClick={() => setPrivacyAccepted(v => !v)}
+                      className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
+                        privacyAccepted ? 'bg-chestnut border-chestnut' : 'border-charcoal/30 bg-white group-hover:border-chestnut/60'
+                      }`}
+                    >
+                      {privacyAccepted && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                    </div>
+                    <span className="text-charcoal text-sm font-semibold select-none" onClick={() => setPrivacyAccepted(v => !v)}>
+                      I have read and agree to the <span className="text-chestnut">Privacy Policy</span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div>
                 <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.35em] mb-3">— The basics</p>
                 <h2 className="text-graphite text-3xl md:text-4xl font-black tracking-tight mb-2">
                   Let's set up your <span className="text-chestnut italic">profile.</span>
@@ -460,7 +550,7 @@ export default function OnboardingPage() {
               </div>
             )}
 
-            {step === 2 && (
+            {step === 3 && (
               <div>
                 <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.35em] mb-3">— About you</p>
                 <h2 className="text-graphite text-3xl md:text-4xl font-black tracking-tight mb-2">
@@ -613,7 +703,7 @@ export default function OnboardingPage() {
               </div>
             )}
 
-            {step === 3 && (
+            {step === 4 && (
               <div>
                 <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.35em] mb-3">— Round it out</p>
                 <h2 className="text-graphite text-3xl md:text-4xl font-black tracking-tight mb-2">
@@ -659,7 +749,7 @@ export default function OnboardingPage() {
             </button>
 
             <div className="flex items-center gap-2">
-              {step !== 1 && (
+              {step > 2 && (
                 <button
                   type="button"
                   onClick={next}
@@ -672,7 +762,7 @@ export default function OnboardingPage() {
               <button
                 type="button"
                 onClick={next}
-                disabled={submitting || (step === 1 && !step1Valid)}
+                disabled={submitting || (step === 1 && !step1Valid) || (step === 2 && !step2Valid)}
                 className="bg-chestnut text-snow font-bold text-sm px-6 py-2.5 rounded-xl shadow-md hover:shadow-lg hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 group"
               >
                 {submitting
