@@ -43,6 +43,8 @@ export default function DashboardPage() {
           return
         }
 
+        console.log('[Dashboard] profile.user_type:', profile.user_type,
+          '| auth user_type:', user.user_metadata?.user_type)
         setUserType(profile.user_type || user.user_metadata?.user_type || 'fan')
       } catch (err) {
         console.error('Dashboard auth check failed:', err)

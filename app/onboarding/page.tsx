@@ -3,6 +3,7 @@
 import { ChangeEvent, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import type { User } from '@supabase/supabase-js'
 
 type UserType = 'restaurant' | 'musician' | 'fan'
 
@@ -91,6 +92,7 @@ export default function OnboardingPage() {
   const [showSuccess, setShowSuccess] = useState(false)
   const [savedAvatarUrl, setSavedAvatarUrl] = useState('')
   const [stripeConnecting, setStripeConnecting] = useState(false)
+  const [sessionFailed, setSessionFailed] = useState(false)
 
   const totalSteps = userType === 'musician' ? BASE_STEPS + 1 : BASE_STEPS
 
@@ -115,31 +117,66 @@ export default function OnboardingPage() {
   })
 
   useEffect(() => {
-    const init = async () => {
-      try {
-        const { data: { user }, error: authErr } = await supabase.auth.getUser()
-        if (authErr) throw authErr
-        if (!user) {
-          router.push('/auth/login')
-          return
-        }
-        setUserId(user.id)
-        const t = (user.user_metadata?.user_type as UserType) || 'fan'
-        setUserType(t)
-        const meta = user.user_metadata ?? {}
-        setBasic(prev => ({
-          ...prev,
-          fullName: meta.full_name ?? meta.name ?? '',
-          avatarPreview: meta.avatar_url ?? '',
-        }))
-      } catch (e) {
-        console.error('Onboarding init failed', e)
+    let resolved = false
+
+    const applyUser = async (user: User) => {
+      if (resolved) return
+      resolved = true  // set before any await to block concurrent calls
+
+      console.log('[Onboarding] applyUser — user_metadata:', JSON.stringify(user.user_metadata))
+
+      // If this user already completed onboarding, skip straight to dashboard
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (existingProfile?.full_name) {
+        console.log('[Onboarding] Profile already complete, redirecting to dashboard')
+        router.replace('/dashboard')
+        return
+      }
+
+      const t = (user.user_metadata?.user_type as UserType) || 'fan'
+      console.log('[Onboarding] applyUser — resolved userType:', t)
+      setError('')
+      setSessionFailed(false)
+      setUserId(user.id)
+      setUserType(t)
+      const meta = user.user_metadata ?? {}
+      setBasic(prev => ({
+        ...prev,
+        fullName: meta.full_name ?? meta.name ?? '',
+        avatarPreview: meta.avatar_url ?? '',
+      }))
+      setLoading(false)
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) void applyUser(session.user)
+    })
+
+    const getSessionWithRetry = async (retries = 3, delay = 500) => {
+      for (let i = 0; i < retries; i++) {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) return user
+        if (i < retries - 1) await new Promise(resolve => setTimeout(resolve, delay))
+      }
+      return null
+    }
+
+    getSessionWithRetry().then(async user => {
+      if (user) {
+        await applyUser(user)
+      } else if (!resolved) {
         setError('Failed to load your session. Please refresh the page.')
-      } finally {
+        setSessionFailed(true)
         setLoading(false)
       }
-    }
-    init()
+    })
+
+    return () => subscription.unsubscribe()
   }, [router])
 
   const detectLocation = () => {
@@ -249,6 +286,16 @@ export default function OnboardingPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('You\'re no longer signed in. Please log in again.')
 
+    // Defensive: React state is the source of truth, but fall back to auth metadata
+    // in case a re-render race left the state at the 'fan' default.
+    const resolvedType: UserType =
+      (userType as UserType) ||
+      (user.user_metadata?.user_type as UserType) ||
+      'fan'
+    console.log('[Onboarding] saveProfileToSupabase — React state userType:', userType,
+      '| auth metadata user_type:', user.user_metadata?.user_type,
+      '| using:', resolvedType)
+
     let avatarUrl = basic.avatarPreview.startsWith('blob:') ? '' : basic.avatarPreview
     if (basic.avatarFile) {
       const ext = basic.avatarFile.name.split('.').pop()?.toLowerCase() || 'jpg'
@@ -278,7 +325,7 @@ export default function OnboardingPage() {
 
     const profileRow = {
       id: user.id,
-      user_type: userType,
+      user_type: resolvedType,
       full_name: basic.fullName || null,
       legal_name: userType === 'musician' ? (basic.legalName || null) : null,
       performer_type: userType === 'musician' ? (basic.performerType || null) : null,
@@ -379,13 +426,13 @@ export default function OnboardingPage() {
 
           <div className="flex flex-col gap-3">
             <button
-              onClick={() => router.push('/profile/' + userId)}
+              onClick={() => router.replace('/profile/' + userId)}
               className="w-full bg-chestnut text-snow py-3.5 rounded-xl font-black text-sm shadow-md hover:opacity-90 transition-opacity"
             >
               View My Profile →
             </button>
             <button
-              onClick={() => router.push('/dashboard')}
+              onClick={() => router.replace('/dashboard')}
               className="w-full bg-white text-graphite py-3.5 rounded-xl font-bold text-sm shadow-sm hover:shadow-md transition-shadow border border-charcoal/10"
             >
               Go to Dashboard
@@ -866,7 +913,18 @@ export default function OnboardingPage() {
             )}
 
             {error && (
-              <p className="bg-red-100 text-red-600 p-3 rounded-xl mt-6 text-sm">{error}</p>
+              <div className="bg-red-100 text-red-600 p-3 rounded-xl mt-6 text-sm">
+                <p>{error}</p>
+                {sessionFailed && (
+                  <button
+                    type="button"
+                    onClick={() => window.location.reload()}
+                    className="mt-2 font-bold underline hover:no-underline"
+                  >
+                    Refresh Page
+                  </button>
+                )}
+              </div>
             )}
           </div>
 

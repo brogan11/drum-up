@@ -43,13 +43,23 @@ export default function SignupPage() {
     setLoading(true)
     setError('')
     try {
-      const { error: authErr } = await supabase.auth.signUp({
+      console.log('[Signup] Creating account with user_type:', userType)
+      const { data, error: authErr } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { user_type: userType } },
+        options: {
+          data: { user_type: userType },
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
       })
       if (authErr) throw authErr
-      router.push('/onboarding')
+      if (data.session) {
+        // Email confirmation is disabled — session returned immediately
+        router.replace('/onboarding')
+      } else {
+        // Email confirmation required — show confirm page
+        router.replace(`/auth/confirm?email=${encodeURIComponent(email)}`)
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Sign up failed. Please try again.'
       setError(msg)

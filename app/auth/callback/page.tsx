@@ -31,11 +31,11 @@ function CallbackHandler({ onError }: { onError: () => void }) {
 
         const { data: profile } = await supabase
           .from('profiles')
-          .select('id')
+          .select('full_name')
           .eq('id', user.id)
           .maybeSingle()
 
-        router.push(profile ? '/dashboard' : '/onboarding')
+        router.replace(profile?.full_name ? '/dashboard' : '/onboarding')
       } catch (e) {
         console.error('Auth callback failed', e)
         onError()
@@ -57,7 +57,7 @@ export default function AuthCallback() {
     return (
       <div className="min-h-screen bg-snow flex flex-col items-center justify-center px-6 text-center">
         <div className="w-14 h-14 bg-chestnut/10 rounded-2xl flex items-center justify-center text-2xl mb-4">🎵</div>
-        <p className="text-graphite font-bold text-lg mb-1">Sign-in didn't complete</p>
+        <p className="text-graphite font-bold text-lg mb-1">Sign-in didn&apos;t complete</p>
         <p className="text-charcoal text-sm mb-6">Something went wrong during authentication. Please try again.</p>
         <button
           onClick={() => router.push('/auth/login')}
@@ -70,11 +70,12 @@ export default function AuthCallback() {
   }
 
   return (
-    <div className="min-h-screen bg-snow flex items-center justify-center">
-      <div className="text-center">
-        <div className="w-12 h-12 border-4 border-chestnut border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-        <p className="text-charcoal">Completing sign in…</p>
+    <div className="min-h-screen bg-snow flex flex-col items-center justify-center">
+      <div className="bg-white rounded-2xl p-3 mb-6 shadow-xl">
+        <img src="/orange-drum-up.png" alt="Drum Up" className="w-16 h-16 object-contain" />
       </div>
+      <div className="w-10 h-10 border-4 border-chestnut border-t-transparent rounded-full animate-spin mb-4" />
+      <p className="text-charcoal text-sm font-medium">Verifying your account…</p>
       <Suspense fallback={null}>
         <CallbackHandler onError={() => setFailed(true)} />
       </Suspense>
