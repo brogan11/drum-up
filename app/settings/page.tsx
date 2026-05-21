@@ -36,7 +36,9 @@ interface FormState {
 
   genres: string[]
   instruments: string
-  soloOrBand: string
+  performerType: 'solo' | 'band' | ''
+  bandMembers: string
+  legalName: string
   yearsPerforming: string
 
   favoriteGenres: string[]
@@ -55,7 +57,7 @@ const EMPTY: FormState = {
   fullName: '', avatarFile: null, avatarPreview: '', bannerFile: null, bannerPreview: '',
   locationText: '', latitude: null, longitude: null,
   venueName: '', capacity: '', cuisineType: '', musicNights: [],
-  genres: [], instruments: '', soloOrBand: '', yearsPerforming: '',
+  genres: [], instruments: '', performerType: '', bandMembers: '', legalName: '', yearsPerforming: '',
   favoriteGenres: [],
   maxDistance: 20,
   bio: '', instagram: '', tiktok: '', spotify: '', youtube: '', website: '',
@@ -134,7 +136,9 @@ export default function SettingsPage() {
           musicNights: Array.isArray(meta.music_nights) ? meta.music_nights : [],
           genres: Array.isArray(meta.genres) ? meta.genres : [],
           instruments: meta.instruments ?? '',
-          soloOrBand: meta.solo_or_band ?? '',
+          performerType: (['solo', 'band'].includes(profile.performer_type ?? '') ? profile.performer_type : '') as 'solo' | 'band' | '',
+          bandMembers: profile.band_members != null ? String(profile.band_members) : '',
+          legalName: profile.legal_name ?? '',
           yearsPerforming: meta.years_performing != null ? String(meta.years_performing) : '',
           favoriteGenres: Array.isArray(meta.favorite_genres) ? meta.favorite_genres : [],
           maxDistance: typeof profile.max_distance_miles === 'number' ? profile.max_distance_miles : 20,
@@ -290,7 +294,6 @@ export default function SettingsPage() {
       } else if (userType === 'musician') {
         roleMetadata.genres = form.genres
         roleMetadata.instruments = form.instruments || null
-        roleMetadata.solo_or_band = form.soloOrBand || null
         roleMetadata.years_performing = form.yearsPerforming ? Number(form.yearsPerforming) : null
         roleMetadata.banner_url = bannerUrl || null
       } else {
@@ -310,6 +313,12 @@ export default function SettingsPage() {
         spotify_url: form.spotify || null,
         youtube_url: form.youtube || null,
         website: form.website || null,
+        ...(userType === 'musician' && {
+          legal_name: form.legalName || null,
+          performer_type: form.performerType || null,
+          band_name: form.performerType === 'band' ? (form.fullName || null) : null,
+          band_members: form.performerType === 'band' ? (parseInt(form.bandMembers) || null) : null,
+        }),
         role_metadata: roleMetadata,
       }).eq('id', userId)
 
@@ -383,8 +392,9 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <Field label={userType === 'restaurant' ? 'Contact name' : 'Full name'}>
-              <Input value={form.fullName} onChange={v => update('fullName', v)} placeholder="Your name" />
+            <Field label={userType === 'restaurant' ? 'Contact name' : userType === 'musician' ? 'Stage name / band name' : 'Full name'}
+              hint={userType === 'musician' ? 'How you appear publicly to venues and fans' : undefined}>
+              <Input value={form.fullName} onChange={v => update('fullName', v)} placeholder={userType === 'musician' ? 'e.g. Johnny Blues or The Midnight Blues' : 'Your name'} />
             </Field>
 
             <Field label="Location" hint={form.latitude !== null ? `Coords saved (${form.latitude.toFixed(3)}, ${form.longitude?.toFixed(3)})` : undefined}>
@@ -480,28 +490,41 @@ export default function SettingsPage() {
                 <Field label="Instruments">
                   <Input value={form.instruments} onChange={v => update('instruments', v)} placeholder="Acoustic guitar, vocals..." />
                 </Field>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Setup">
-                    <div className="grid grid-cols-3 gap-2">
-                      {SOLO_BAND.map(opt => {
-                        const active = form.soloOrBand === opt
-                        return (
-                          <button
-                            key={opt}
-                            type="button"
-                            onClick={() => update('soloOrBand', opt)}
-                            className={`py-2.5 rounded-xl font-bold text-sm shadow-sm transition-all ${active ? 'bg-chestnut text-snow shadow-md' : 'bg-snow text-charcoal hover:shadow-md'}`}
-                          >
-                            {opt}
-                          </button>
-                        )
-                      })}
-                    </div>
+                <Field label="Performer type">
+                  <div className="grid grid-cols-2 gap-3">
+                    {(['solo', 'band'] as const).map(val => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => update('performerType', val)}
+                        className={`py-3 rounded-xl font-bold text-sm transition-all flex flex-col items-center gap-1 ${
+                          form.performerType === val
+                            ? 'bg-chestnut text-snow shadow-md'
+                            : 'bg-snow text-charcoal border border-charcoal/20 hover:shadow-md'
+                        }`}
+                      >
+                        <span className="text-xl">{val === 'solo' ? '🎤' : '🎸'}</span>
+                        <span>{val === 'solo' ? 'Solo Artist' : 'Band'}</span>
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+                {form.performerType === 'band' && (
+                  <Field label="Number of members">
+                    <Input value={form.bandMembers} onChange={v => update('bandMembers', v)} type="number" placeholder="4" />
                   </Field>
-                  <Field label="Years performing">
-                    <Input value={form.yearsPerforming} onChange={v => update('yearsPerforming', v)} type="number" placeholder="3" />
-                  </Field>
-                </div>
+                )}
+                <Field label="Years performing">
+                  <Input value={form.yearsPerforming} onChange={v => update('yearsPerforming', v)} type="number" placeholder="3" />
+                </Field>
+                <Field label="🔒 Legal name">
+                  <Input
+                    value={form.legalName}
+                    onChange={v => update('legalName', v)}
+                    placeholder="First and last name as on your ID"
+                  />
+                  <p className="text-charcoal/50 text-xs italic mt-1.5">Private — only used for payment verification. Never shown publicly.</p>
+                </Field>
               </>
             )}
 

@@ -35,6 +35,8 @@ interface Application {
   stripeOnboarded: boolean
   paymentStatus: string | null
   payoutReleased: boolean
+  performerType: string
+  bandMembers: number | null
 }
 
 interface PaymentModalData {
@@ -69,6 +71,8 @@ interface LiveMusician {
   instagram: string
   youtube: string
   spotify: string
+  performerType: string
+  bandMembers: number | null
 }
 
 interface VenueProfile {
@@ -361,7 +365,7 @@ export default function RestaurantDashboard() {
         const musicianIds = [...new Set(bookingsData.map(b => b.musician_id))]
         const { data: musicianData } = await supabase
           .from('profiles')
-          .select('id, full_name, avatar_url, role_metadata, location_text, latitude, longitude, instagram_url, youtube_url, spotify_url, stripe_onboarded')
+          .select('id, full_name, avatar_url, role_metadata, location_text, latitude, longitude, instagram_url, youtube_url, spotify_url, stripe_onboarded, performer_type, band_members')
           .in('id', musicianIds)
         const musicianById = new Map((musicianData ?? []).map(m => [m.id, m]))
 
@@ -391,6 +395,8 @@ export default function RestaurantDashboard() {
               stripeOnboarded: ((musician as Record<string, unknown>)?.stripe_onboarded as boolean | null) ?? false,
               paymentStatus: (b as Record<string, unknown>).payment_status as string | null ?? null,
               payoutReleased: ((b as Record<string, unknown>).payout_released as boolean | null) ?? false,
+              performerType: (musician as Record<string, unknown>)?.performer_type as string ?? '',
+              bandMembers: (musician as Record<string, unknown>)?.band_members as number | null ?? null,
             }
           })
           return { ...slot, applications }
@@ -412,7 +418,7 @@ export default function RestaurantDashboard() {
     try {
     const { data, error: musErr } = await supabase
       .from('profiles')
-      .select('id, full_name, avatar_url, bio, location_text, latitude, longitude, instagram_url, youtube_url, spotify_url, role_metadata')
+      .select('id, full_name, avatar_url, bio, location_text, latitude, longitude, instagram_url, youtube_url, spotify_url, role_metadata, performer_type, band_members')
       .eq('user_type', 'musician')
     if (musErr) throw musErr
     if (!data) { setBrowseLoading(false); return }
@@ -434,6 +440,8 @@ export default function RestaurantDashboard() {
           instagram: m.instagram_url ?? '',
           youtube: m.youtube_url ?? '',
           spotify: m.spotify_url ?? '',
+          performerType: (m as Record<string, unknown>).performer_type as string ?? '',
+          bandMembers: (m as Record<string, unknown>).band_members as number | null ?? null,
         }
       })
       .filter(m => m.distance <= radius)
@@ -1011,6 +1019,14 @@ export default function RestaurantDashboard() {
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                              {app.performerType === 'solo' && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-teal/10 text-teal">🎤 Solo</span>
+                              )}
+                              {app.performerType === 'band' && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-chestnut/10 text-chestnut">
+                                  🎸 Band{app.bandMembers ? ` · ${app.bandMembers}` : ''}
+                                </span>
+                              )}
                               <span className="text-charcoal text-xs">{app.musicianGenre}</span>
                               {app.musicianLocation && <><span className="text-charcoal/40 text-xs">·</span><span className="text-charcoal text-xs">📍 {app.musicianLocation}</span></>}
                               {app.musicianDistance && <span className="text-chestnut text-xs font-semibold">{app.musicianDistance}</span>}
@@ -1094,6 +1110,14 @@ export default function RestaurantDashboard() {
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                              {app.performerType === 'solo' && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-teal/10 text-teal">🎤 Solo</span>
+                              )}
+                              {app.performerType === 'band' && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-chestnut/10 text-chestnut">
+                                  🎸 Band{app.bandMembers ? ` · ${app.bandMembers}` : ''}
+                                </span>
+                              )}
                               {app.musicianGenre && <span className="text-charcoal text-xs">{app.musicianGenre}</span>}
                               {app.musicianDistance && <><span className="text-charcoal/40 text-xs">·</span><span className="text-chestnut text-xs font-semibold">{app.musicianDistance}</span></>}
                             </div>
@@ -1365,7 +1389,17 @@ export default function RestaurantDashboard() {
                     <div className="flex items-start gap-4 mb-3">
                       <Avatar src={m.avatar} className="w-14 h-14 rounded-full shrink-0" textSize="text-2xl" bg="bg-chestnut/10" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-graphite font-bold text-sm">{m.name}</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-graphite font-bold text-sm">{m.name}</p>
+                          {m.performerType === 'solo' && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal/10 text-teal">🎤 Solo</span>
+                          )}
+                          {m.performerType === 'band' && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-chestnut/10 text-chestnut">
+                              🎸 Band{m.bandMembers ? ` · ${m.bandMembers}` : ''}
+                            </span>
+                          )}
+                        </div>
                         {m.location && <p className="text-charcoal text-xs mt-0.5">{m.location}</p>}
                         <p className="text-chestnut text-xs font-semibold mt-0.5">📍 {m.distanceStr}</p>
                         {m.bio && <p className="text-charcoal/70 text-xs mt-1.5 line-clamp-2 leading-relaxed">{m.bio}</p>}

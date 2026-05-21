@@ -27,6 +27,8 @@ interface ProfileData {
   website: string | null
   role_metadata: Record<string, unknown>
   created_at: string
+  performer_type: string | null
+  band_members: number | null
 }
 
 interface ViewerData {
@@ -445,6 +447,8 @@ export default function ProfilePage() {
   const instruments = (meta.instruments as string | undefined) ?? ''
   const soloOrBand = (meta.solo_or_band as string | undefined) ?? ''
   const yearsPerforming = (meta.years_performing as string | undefined) ?? ''
+  const performerType = profile.performer_type ?? ''
+  const bandMembers = profile.band_members ?? null
   const venueName = (meta.venue_name as string | undefined) ?? profile.full_name ?? ''
   const capacity = (meta.capacity as string | undefined) ?? ''
   const cuisineType = (meta.cuisine_type as string | undefined) ?? ''
@@ -509,8 +513,16 @@ export default function ProfilePage() {
                 )}
               </p>
             )}
-            {(genres.length > 0 || instruments) && (
+            {(genres.length > 0 || instruments || performerType) && (
               <div className="flex flex-wrap gap-1.5 mb-4">
+                {performerType === 'solo' && (
+                  <span className="text-xs font-bold px-3 py-1 rounded-full" style={{ background: 'rgba(108,154,139,0.25)', color: '#6C9A8B' }}>🎤 Solo Artist</span>
+                )}
+                {performerType === 'band' && (
+                  <span className="text-xs font-bold px-3 py-1 rounded-full" style={{ background: 'rgba(220,127,65,0.2)', color: '#DC7F41' }}>
+                    🎸 Band{bandMembers ? ` · ${bandMembers} members` : ''}
+                  </span>
+                )}
                 {genres.map(g => (
                   <span key={g} className="text-xs font-semibold px-3 py-1 rounded-full" style={{ background: 'rgba(108,154,139,0.2)', color: '#6C9A8B' }}>{g}</span>
                 ))}
@@ -583,11 +595,20 @@ export default function ProfilePage() {
         <div className="max-w-2xl mx-auto px-5 pb-16">
           <section className="py-8 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
             <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-4">· About</p>
-            {(profile.bio || soloOrBand || yearsPerforming || instruments) ? (
+            {(profile.bio || performerType || soloOrBand || yearsPerforming || instruments) ? (
               <div className="space-y-4">
                 {profile.bio && <p className="text-snow/80 text-base leading-relaxed">{profile.bio}</p>}
                 <div className="flex flex-wrap gap-6">
-                  {soloOrBand && <div><p className="text-snow/30 text-[10px] font-semibold uppercase tracking-wide">Format</p><p className="text-snow font-bold mt-0.5">{soloOrBand}</p></div>}
+                  {(performerType || soloOrBand) && (
+                    <div>
+                      <p className="text-snow/30 text-[10px] font-semibold uppercase tracking-wide">Format</p>
+                      <p className="text-snow font-bold mt-0.5">
+                        {performerType === 'solo' ? 'Solo Artist'
+                          : performerType === 'band' ? `Band${bandMembers ? ` (${bandMembers})` : ''}`
+                          : soloOrBand}
+                      </p>
+                    </div>
+                  )}
                   {yearsPerforming && <div><p className="text-snow/30 text-[10px] font-semibold uppercase tracking-wide">Experience</p><p className="text-snow font-bold mt-0.5">{yearsPerforming} yrs</p></div>}
                   {instruments && <div><p className="text-snow/30 text-[10px] font-semibold uppercase tracking-wide">Instruments</p><p className="text-snow font-bold mt-0.5">{instruments}</p></div>}
                 </div>

@@ -57,6 +57,9 @@ interface MusicianProfile {
   youtube: string
   spotify: string
   website: string
+  legalName: string
+  performerType: 'solo' | 'band' | ''
+  bandMembers: number | null
 }
 
 // ---- Constants ----
@@ -72,6 +75,9 @@ const INITIAL_PROFILE: MusicianProfile = {
   youtube: '',
   spotify: '',
   website: '',
+  legalName: '',
+  performerType: '',
+  bandMembers: null,
 }
 
 // ---- Helpers ----
@@ -142,6 +148,8 @@ export default function MusicianDashboard() {
   const [stripeOnboarded, setStripeOnboarded] = useState<boolean | null>(null)
   const [stripeConnecting, setStripeConnecting] = useState(false)
   const [stripeSuccess, setStripeSuccess] = useState(false)
+  const [showStripeExplainModal, setShowStripeExplainModal] = useState(false)
+  const [showStripeRefreshModal, setShowStripeRefreshModal] = useState(false)
 
   // ---- Data loading ----
 
@@ -235,6 +243,7 @@ export default function MusicianDashboard() {
         if (!data) return
 
         const meta = (data.role_metadata ?? {}) as Record<string, unknown>
+        const pt = (data as Record<string, unknown>).performer_type as string | null
         setProfile({
           name: data.full_name ?? '',
           bio: data.bio ?? '',
@@ -244,6 +253,9 @@ export default function MusicianDashboard() {
           youtube: data.youtube_url ?? '',
           spotify: data.spotify_url ?? '',
           website: data.website ?? '',
+          legalName: (data as Record<string, unknown>).legal_name as string ?? '',
+          performerType: pt === 'solo' || pt === 'band' ? pt : '',
+          bandMembers: (data as Record<string, unknown>).band_members as number | null ?? null,
         })
         setStripeOnboarded((data as Record<string, unknown>).stripe_onboarded as boolean | null ?? false)
 
@@ -406,6 +418,10 @@ export default function MusicianDashboard() {
         youtube_url: profileDraft.youtube || null,
         spotify_url: profileDraft.spotify || null,
         website: profileDraft.website || null,
+        legal_name: profileDraft.legalName || null,
+        performer_type: profileDraft.performerType || null,
+        band_name: profileDraft.performerType === 'band' ? (profileDraft.name || null) : null,
+        band_members: profileDraft.performerType === 'band' ? (profileDraft.bandMembers ?? null) : null,
         role_metadata: meta,
       }).eq('id', userId)
 
@@ -472,10 +488,9 @@ export default function MusicianDashboard() {
     const stripeParam = params.get('stripe')
     if (stripeParam === 'success') {
       checkStripeStatus().then(() => setStripeSuccess(true))
-      // Clean URL
       window.history.replaceState({}, '', window.location.pathname)
     } else if (stripeParam === 'refresh') {
-      connectStripe()
+      setShowStripeRefreshModal(true)
       window.history.replaceState({}, '', window.location.pathname)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -517,6 +532,14 @@ export default function MusicianDashboard() {
 
   const [applying, setApplying] = useState(false)
   const [applyError, setApplyError] = useState('')
+
+  const openApply = (gigId: string) => {
+    if (stripeOnboarded === false) {
+      setShowStripeExplainModal(true)
+      return
+    }
+    setApplyGigId(gigId)
+  }
 
   const handleApply = async () => {
     if (!applyGigId || !userId) return
@@ -665,15 +688,6 @@ export default function MusicianDashboard() {
 
       <main className="max-w-2xl mx-auto px-4 py-5">
 
-        {/* Stripe Connect success toast */}
-        {stripeSuccess && (
-          <div className="bg-teal/10 border border-teal/30 rounded-2xl px-4 py-3 mb-4 flex items-center gap-3">
-            <span className="text-2xl">🎉</span>
-            <p className="text-teal font-bold text-sm flex-1">Bank account connected! You're all set to receive payments.</p>
-            <button onClick={() => setStripeSuccess(false)} className="text-teal/60 hover:text-teal text-lg leading-none">✕</button>
-          </div>
-        )}
-
         {/* Payout setup banner */}
         {stripeOnboarded === false && (
           <div className="bg-chestnut rounded-2xl px-4 py-4 mb-4 flex items-center gap-3">
@@ -683,11 +697,11 @@ export default function MusicianDashboard() {
               <p className="text-snow/70 text-xs mt-0.5">You won't be paid until your bank account is connected.</p>
             </div>
             <button
-              onClick={connectStripe}
+              onClick={() => setShowStripeExplainModal(true)}
               disabled={stripeConnecting}
               className="shrink-0 bg-snow text-chestnut font-bold text-xs px-3 py-2 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 whitespace-nowrap"
             >
-              {stripeConnecting ? 'Connecting…' : 'Connect Bank →'}
+              Connect Bank →
             </button>
           </div>
         )}
@@ -704,7 +718,9 @@ export default function MusicianDashboard() {
               </div>
               <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-chestnut opacity-25 blur-2xl pointer-events-none" />
               <div className="absolute -bottom-14 -left-10 w-36 h-36 rounded-full bg-teal opacity-15 blur-2xl pointer-events-none" />
-              <span className="absolute top-3 right-3 bg-chestnut text-snow text-[9px] font-bold tracking-[0.2em] px-2.5 py-1 rounded-full shadow-md uppercase z-20">★ Headliner</span>
+              <span className="absolute top-3 right-3 bg-chestnut text-snow text-[9px] font-bold tracking-[0.2em] px-2.5 py-1 rounded-full shadow-md uppercase z-20">
+                {profile.performerType === 'band' ? '🎸 Band' : '🎤 Solo Artist'}
+              </span>
               <div className="relative z-10 p-5 flex items-center gap-4">
                 {profile.avatar
                   ? <img src={profile.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover shrink-0 shadow-inner border border-chestnut/30" />
@@ -934,7 +950,7 @@ export default function MusicianDashboard() {
                         View Details
                       </button>
                       <button
-                        onClick={() => setApplyGigId(gig.id)}
+                        onClick={() => openApply(gig.id)}
                         className="flex-1 bg-chestnut text-snow py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
                       >
                         Apply Now →
@@ -998,7 +1014,7 @@ export default function MusicianDashboard() {
                 Message Venue
               </button>
               <button
-                onClick={() => { setApplyGigId(selectedGig.id); setSelectedGig(null) }}
+                onClick={() => { openApply(selectedGig.id); setSelectedGig(null) }}
                 className="flex-1 bg-chestnut text-snow py-3 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity"
               >
                 Apply Now →
@@ -1337,7 +1353,17 @@ export default function MusicianDashboard() {
                   ? <img src={profile.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover shadow-sm border border-charcoal/[0.07]" />
                   : <div className="w-14 h-14 bg-chestnut/10 rounded-2xl flex items-center justify-center text-3xl">♪</div>}
                 <div className="flex-1 min-w-0">
-                  <p className="text-graphite font-black text-base truncate">{profile.name || 'Your Name'}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-graphite font-black text-base truncate">{profile.name || 'Your Name'}</p>
+                    {profile.performerType === 'solo' && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal/10 text-teal shrink-0">🎤 Solo</span>
+                    )}
+                    {profile.performerType === 'band' && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-chestnut/10 text-chestnut shrink-0">
+                        🎸 Band{profile.bandMembers ? ` · ${profile.bandMembers}` : ''}
+                      </span>
+                    )}
+                  </div>
                   {profile.genres.length > 0 && (
                     <p className="text-charcoal/60 text-sm mt-0.5">{profile.genres.slice(0, 3).join(' · ')}</p>
                   )}
@@ -1437,6 +1463,128 @@ export default function MusicianDashboard() {
                   </svg>
                 )}
                 {applying ? 'Sending…' : 'Submit Application →'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---- Stripe Explain Modal ---- */}
+      {showStripeExplainModal && (
+        <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden">
+            {/* Header */}
+            <div className="bg-graphite px-6 py-5">
+              <p className="text-snow/60 text-xs font-semibold uppercase tracking-widest mb-1">Payouts</p>
+              <h2 className="text-snow font-black text-2xl tracking-tight">Set Up Your Payouts</h2>
+              <p className="text-snow/60 text-xs mt-2 leading-relaxed">
+                Powered by Stripe — the same payment platform used by Amazon, Shopify, and millions of businesses worldwide.
+              </p>
+            </div>
+
+            {/* Info cards */}
+            <div className="px-5 pt-5 space-y-3">
+              {[
+                { icon: '🕐', title: 'Takes about 2 minutes', text: 'You only need to do this once. After setup, payments land in your bank automatically after each gig.' },
+                { icon: '📋', title: 'What you\'ll need', text: 'Your legal name, date of birth, last 4 digits of your SSN, and your bank account details.' },
+                { icon: '🔒', title: 'Bank-level security', text: 'Your financial information is handled entirely by Stripe. Drum Up never sees or stores your sensitive data.' },
+              ].map(({ icon, title, text }) => (
+                <div key={title} className="flex items-start gap-3 bg-[#F5F5F5] rounded-xl px-4 py-3">
+                  <span className="text-xl mt-0.5 shrink-0">{icon}</span>
+                  <div>
+                    <p className="text-graphite font-bold text-sm">{title}</p>
+                    <p className="text-charcoal text-xs mt-0.5 leading-relaxed">{text}</p>
+                  </div>
+                </div>
+              ))}
+
+              {/* Warning box */}
+              <div className="flex items-start gap-3 bg-chestnut/10 border border-chestnut/40 rounded-xl px-4 py-3">
+                <span className="text-xl mt-0.5 shrink-0 text-chestnut">⚠️</span>
+                <div>
+                  <p className="text-chestnut font-bold text-sm">Important — please read</p>
+                  <p className="text-graphite text-xs mt-1 leading-relaxed">
+                    Stripe will pre-fill some fields on your behalf including your website and business description.
+                    Please <strong>do not change these fields</strong> — they are required for your account to work correctly with Drum Up.
+                    Simply review and continue through each screen.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="px-5 py-5 space-y-3">
+              <button
+                onClick={() => { setShowStripeExplainModal(false); void connectStripe() }}
+                disabled={stripeConnecting}
+                className="w-full bg-chestnut text-snow font-bold py-3.5 rounded-xl shadow-md hover:opacity-90 transition-opacity disabled:opacity-50 text-sm"
+              >
+                {stripeConnecting ? 'Connecting…' : 'Set Up Payouts →'}
+              </button>
+              <button
+                onClick={() => setShowStripeExplainModal(false)}
+                className="w-full text-charcoal text-sm text-center py-1 hover:text-graphite transition-colors"
+              >
+                I'll do this later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---- Stripe Success Modal ---- */}
+      {stripeSuccess && (
+        <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden">
+            <div className="bg-graphite px-6 py-5">
+              <h2 className="text-snow font-black text-2xl tracking-tight">You're all set! 🎉</h2>
+              <p className="text-snow/60 text-sm mt-2 leading-relaxed">
+                Your payout account is connected. You'll automatically receive payment within 2 business days after each completed gig.
+              </p>
+            </div>
+            <div className="px-5 py-5 space-y-3">
+              <div className="bg-[#F5F5F5] rounded-xl px-4 py-4 space-y-3">
+                {['Bank account connected', 'Identity verified', 'Ready to receive payments'].map(item => (
+                  <div key={item} className="flex items-center gap-3">
+                    <span className="text-teal font-bold text-lg">✅</span>
+                    <p className="text-graphite text-sm font-semibold">{item}</p>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => setStripeSuccess(false)}
+                className="w-full bg-chestnut text-snow font-bold py-3.5 rounded-xl shadow-md hover:opacity-90 transition-opacity text-sm"
+              >
+                Go to Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---- Stripe Refresh Modal (incomplete onboarding) ---- */}
+      {showStripeRefreshModal && (
+        <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden">
+            <div className="bg-graphite px-6 py-5">
+              <h2 className="text-snow font-black text-2xl tracking-tight">Almost there</h2>
+              <p className="text-snow/60 text-sm mt-2 leading-relaxed">
+                It looks like your payout setup wasn't completed. You'll need to finish setting up your account to receive payment for gigs.
+              </p>
+            </div>
+            <div className="px-5 py-5 space-y-3">
+              <button
+                onClick={() => { setShowStripeRefreshModal(false); void connectStripe() }}
+                disabled={stripeConnecting}
+                className="w-full bg-chestnut text-snow font-bold py-3.5 rounded-xl shadow-md hover:opacity-90 transition-opacity disabled:opacity-50 text-sm"
+              >
+                {stripeConnecting ? 'Connecting…' : 'Complete Setup →'}
+              </button>
+              <button
+                onClick={() => setShowStripeRefreshModal(false)}
+                className="w-full text-charcoal text-sm text-center py-1 hover:text-graphite transition-colors"
+              >
+                I'll do this later
               </button>
             </div>
           </div>

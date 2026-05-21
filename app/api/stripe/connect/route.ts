@@ -18,13 +18,27 @@ export async function POST(request: Request) {
 
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('stripe_account_id')
+      .select('stripe_account_id, full_name, legal_name, performer_type')
       .eq('id', user.id)
       .maybeSingle()
 
     let accountId = profile?.stripe_account_id as string | null
 
     if (!accountId) {
+      // Use legal_name for Stripe — fall back to full_name if not set
+      const nameForStripe = (profile?.legal_name?.trim() || profile?.full_name?.trim()) ?? ''
+      const nameParts = nameForStripe.split(' ').filter((p: string) => p.length > 0)
+      const firstName = nameParts[0] ?? ''
+      const lastName = nameParts.slice(1).join(' ')
+
+      console.log('[Stripe Connect] Pre-filling legal name:', {
+        performerType: profile?.performer_type,
+        stageName: profile?.full_name,
+        legalName: profile?.legal_name,
+        firstName,
+        lastName,
+      })
+
       const account = await stripe.accounts.create({
         type: 'express',
         country: 'US',
@@ -32,10 +46,23 @@ export async function POST(request: Request) {
         business_type: 'individual',
         individual: {
           email: user.email,
+          first_name: firstName,
+          last_name: lastName,
         },
         capabilities: {
-          card_payments: { requested: false },
           transfers: { requested: true },
+        },
+        business_profile: {
+          mcc: '7929', // bands, orchestras, and entertainers
+          url: 'https://drum-up.app',
+          product_description: 'Live music performance services',
+        },
+        settings: {
+          payouts: {
+            schedule: {
+              interval: 'manual',
+            },
+          },
         },
       })
       accountId = account.id

@@ -45,7 +45,10 @@ const ROLE_LABELS: Record<UserType, { title: string; subtitle: string }> = {
 }
 
 interface BasicInfo {
-  fullName: string
+  fullName: string        // stage name (solo) or band name — stored as full_name
+  legalName: string       // private, for Stripe only
+  performerType: 'solo' | 'band' | ''
+  bandMembers: string
   avatarFile: File | null
   avatarPreview: string
   locationText: string
@@ -93,6 +96,9 @@ export default function OnboardingPage() {
 
   const [basic, setBasic] = useState<BasicInfo>({
     fullName: '',
+    legalName: '',
+    performerType: '',
+    bandMembers: '',
     avatarFile: null,
     avatarPreview: '',
     locationText: '',
@@ -213,7 +219,13 @@ export default function OnboardingPage() {
     arr.includes(item) ? arr.filter(x => x !== item) : [...arr, item]
 
   const step1Valid = tosAccepted && privacyAccepted
-  const step2Valid = basic.fullName.trim().length > 0 && basic.locationText.trim().length > 0
+  const step2Valid = userType === 'musician'
+    ? basic.performerType !== ''
+      && basic.fullName.trim().length > 0
+      && basic.legalName.trim().length > 0
+      && basic.locationText.trim().length > 0
+      && (basic.performerType !== 'band' || basic.bandMembers !== '')
+    : basic.fullName.trim().length > 0 && basic.locationText.trim().length > 0
 
   const next = () => {
     setError('')
@@ -268,6 +280,10 @@ export default function OnboardingPage() {
       id: user.id,
       user_type: userType,
       full_name: basic.fullName || null,
+      legal_name: userType === 'musician' ? (basic.legalName || null) : null,
+      performer_type: userType === 'musician' ? (basic.performerType || null) : null,
+      band_name: userType === 'musician' && basic.performerType === 'band' ? (basic.fullName || null) : null,
+      band_members: userType === 'musician' && basic.performerType === 'band' ? (parseInt(basic.bandMembers) || null) : null,
       avatar_url: avatarUrl || null,
       location_text: basic.locationText || null,
       latitude: basic.latitude,
@@ -524,17 +540,102 @@ export default function OnboardingPage() {
                   </div>
                 </div>
 
-                {/* Full name */}
-                <label className="block text-charcoal font-semibold text-sm mb-2">
-                  {userType === 'restaurant' ? 'Contact name' : 'Full name'} <span className="text-chestnut">*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder={userType === 'restaurant' ? 'Who runs the booking?' : 'How should we list you?'}
-                  value={basic.fullName}
-                  onChange={e => setBasic(prev => ({ ...prev, fullName: e.target.value }))}
-                  className="w-full bg-snow rounded-xl px-4 py-3.5 mb-6 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite"
-                />
+                {/* Name section — musicians get performer type + stage/band name + legal name */}
+                {userType === 'musician' ? (
+                  <>
+                    <label className="block text-charcoal font-semibold text-sm mb-2">
+                      Are you a... <span className="text-chestnut">*</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-3 mb-5">
+                      {(['solo', 'band'] as const).map(val => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setBasic(prev => ({ ...prev, performerType: val }))}
+                          className={`py-4 rounded-xl font-bold text-sm transition-all flex flex-col items-center gap-1 ${
+                            basic.performerType === val
+                              ? 'bg-chestnut text-snow shadow-md'
+                              : 'bg-snow text-charcoal border border-charcoal/20 hover:shadow-md'
+                          }`}
+                        >
+                          <span className="text-2xl">{val === 'solo' ? '🎤' : '🎸'}</span>
+                          <span>{val === 'solo' ? 'Solo Artist' : 'Band'}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {basic.performerType !== '' && (
+                      <>
+                        {basic.performerType === 'solo' ? (
+                          <>
+                            <label className="block text-charcoal font-semibold text-sm mb-2">
+                              Stage Name <span className="text-chestnut">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="The name you perform under e.g. Johnny Blues"
+                              value={basic.fullName}
+                              onChange={e => setBasic(prev => ({ ...prev, fullName: e.target.value.slice(0, 50) }))}
+                              className="w-full bg-snow rounded-xl px-4 py-3.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite mb-1"
+                            />
+                            <p className="text-charcoal/60 text-xs mb-5">This is what venues and fans will see on your profile</p>
+                          </>
+                        ) : (
+                          <>
+                            <label className="block text-charcoal font-semibold text-sm mb-2">
+                              Band Name <span className="text-chestnut">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g. The Midnight Blues"
+                              value={basic.fullName}
+                              onChange={e => setBasic(prev => ({ ...prev, fullName: e.target.value.slice(0, 50) }))}
+                              className="w-full bg-snow rounded-xl px-4 py-3.5 mb-5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite"
+                            />
+                            <label className="block text-charcoal font-semibold text-sm mb-2">
+                              Number of Members <span className="text-chestnut">*</span>
+                            </label>
+                            <input
+                              type="number"
+                              min={2}
+                              max={50}
+                              placeholder="4"
+                              value={basic.bandMembers}
+                              onChange={e => setBasic(prev => ({ ...prev, bandMembers: e.target.value }))}
+                              className="w-full bg-snow rounded-xl px-4 py-3.5 mb-5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite"
+                            />
+                          </>
+                        )}
+
+                        <label className="block text-charcoal font-semibold text-sm mb-2">
+                          🔒 Your Legal Name <span className="text-chestnut">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="First and last name as on your ID"
+                          value={basic.legalName}
+                          onChange={e => setBasic(prev => ({ ...prev, legalName: e.target.value.slice(0, 100) }))}
+                          className="w-full rounded-xl px-4 py-3.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite mb-1"
+                          style={{ background: '#F9F9F9' }}
+                        />
+                        <p className="text-charcoal/60 text-xs italic mb-6">Private — only used for payment verification. Never shown publicly.</p>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <label className="block text-charcoal font-semibold text-sm mb-2">
+                      {userType === 'restaurant' ? 'Contact name' : 'Full name'} <span className="text-chestnut">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={userType === 'restaurant' ? 'Who runs the booking?' : 'How should we list you?'}
+                      value={basic.fullName}
+                      onChange={e => setBasic(prev => ({ ...prev, fullName: e.target.value }))}
+                      className="w-full bg-snow rounded-xl px-4 py-3.5 mb-6 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite"
+                    />
+                  </>
+                )}
 
                 {/* Location */}
                 <label className="block text-charcoal font-semibold text-sm mb-2">Location <span className="text-chestnut">*</span></label>
@@ -663,38 +764,14 @@ export default function OnboardingPage() {
                       className="w-full bg-snow rounded-xl px-4 py-3.5 mb-5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite"
                     />
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-charcoal font-semibold text-sm mb-2">Setup</label>
-                        <div className="grid grid-cols-3 gap-2">
-                          {SOLO_BAND.map(opt => {
-                            const active = role.soloOrBand === opt
-                            return (
-                              <button
-                                key={opt}
-                                type="button"
-                                onClick={() => setRole(prev => ({ ...prev, soloOrBand: opt }))}
-                                className={`py-2.5 rounded-xl font-bold text-sm shadow-sm transition-all ${
-                                  active ? 'bg-chestnut text-snow shadow-md' : 'bg-snow text-charcoal hover:shadow-md'
-                                }`}
-                              >
-                                {opt}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-charcoal font-semibold text-sm mb-2">Years performing</label>
-                        <input
-                          type="number"
-                          placeholder="3"
-                          value={role.yearsPerforming}
-                          onChange={e => setRole(prev => ({ ...prev, yearsPerforming: e.target.value }))}
-                          className="w-full bg-snow rounded-xl px-4 py-3.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite"
-                        />
-                      </div>
-                    </div>
+                    <label className="block text-charcoal font-semibold text-sm mb-2">Years performing</label>
+                    <input
+                      type="number"
+                      placeholder="3"
+                      value={role.yearsPerforming}
+                      onChange={e => setRole(prev => ({ ...prev, yearsPerforming: e.target.value }))}
+                      className="w-full bg-snow rounded-xl px-4 py-3.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite"
+                    />
                   </>
                 )}
 
