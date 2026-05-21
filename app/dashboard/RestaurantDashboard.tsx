@@ -703,8 +703,34 @@ export default function RestaurantDashboard() {
         if (slot && app) {
           toast.success(`Booking confirmed! ${app.musicianName} has been booked for ${slot.date}.`)
         }
+
+        // Fire-and-forget: notify musician of acceptance
+        void supabase.auth.getSession().then(({ data: { session } }) => {
+          if (!session) return
+          fetch('/api/notifications/application-accepted', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ booking_id: appId }),
+          }).catch(err => console.error('[Email] application-accepted failed:', err))
+        })
       } else {
         toast.info('Application declined.')
+
+        // Fire-and-forget: notify musician of decline
+        void supabase.auth.getSession().then(({ data: { session } }) => {
+          if (!session) return
+          fetch('/api/notifications/application-declined', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ booking_id: appId }),
+          }).catch(err => console.error('[Email] application-declined failed:', err))
+        })
       }
 
       setSlots(prev => prev.map(slot => {
@@ -804,6 +830,19 @@ export default function RestaurantDashboard() {
       }))
       setPaymentModalData(null)
       toast.success(`Booking confirmed! Payment authorized and will be released to ${app.musicianName} after the gig on ${slot.date}.`)
+
+      // Fire-and-forget: send booking confirmed emails to both parties
+      void supabase.auth.getSession().then(({ data: { session } }) => {
+        if (!session) return
+        fetch('/api/notifications/booking-confirmed', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ booking_id: app.id }),
+        }).catch(err => console.error('[Email] booking-confirmed failed:', err))
+      })
     } catch (err) {
       console.error('Failed to confirm booking after payment:', err)
       toast.error('Payment succeeded but booking save failed. Please contact support.')

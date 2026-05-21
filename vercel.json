@@ -3,6 +3,10 @@
     {
       "path": "/api/stripe/release-payout",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/gig-reminders",
+      "schedule": "0 9 * * *"
     }
   ]
 }

@@ -563,6 +563,19 @@ export default function MusicianDashboard() {
 
       if (insertErr) throw insertErr
 
+      // Fire-and-forget: notify restaurant of new application
+      void supabase.auth.getSession().then(({ data: { session } }) => {
+        if (!session) return
+        fetch('/api/notifications/new-application', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ booking_id: newBooking.id }),
+        }).catch(err => console.error('[Email] new-application failed:', err))
+      })
+
       const booking: Booking = {
         id: newBooking.id,
         gig,

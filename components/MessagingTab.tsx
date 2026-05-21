@@ -317,6 +317,19 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
     setConversations(prev => prev.map(c =>
       c.id === selectedConvId ? { ...c, lastMessage: text, lastIsoTime: newMsg.created_at } : c
     ))
+
+    // Fire-and-forget: notify recipient if they haven't been active recently
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) return
+      fetch('/api/notifications/new-message', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ message_id: newMsg.id }),
+      }).catch(err => console.error('[Email] new-message failed:', err))
+    })
   }
 
   // ---- React ----
