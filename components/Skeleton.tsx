@@ -19,6 +19,38 @@ export function Skeleton({ className = '', dark = false }: SkeletonProps) {
   return <div className={`${base} ${gradient} ${className}`} />
 }
 
+// ---- Gig Card Skeleton (fan feed) ----
+
+export function SkeletonGigCard() {
+  return (
+    <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+      {/* Restaurant header */}
+      <div className="px-4 pt-3.5 pb-3 flex items-center gap-3">
+        <Skeleton className="w-10 h-10 rounded-full shrink-0" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-3 w-24" />
+        </div>
+      </div>
+      {/* Musician dark section */}
+      <div className="px-4 py-5 bg-graphite space-y-2.5">
+        <Skeleton dark className="h-2.5 w-20" />
+        <Skeleton dark className="h-6 w-40" />
+        <Skeleton dark className="h-5 w-24 rounded-full" />
+        <div className="pt-1 space-y-1.5">
+          <Skeleton dark className="h-4 w-32" />
+          <Skeleton dark className="h-3 w-24" />
+        </div>
+      </div>
+      {/* Action row */}
+      <div className="px-4 py-3 flex gap-2 border-t border-charcoal/[0.07]">
+        <Skeleton className="flex-1 h-8 rounded-xl" />
+        <Skeleton className="flex-1 h-8 rounded-xl" />
+      </div>
+    </div>
+  )
+}
+
 // ---- Stat Card Skeleton ----
 
 export function SkeletonStatCard() {
