@@ -2,6 +2,7 @@
 
 import { ChangeEvent, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { generateUsername } from '@/lib/generate-username'
 import { useRouter } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
 
@@ -323,8 +324,23 @@ export default function OnboardingPage() {
       roleMetadata.favorite_genres = role.favoriteGenres
     }
 
+    let nameForUsername: string
+    if (resolvedType === 'restaurant') {
+      nameForUsername = role.venueName || basic.fullName || 'user'
+    } else if (resolvedType === 'musician') {
+      nameForUsername = basic.fullName || 'user'
+    } else {
+      // fan
+      nameForUsername = basic.fullName || 'user'
+      console.log('[Onboarding] fan username source — basic.fullName:', basic.fullName, '| using:', nameForUsername)
+    }
+    console.log('[Onboarding] generating username for', resolvedType, '— nameForUsername:', nameForUsername)
+    const username = await generateUsername(nameForUsername)
+    console.log('[Onboarding] generated username:', username)
+
     const profileRow = {
       id: user.id,
+      username,
       user_type: resolvedType,
       full_name: basic.fullName || null,
       legal_name: userType === 'musician' ? (basic.legalName || null) : null,

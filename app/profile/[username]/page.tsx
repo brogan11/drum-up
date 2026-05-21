@@ -200,9 +200,9 @@ export default function ProfilePage() {
   useEffect(() => {
     const load = async () => {
       try {
-      const { data: { user }, error: authErr } = await supabase.auth.getUser()
-      if (authErr) throw authErr
-      if (!user) { router.push('/auth/login'); return }
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { router.replace('/auth/login'); return }
+      const user = session.user
       setViewerId(user.id)
 
       const { data: vp, error: vpErr } = await supabase.from('profiles')
@@ -218,6 +218,13 @@ export default function ProfilePage() {
       setLoading(false)
       if (!pd) return
       setProfile(pd as ProfileData)
+
+      // Redirect UUID-based URLs to the canonical /profile/[username]
+      if (UUID_RE.test(slug) && pd.username) {
+        router.replace('/profile/' + pd.username)
+        return
+      }
+
       const pid = pd.id
 
       // Track profile view — fire and forget, ignore if table doesn't exist yet

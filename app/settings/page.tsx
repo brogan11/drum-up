@@ -45,6 +45,7 @@ interface FormState {
 
   maxDistance: number
 
+  username: string
   bio: string
   instagram: string
   tiktok: string
@@ -60,6 +61,7 @@ const EMPTY: FormState = {
   genres: [], instruments: '', performerType: '', bandMembers: '', legalName: '', yearsPerforming: '',
   favoriteGenres: [],
   maxDistance: 20,
+  username: '',
   bio: '', instagram: '', tiktok: '', spotify: '', youtube: '', website: '',
 }
 
@@ -92,6 +94,8 @@ export default function SettingsPage() {
   const [email, setEmail] = useState('')
   const [userType, setUserType] = useState<UserType>('fan')
   const [form, setForm] = useState<FormState>(EMPTY)
+  const [originalUsername, setOriginalUsername] = useState('')
+  const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle')
 
   useEffect(() => {
     const load = async () => {
@@ -121,6 +125,7 @@ export default function SettingsPage() {
         setUserType(t)
         const meta = profile.role_metadata ?? {}
 
+        setOriginalUsername(profile.username ?? '')
         setForm({
           fullName: profile.full_name ?? '',
           avatarFile: null,
@@ -142,6 +147,7 @@ export default function SettingsPage() {
           yearsPerforming: meta.years_performing != null ? String(meta.years_performing) : '',
           favoriteGenres: Array.isArray(meta.favorite_genres) ? meta.favorite_genres : [],
           maxDistance: typeof profile.max_distance_miles === 'number' ? profile.max_distance_miles : 20,
+          username: profile.username ?? '',
           bio: profile.bio ?? '',
           instagram: profile.instagram_url ?? '',
           tiktok: profile.tiktok_url ?? '',
@@ -158,6 +164,21 @@ export default function SettingsPage() {
     }
     load()
   }, [router])
+
+  useEffect(() => {
+    if (!userId) return
+    const val = form.username
+    if (!val || val === originalUsername) { setUsernameStatus('idle'); return }
+    const valid = /^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(val) && val.length >= 3 && val.length <= 30
+    if (!valid) { setUsernameStatus('invalid'); return }
+    setUsernameStatus('checking')
+    const timer = setTimeout(async () => {
+      const { data } = await supabase
+        .from('profiles').select('id').eq('username', val).neq('id', userId).maybeSingle()
+      setUsernameStatus(data ? 'taken' : 'available')
+    }, 600)
+    return () => clearTimeout(timer)
+  }, [form.username, userId, originalUsername])
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm(prev => ({ ...prev, [key]: value }))
@@ -260,6 +281,11 @@ export default function SettingsPage() {
     setError('')
     setSavedAt(null)
     try {
+      if (form.username !== originalUsername) {
+        if (usernameStatus === 'taken') throw new Error('That username is already taken.')
+        if (usernameStatus === 'invalid') throw new Error('Username must be 3–30 characters: lowercase letters, numbers, and hyphens only. Cannot start or end with a hyphen.')
+        if (usernameStatus === 'checking') throw new Error('Username check still running — please wait a moment and try again.')
+      }
       let avatarUrl = form.avatarPreview.startsWith('blob:') ? '' : form.avatarPreview
       if (form.avatarFile) {
         const ext = form.avatarFile.name.split('.').pop()?.toLowerCase() || 'jpg'
@@ -301,6 +327,7 @@ export default function SettingsPage() {
       }
 
       const { error: upErr } = await supabase.from('profiles').update({
+        username: form.username || null,
         full_name: form.fullName || null,
         avatar_url: avatarUrl || null,
         location_text: form.locationText || null,
@@ -325,6 +352,8 @@ export default function SettingsPage() {
       if (upErr) throw upErr
 
       setForm(prev => ({ ...prev, avatarFile: null, avatarPreview: avatarUrl, bannerFile: null, bannerPreview: bannerUrl }))
+      setOriginalUsername(form.username)
+      setUsernameStatus('idle')
       setSavedAt(Date.now())
     } catch (e) {
       console.error('Settings save failed', e)
@@ -395,6 +424,41 @@ export default function SettingsPage() {
             <Field label={userType === 'restaurant' ? 'Contact name' : userType === 'musician' ? 'Stage name / band name' : 'Full name'}
               hint={userType === 'musician' ? 'How you appear publicly to venues and fans' : undefined}>
               <Input value={form.fullName} onChange={v => update('fullName', v)} placeholder={userType === 'musician' ? 'e.g. Johnny Blues or The Midnight Blues' : 'Your name'} />
+            </Field>
+
+            <Field label="Username">
+              <div>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-4 flex items-center text-charcoal/50 text-sm pointer-events-none select-none">@</span>
+                  <input
+                    type="text"
+                    value={form.username}
+                    onChange={e => {
+                      const val = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '')
+                      update('username', val)
+                      setUsernameStatus('idle')
+                    }}
+                    placeholder="your-username"
+                    maxLength={30}
+                    className="w-full bg-snow rounded-xl pl-8 pr-10 py-3.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-base text-graphite"
+                  />
+                  <span className="absolute inset-y-0 right-4 flex items-center pointer-events-none">
+                    {usernameStatus === 'checking' && (
+                      <span className="w-4 h-4 border-2 border-charcoal/30 border-t-chestnut rounded-full animate-spin inline-block" />
+                    )}
+                    {usernameStatus === 'available' && <span className="text-teal font-black text-base">✓</span>}
+                    {(usernameStatus === 'taken' || usernameStatus === 'invalid') && <span className="text-red-500 font-black text-base">✗</span>}
+                  </span>
+                </div>
+                {usernameStatus === 'available' && <p className="text-teal text-xs mt-1.5 font-semibold">Username is available!</p>}
+                {usernameStatus === 'taken' && <p className="text-red-500 text-xs mt-1.5">This username is already taken.</p>}
+                {usernameStatus === 'invalid' && <p className="text-red-500 text-xs mt-1.5">3–30 characters. Letters, numbers, and hyphens only. Can&apos;t start or end with a hyphen.</p>}
+                {form.username && (
+                  <p className="text-charcoal/50 text-xs mt-1.5">
+                    drum-up.app/profile/<span className="text-chestnut font-semibold">{form.username}</span>
+                  </p>
+                )}
+              </div>
             </Field>
 
             <Field label="Location" hint={form.latitude !== null ? `Coords saved (${form.latitude.toFixed(3)}, ${form.longitude?.toFixed(3)})` : undefined}>
