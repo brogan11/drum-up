@@ -75,7 +75,8 @@ export default function AuthCallback() {
         <img src="/orange-drum-up.png" alt="Drum Up" className="w-16 h-16 object-contain" />
       </div>
       <div className="w-10 h-10 border-4 border-chestnut border-t-transparent rounded-full animate-spin mb-4" />
-      <p className="text-charcoal text-sm font-medium">Verifying your account…</p>
+      <p className="text-graphite font-bold text-base">Confirming your account…</p>
+      <p className="text-charcoal text-sm mt-1">You&apos;ll be redirected automatically.</p>
       <Suspense fallback={null}>
         <CallbackHandler onError={() => setFailed(true)} />
       </Suspense>

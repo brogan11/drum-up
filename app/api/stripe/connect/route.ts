@@ -73,10 +73,18 @@ export async function POST(request: Request) {
         .eq('id', user.id)
     }
 
+    const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? 'https://drum-up.app'
+
+    console.log('[Stripe Connect] Creating account link with:', {
+      appUrl,
+      returnUrl: `${appUrl}/dashboard?stripe=success`,
+      refreshUrl: `${appUrl}/dashboard?stripe=refresh`,
+    })
+
     const accountLink = await stripe.accountLinks.create({
       account: accountId,
-      refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?stripe=refresh`,
-      return_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?stripe=success`,
+      refresh_url: `${appUrl}/dashboard?stripe=refresh`,
+      return_url: `${appUrl}/dashboard?stripe=success`,
       type: 'account_onboarding',
     })
 

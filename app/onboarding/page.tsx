@@ -447,22 +447,20 @@ export default function OnboardingPage() {
     <div className="min-h-screen flex flex-col" style={{ background: PANEL_BG }}>
 
       {/* Top bar */}
-      <header className="px-6 md:px-12 pt-6 pb-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <header className="px-4 md:px-12 pt-5 pb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
           <div className="bg-white rounded-xl p-1.5 shadow-sm">
-            <img src="/orange-drum-up.png" alt="Drum Up" className="w-8 h-8 object-contain" />
+            <img src="/orange-drum-up.png" alt="Drum Up" className="w-7 h-7 md:w-8 md:h-8 object-contain" />
           </div>
-          <span className="text-graphite font-black text-xl tracking-tight">Drum Up</span>
+          <span className="text-graphite font-black text-lg md:text-xl tracking-tight">Drum Up</span>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-charcoal text-xs uppercase tracking-[0.25em] font-bold">
-            Step {step} of {totalSteps}
-          </span>
-        </div>
+        <span className="text-charcoal text-xs uppercase tracking-[0.2em] font-bold">
+          {step} / {totalSteps}
+        </span>
       </header>
 
       {/* Progress bar */}
-      <div className="px-6 md:px-12 mb-6 md:mb-10">
+      <div className="px-4 md:px-12 mb-5 md:mb-10">
         <div className="h-1.5 bg-white/70 rounded-full overflow-hidden shadow-inner">
           <div
             className="h-full bg-chestnut transition-all duration-500 ease-out rounded-full"
@@ -579,7 +577,8 @@ export default function OnboardingPage() {
                     )}
                   </div>
                   <div>
-                    <label className="inline-block bg-snow text-graphite font-bold text-sm px-4 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+                    <label className="flex items-center gap-2 bg-snow text-graphite font-bold text-sm px-4 py-3 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer min-h-[44px]">
+                      <span className="text-base">📷</span>
                       {basic.avatarPreview ? 'Change photo' : 'Upload photo'}
                       <input type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
                     </label>
@@ -623,7 +622,7 @@ export default function OnboardingPage() {
                               placeholder="The name you perform under e.g. Johnny Blues"
                               value={basic.fullName}
                               onChange={e => setBasic(prev => ({ ...prev, fullName: e.target.value.slice(0, 50) }))}
-                              className="w-full bg-snow rounded-xl px-4 py-3.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite mb-1"
+                              className="w-full bg-snow rounded-xl px-4 py-3.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-base text-graphite mb-1"
                             />
                             <p className="text-charcoal/60 text-xs mb-5">This is what venues and fans will see on your profile</p>
                           </>
@@ -637,7 +636,7 @@ export default function OnboardingPage() {
                               placeholder="e.g. The Midnight Blues"
                               value={basic.fullName}
                               onChange={e => setBasic(prev => ({ ...prev, fullName: e.target.value.slice(0, 50) }))}
-                              className="w-full bg-snow rounded-xl px-4 py-3.5 mb-5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite"
+                              className="w-full bg-snow rounded-xl px-4 py-3.5 mb-5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-base text-graphite"
                             />
                             <label className="block text-charcoal font-semibold text-sm mb-2">
                               Number of Members <span className="text-chestnut">*</span>
@@ -649,7 +648,7 @@ export default function OnboardingPage() {
                               placeholder="4"
                               value={basic.bandMembers}
                               onChange={e => setBasic(prev => ({ ...prev, bandMembers: e.target.value }))}
-                              className="w-full bg-snow rounded-xl px-4 py-3.5 mb-5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite"
+                              className="w-full bg-snow rounded-xl px-4 py-3.5 mb-5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-base text-graphite"
                             />
                           </>
                         )}
@@ -662,7 +661,7 @@ export default function OnboardingPage() {
                           placeholder="First and last name as on your ID"
                           value={basic.legalName}
                           onChange={e => setBasic(prev => ({ ...prev, legalName: e.target.value.slice(0, 100) }))}
-                          className="w-full rounded-xl px-4 py-3.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite mb-1"
+                          className="w-full rounded-xl px-4 py-3.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-base text-graphite mb-1"
                           style={{ background: '#F9F9F9' }}
                         />
                         <p className="text-charcoal/60 text-xs italic mb-6">Private — only used for payment verification. Never shown publicly.</p>
@@ -679,7 +678,7 @@ export default function OnboardingPage() {
                       placeholder={userType === 'restaurant' ? 'Who runs the booking?' : 'How should we list you?'}
                       value={basic.fullName}
                       onChange={e => setBasic(prev => ({ ...prev, fullName: e.target.value }))}
-                      className="w-full bg-snow rounded-xl px-4 py-3.5 mb-6 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite"
+                      className="w-full bg-snow rounded-xl px-4 py-3.5 mb-6 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-base text-graphite"
                     />
                   </>
                 )}
@@ -693,7 +692,7 @@ export default function OnboardingPage() {
                     value={basic.locationText}
                     onChange={e => setBasic(prev => ({ ...prev, locationText: e.target.value, latitude: null, longitude: null }))}
                     onBlur={lookupCity}
-                    className="flex-1 bg-snow rounded-xl px-4 py-3.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite"
+                    className="flex-1 bg-snow rounded-xl px-4 py-3.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-base text-graphite"
                   />
                   <button
                     type="button"
@@ -734,7 +733,7 @@ export default function OnboardingPage() {
                       placeholder="The Lantern Room"
                       value={role.venueName}
                       onChange={e => setRole(prev => ({ ...prev, venueName: e.target.value }))}
-                      className="w-full bg-snow rounded-xl px-4 py-3.5 mb-5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite"
+                      className="w-full bg-snow rounded-xl px-4 py-3.5 mb-5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-base text-graphite"
                     />
 
                     <div className="grid grid-cols-2 gap-4 mb-5">
@@ -745,7 +744,7 @@ export default function OnboardingPage() {
                           placeholder="80"
                           value={role.capacity}
                           onChange={e => setRole(prev => ({ ...prev, capacity: e.target.value }))}
-                          className="w-full bg-snow rounded-xl px-4 py-3.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite"
+                          className="w-full bg-snow rounded-xl px-4 py-3.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-base text-graphite"
                         />
                       </div>
                       <div>
@@ -755,7 +754,7 @@ export default function OnboardingPage() {
                           placeholder="Italian, Tapas..."
                           value={role.cuisineType}
                           onChange={e => setRole(prev => ({ ...prev, cuisineType: e.target.value }))}
-                          className="w-full bg-snow rounded-xl px-4 py-3.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite"
+                          className="w-full bg-snow rounded-xl px-4 py-3.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-base text-graphite"
                         />
                       </div>
                     </div>
@@ -808,7 +807,7 @@ export default function OnboardingPage() {
                       placeholder="Acoustic guitar, vocals..."
                       value={role.instruments}
                       onChange={e => setRole(prev => ({ ...prev, instruments: e.target.value }))}
-                      className="w-full bg-snow rounded-xl px-4 py-3.5 mb-5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite"
+                      className="w-full bg-snow rounded-xl px-4 py-3.5 mb-5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-base text-graphite"
                     />
 
                     <label className="block text-charcoal font-semibold text-sm mb-2">Years performing</label>
@@ -817,7 +816,7 @@ export default function OnboardingPage() {
                       placeholder="3"
                       value={role.yearsPerforming}
                       onChange={e => setRole(prev => ({ ...prev, yearsPerforming: e.target.value }))}
-                      className="w-full bg-snow rounded-xl px-4 py-3.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite"
+                      className="w-full bg-snow rounded-xl px-4 py-3.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-base text-graphite"
                     />
                   </>
                 )}
@@ -861,7 +860,7 @@ export default function OnboardingPage() {
                   placeholder="A line or two about who you are..."
                   value={social.bio}
                   onChange={e => setSocial(prev => ({ ...prev, bio: e.target.value }))}
-                  className="w-full bg-snow rounded-xl px-4 py-3.5 mb-5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite resize-none"
+                  className="w-full bg-snow rounded-xl px-4 py-3.5 mb-5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-base text-graphite resize-none"
                 />
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -930,23 +929,16 @@ export default function OnboardingPage() {
 
           {/* Footer nav — hidden on Step 5 (has its own action buttons) */}
           {!(userType === 'musician' && step === 5) && (
-          <div className="flex items-center justify-between mt-5 px-1">
-            <button
-              type="button"
-              onClick={back}
-              disabled={step === 1 || submitting}
-              className="text-charcoal font-bold text-sm px-4 py-2.5 rounded-xl hover:bg-white/60 transition-colors disabled:opacity-30 disabled:hover:bg-transparent flex items-center gap-1.5"
-            >
-              <span>←</span> Back
-            </button>
+          <div className="flex flex-col gap-2 mt-5 md:flex-row md:items-center md:justify-between md:px-1">
 
-            <div className="flex items-center gap-2">
+            {/* Primary action — full width on mobile, auto on desktop */}
+            <div className="order-1 md:order-2 flex gap-2">
               {step > 2 && (
                 <button
                   type="button"
                   onClick={next}
                   disabled={submitting}
-                  className="text-charcoal font-bold text-sm px-4 py-2.5 rounded-xl hover:bg-white/60 transition-colors disabled:opacity-30"
+                  className="flex-1 md:flex-none text-charcoal font-bold text-sm px-4 py-3 md:py-2.5 rounded-xl hover:bg-white/60 transition-colors disabled:opacity-30 min-h-[44px]"
                 >
                   Skip
                 </button>
@@ -955,7 +947,7 @@ export default function OnboardingPage() {
                 type="button"
                 onClick={next}
                 disabled={submitting || (step === 1 && !step1Valid) || (step === 2 && !step2Valid)}
-                className="bg-chestnut text-snow font-bold text-sm px-6 py-2.5 rounded-xl shadow-md hover:shadow-lg hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 group"
+                className="flex-1 md:flex-none bg-chestnut text-snow font-bold text-sm px-6 py-3 md:py-2.5 rounded-xl shadow-md hover:shadow-lg hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 group min-h-[44px]"
               >
                 {submitting
                   ? <><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg> Saving…</>
@@ -964,6 +956,16 @@ export default function OnboardingPage() {
                     : <>Next <span className="group-hover:translate-x-0.5 transition-transform">→</span></>}
               </button>
             </div>
+
+            {/* Back — below on mobile, left on desktop */}
+            <button
+              type="button"
+              onClick={back}
+              disabled={step === 1 || submitting}
+              className="order-2 md:order-1 text-charcoal font-bold text-sm px-4 py-3 md:py-2.5 rounded-xl hover:bg-white/60 transition-colors disabled:opacity-30 disabled:hover:bg-transparent flex items-center justify-center md:justify-start gap-1.5 min-h-[44px]"
+            >
+              <span>←</span> Back
+            </button>
           </div>
           )}
         </div>
@@ -991,7 +993,7 @@ function SocialInput({
           placeholder={placeholder ?? 'username'}
           value={value}
           onChange={e => onChange(e.target.value)}
-          className="flex-1 bg-transparent py-3.5 pr-4 focus:outline-none text-graphite text-sm border-none"
+          className="flex-1 bg-transparent py-3.5 pr-4 focus:outline-none text-base text-graphite border-none"
         />
       </div>
     </div>
