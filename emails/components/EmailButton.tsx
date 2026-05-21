@@ -1,5 +1,6 @@
-import { Button } from '@react-email/components'
+import { Button } from 'react-email'
 import { brand } from '../brand'
+import type { ReactNode } from 'react'
 
 export function EmailButton({
   href,
@@ -7,7 +8,7 @@ export function EmailButton({
   secondary = false,
 }: {
   href: string
-  children: string
+  children: ReactNode
   secondary?: boolean
 }) {
   return (

@@ -6,7 +6,7 @@ import {
   Section,
   Text,
   Hr,
-} from '@react-email/components'
+} from 'react-email'
 import { brand } from '../brand'
 
 export function EmailLayout({

@@ -1,4 +1,4 @@
-import { Section, Text } from '@react-email/components'
+import { Section, Text } from 'react-email'
 import { brand } from '../brand'
 
 export function InfoCard({ label, value }: { label: string; value: string }) {

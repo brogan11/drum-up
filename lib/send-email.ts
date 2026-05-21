@@ -1,5 +1,5 @@
 import { resend } from './resend'
-import { render } from '@react-email/components'
+import { render } from 'react-email'
 import type { ReactElement } from 'react'
 
 export async function sendEmail({
