@@ -11,12 +11,13 @@ import { useToast } from '@/components/Toast'
 import { SkeletonStatCard, SkeletonBookingCard, SkeletonMusicianCard } from '@/components/Skeleton'
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { stripePromise } from '@/lib/stripe-client'
+import { buildSocialUrl } from '@/lib/social-urls'
 
 // ---- Types ----
 
 type AppStatus = 'pending' | 'confirmed' | 'cancelled'
 type SlotStatus = 'open' | 'booked' | 'past' | 'cancelled'
-type SlotFilter = 'all' | 'open' | 'booked' | 'past'
+type SlotFilter = 'all' | 'open' | 'pending' | 'confirmed' | 'past' | 'cancelled'
 type SlotsView = 'list' | 'calendar'
 
 interface Application {
@@ -272,7 +273,8 @@ export default function RestaurantDashboard() {
   const [postSlotOpen, setPostSlotOpen] = useState(false)
   const [newSlot, setNewSlot] = useState({ date: '', startTime: '', endTime: '', genres: [] as string[], budget: '', notes: '' })
 
-  const [slotFilter, setSlotFilter] = useState<SlotFilter>('all')
+  const [slotFilter, setSlotFilter] = useState<SlotFilter>('open')
+  const [slotsDisplayCount, setSlotsDisplayCount] = useState(10)
   const [slotsView, setSlotsView] = useState<SlotsView>('list')
   const [calendarMonth, setCalendarMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1) })
   const [calendarSelectedDay, setCalendarSelectedDay] = useState<string | null>(null)
@@ -285,6 +287,13 @@ export default function RestaurantDashboard() {
   // Messaging
   const messagingRef = useRef<MessagingTabRef>(null)
   const [msgUnread, setMsgUnread] = useState(0)
+
+  // Return from profile page → messages tab
+  useEffect(() => {
+    const go = sessionStorage.getItem('drumup_goto_messages')
+    if (go) { sessionStorage.removeItem('drumup_goto_messages'); setActiveTab('messages') }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const [editingProfile, setEditingProfile] = useState(false)
   const [profileDraft, setProfileDraft] = useState<VenueProfile>(INITIAL_PROFILE)
@@ -299,6 +308,7 @@ export default function RestaurantDashboard() {
   const [liveMusicians, setLiveMusicians] = useState<LiveMusician[]>([])
   const [browseLoading, setBrowseLoading] = useState(false)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
+  const [archiveOpen, setArchiveOpen] = useState(false)
   const [dataLoading, setDataLoading] = useState(true)
   const { toast } = useToast()
 
@@ -872,7 +882,18 @@ export default function RestaurantDashboard() {
   const pendingApps = slots.reduce((n, s) => n + s.applications.filter(a => a.status === 'pending').length, 0)
   const upcomingGigs = slots.filter(s => s.status === 'booked').length
   const pastGigs = slots.filter(s => s.status === 'past').length
-  const filteredSlots = slotFilter === 'all' ? slots : slots.filter(s => s.status === slotFilter)
+  const activeSlots = slots.filter(s => s.status !== 'past' && s.status !== 'cancelled')
+  const archiveSlots = slots.filter(s => s.status === 'past' || s.status === 'cancelled')
+  const filteredSlots = (() => {
+    switch (slotFilter) {
+      case 'all': return activeSlots
+      case 'open': return slots.filter(s => s.status === 'open')
+      case 'pending': return slots.filter(s => s.status === 'open' && s.applications.some(a => a.status === 'pending'))
+      case 'confirmed': return slots.filter(s => s.status === 'booked')
+      case 'past': return slots.filter(s => s.status === 'past').sort((a, b) => b.rawDate.localeCompare(a.rawDate))
+      case 'cancelled': return slots.filter(s => s.status === 'cancelled').sort((a, b) => b.rawDate.localeCompare(a.rawDate))
+    }
+  })()
   const filteredMusicians = liveMusicians.filter(m => {
     const q = search.toLowerCase()
     const matchSearch = !q || m.name.toLowerCase().includes(q) || m.genres.some(g => g.toLowerCase().includes(q))
@@ -1080,9 +1101,9 @@ export default function RestaurantDashboard() {
                         )}
                         {(app.instagram || app.youtube || app.spotify) && (
                           <div className="flex flex-wrap gap-3 mb-3">
-                            {app.instagram && <a href={app.instagram} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">📷 Instagram</a>}
-                            {app.youtube && <a href={app.youtube} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">▶ YouTube</a>}
-                            {app.spotify && <a href={app.spotify} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">🎵 Spotify</a>}
+                            {app.instagram && <a href={buildSocialUrl('instagram', app.instagram)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">📷 Instagram</a>}
+                            {app.youtube && <a href={buildSocialUrl('youtube', app.youtube)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">▶ YouTube</a>}
+                            {app.spotify && <a href={buildSocialUrl('spotify', app.spotify)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">🎵 Spotify</a>}
                           </div>
                         )}
                         <div className="flex gap-2">
@@ -1170,9 +1191,9 @@ export default function RestaurantDashboard() {
                         )}
                         {(app.instagram || app.youtube || app.spotify) && (
                           <div className="flex flex-wrap gap-3 mb-3">
-                            {app.instagram && <a href={app.instagram} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">📷 Instagram</a>}
-                            {app.youtube && <a href={app.youtube} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">▶ YouTube</a>}
-                            {app.spotify && <a href={app.spotify} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">🎵 Spotify</a>}
+                            {app.instagram && <a href={buildSocialUrl('instagram', app.instagram)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">📷 Instagram</a>}
+                            {app.youtube && <a href={buildSocialUrl('youtube', app.youtube)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">▶ YouTube</a>}
+                            {app.spotify && <a href={buildSocialUrl('spotify', app.spotify)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">🎵 Spotify</a>}
                           </div>
                         )}
                         <div className="flex gap-2">
@@ -1292,31 +1313,59 @@ export default function RestaurantDashboard() {
                 </div>
                 {slotsView === 'list' ? (
                   <>
+                    {/* Filter tabs */}
                     <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
-                      {(['all', 'open', 'booked', 'past'] as SlotFilter[]).map(f => (
-                        <button key={f} onClick={() => setSlotFilter(f)} className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-semibold capitalize transition-all ${slotFilter === f ? 'bg-graphite text-snow' : 'bg-white text-charcoal hover:bg-[#E8E4E0]'}`}>
-                          {f}
+                      {([
+                        { key: 'open' as SlotFilter, label: 'Open', count: slots.filter(s => s.status === 'open').length },
+                        { key: 'pending' as SlotFilter, label: 'Pending', count: slots.filter(s => s.status === 'open' && s.applications.some(a => a.status === 'pending')).length },
+                        { key: 'confirmed' as SlotFilter, label: 'Confirmed', count: slots.filter(s => s.status === 'booked').length },
+                        { key: 'past' as SlotFilter, label: 'Past', count: slots.filter(s => s.status === 'past').length },
+                        { key: 'cancelled' as SlotFilter, label: 'Cancelled', count: slots.filter(s => s.status === 'cancelled').length },
+                        { key: 'all' as SlotFilter, label: 'All', count: activeSlots.length },
+                      ]).map(({ key, label, count }) => (
+                        <button
+                          key={key}
+                          onClick={() => { setSlotFilter(key); setSlotsDisplayCount(10) }}
+                          className={`shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all ${slotFilter === key ? 'bg-chestnut text-snow shadow-sm' : 'bg-white text-charcoal border border-charcoal/15 hover:bg-[#E8E4E0]'}`}
+                        >
+                          {label}
+                          {count > 0 && (
+                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none ${slotFilter === key ? 'bg-snow/25 text-snow' : 'bg-charcoal/10 text-charcoal'}`}>{count}</span>
+                          )}
                         </button>
                       ))}
                     </div>
+
+                    {/* Slot list with pagination */}
                     {filteredSlots.length === 0 ? (
                       <EmptyState icon="📅" title="No slots found" body="Post a slot to start receiving applications from musicians." />
                     ) : (
-                      <div className="space-y-4">
-                        {filteredSlots.map(slot => (
-                          <SlotCard
-                            key={slot.id}
-                            slot={slot}
-                            selectedSlotId={selectedSlotId}
-                            setSelectedSlotId={setSelectedSlotId}
-                            handleApplicationAction={handleApplicationAction}
-                            onAccept={(app) => openPaymentModal(slot, app)}
-                            onMessage={(app) => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })}
-                            onEdit={slot.status === 'open' ? () => { setEditingSlot(slot); setEditDraft({ date: slot.rawDate, startTime: slot.rawStartTime, endTime: slot.rawEndTime, budget: String(slot.budget), notes: slot.notes }) } : undefined}
-                            onCancel={(slot.status === 'open' || slot.status === 'booked') ? () => setCancelSlotId(slot.id) : undefined}
-                          />
-                        ))}
-                      </div>
+                      <>
+                        <p className="text-charcoal/50 text-xs mb-3">Showing {Math.min(slotsDisplayCount, filteredSlots.length)} of {filteredSlots.length} slots</p>
+                        <div className="space-y-4">
+                          {filteredSlots.slice(0, slotsDisplayCount).map(slot => (
+                            <SlotCard
+                              key={slot.id}
+                              slot={slot}
+                              selectedSlotId={selectedSlotId}
+                              setSelectedSlotId={setSelectedSlotId}
+                              handleApplicationAction={handleApplicationAction}
+                              onAccept={(app) => openPaymentModal(slot, app)}
+                              onMessage={(app) => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })}
+                              onEdit={slot.status === 'open' ? () => { setEditingSlot(slot); setEditDraft({ date: slot.rawDate, startTime: slot.rawStartTime, endTime: slot.rawEndTime, budget: String(slot.budget), notes: slot.notes }) } : undefined}
+                              onCancel={(slot.status === 'open' || slot.status === 'booked') ? () => setCancelSlotId(slot.id) : undefined}
+                            />
+                          ))}
+                        </div>
+                        {filteredSlots.length > slotsDisplayCount && (
+                          <button
+                            onClick={() => setSlotsDisplayCount(n => n + 10)}
+                            className="mt-4 w-full py-3 rounded-xl border border-charcoal/20 text-charcoal text-sm font-semibold hover:bg-white/60 transition-colors"
+                          >
+                            Load more
+                          </button>
+                        )}
+                      </>
                     )}
                   </>
                 ) : (
@@ -1339,6 +1388,62 @@ export default function RestaurantDashboard() {
                   />
                 )}
               </div>
+
+              {/* ---- ARCHIVE SECTION ---- */}
+              {archiveSlots.length > 0 && (
+                <div className="mt-6">
+                  <button
+                    onClick={() => setArchiveOpen(o => !o)}
+                    className="w-full flex items-center justify-between px-4 py-3 bg-white/60 rounded-xl border border-charcoal/10 hover:bg-white/80 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <svg
+                        className={`w-4 h-4 text-charcoal/50 transition-transform ${archiveOpen ? 'rotate-90' : ''}`}
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                      <span className="text-charcoal text-sm font-bold">Archive</span>
+                      <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-charcoal/10 text-charcoal/60">{archiveSlots.length}</span>
+                    </div>
+                    <span className="text-charcoal/40 text-xs">Past &amp; cancelled slots</span>
+                  </button>
+
+                  {archiveOpen && (
+                    <div className="mt-3 space-y-3">
+                      {archiveSlots.slice(0, 10).map(slot => {
+                        const isPast = slot.status === 'past'
+                        const confirmedApp = slot.applications.find(a => a.status === 'confirmed')
+                        return (
+                          <div key={slot.id} className="bg-white rounded-2xl p-4 shadow-sm opacity-70" style={{ filter: 'grayscale(20%)' }}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap mb-1">
+                                  <p className="text-graphite font-bold text-sm">{slot.date}</p>
+                                  {isPast && confirmedApp ? (
+                                    <span className="inline-flex items-center gap-1 bg-teal/10 text-teal text-[10px] font-black px-2 py-0.5 rounded-full">
+                                      <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                      Completed
+                                    </span>
+                                  ) : (
+                                    <span className="bg-charcoal/10 text-charcoal text-[10px] font-black px-2 py-0.5 rounded-full">Cancelled</span>
+                                  )}
+                                </div>
+                                <p className="text-charcoal/60 text-xs">{slot.time}</p>
+                                {confirmedApp && <p className="text-charcoal/60 text-xs mt-0.5">{confirmedApp.musicianName}</p>}
+                              </div>
+                              <p className="text-charcoal/50 font-black shrink-0">${slot.budget}</p>
+                            </div>
+                          </div>
+                        )
+                      })}
+                      {archiveSlots.length > 10 && (
+                        <p className="text-center text-charcoal/40 text-xs py-2">+{archiveSlots.length - 10} more — use the Past / Cancelled filters above to see all</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )
         })()}
@@ -1451,9 +1556,9 @@ export default function RestaurantDashboard() {
                     )}
                     {(m.instagram || m.youtube || m.spotify) && (
                       <div className="flex flex-wrap gap-3 mb-3">
-                        {m.instagram && <a href={m.instagram} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">📷 Instagram</a>}
-                        {m.youtube && <a href={m.youtube} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">▶ YouTube</a>}
-                        {m.spotify && <a href={m.spotify} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">🎵 Spotify</a>}
+                        {m.instagram && <a href={buildSocialUrl('instagram', m.instagram)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">📷 Instagram</a>}
+                        {m.youtube && <a href={buildSocialUrl('youtube', m.youtube)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">▶ YouTube</a>}
+                        {m.spotify && <a href={buildSocialUrl('spotify', m.spotify)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">🎵 Spotify</a>}
                       </div>
                     )}
                     <div className="flex gap-2">
@@ -1515,13 +1620,13 @@ export default function RestaurantDashboard() {
                   <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-2">Links</p>
                   <div className="flex flex-wrap gap-2">
                     {selectedLiveMusician.instagram && (
-                      <a href={selectedLiveMusician.instagram} target="_blank" rel="noopener noreferrer" className="bg-snow px-3 py-1.5 rounded-xl text-xs font-medium text-charcoal hover:bg-[#E8E4E0] transition-colors">📷 Instagram</a>
+                      <a href={buildSocialUrl('instagram', selectedLiveMusician.instagram)} target="_blank" rel="noopener noreferrer" className="bg-snow px-3 py-1.5 rounded-xl text-xs font-medium text-charcoal hover:bg-[#E8E4E0] transition-colors">📷 Instagram</a>
                     )}
                     {selectedLiveMusician.youtube && (
-                      <a href={selectedLiveMusician.youtube} target="_blank" rel="noopener noreferrer" className="bg-snow px-3 py-1.5 rounded-xl text-xs font-medium text-charcoal hover:bg-[#E8E4E0] transition-colors">▶ YouTube</a>
+                      <a href={buildSocialUrl('youtube', selectedLiveMusician.youtube)} target="_blank" rel="noopener noreferrer" className="bg-snow px-3 py-1.5 rounded-xl text-xs font-medium text-charcoal hover:bg-[#E8E4E0] transition-colors">▶ YouTube</a>
                     )}
                     {selectedLiveMusician.spotify && (
-                      <a href={selectedLiveMusician.spotify} target="_blank" rel="noopener noreferrer" className="bg-snow px-3 py-1.5 rounded-xl text-xs font-medium text-charcoal hover:bg-[#E8E4E0] transition-colors">🎵 Spotify</a>
+                      <a href={buildSocialUrl('spotify', selectedLiveMusician.spotify)} target="_blank" rel="noopener noreferrer" className="bg-snow px-3 py-1.5 rounded-xl text-xs font-medium text-charcoal hover:bg-[#E8E4E0] transition-colors">🎵 Spotify</a>
                     )}
                   </div>
                 </div>
@@ -1632,18 +1737,22 @@ export default function RestaurantDashboard() {
             {/* Venue preview card */}
             <div className="bg-white rounded-2xl p-5 shadow-sm mb-4">
               <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">Your Venue</p>
-              <div className="flex items-center gap-4">
+              <button
+                onClick={() => router.push('/profile/' + userId)}
+                className="w-full flex items-center gap-4 hover:opacity-80 transition-opacity"
+              >
                 {profile.avatar
                   ? <img src={profile.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover shadow-sm border border-charcoal/[0.07]" />
                   : <div className="w-14 h-14 bg-chestnut/10 rounded-2xl flex items-center justify-center text-3xl">🍽</div>}
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 text-left">
                   <p className="text-graphite font-black text-base truncate">{profile.name || 'Your Venue'}</p>
                   {profile.type && <p className="text-charcoal/60 text-sm mt-0.5">{profile.type}</p>}
+                  <p className="text-chestnut text-xs font-semibold mt-1">View Public Profile →</p>
                 </div>
                 <svg className="w-4 h-4 text-charcoal/30 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                 </svg>
-              </div>
+              </button>
             </div>
 
             {/* Account */}
@@ -2057,9 +2166,9 @@ function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAc
               </div>
               {(app.instagram || app.youtube || app.spotify) && (
                 <div className="flex flex-wrap gap-3 mb-2">
-                  {app.instagram && <a href={app.instagram} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">📷 Instagram</a>}
-                  {app.youtube && <a href={app.youtube} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">▶ YouTube</a>}
-                  {app.spotify && <a href={app.spotify} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">🎵 Spotify</a>}
+                  {app.instagram && <a href={buildSocialUrl('instagram', app.instagram)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">📷 Instagram</a>}
+                  {app.youtube && <a href={buildSocialUrl('youtube', app.youtube)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">▶ YouTube</a>}
+                  {app.spotify && <a href={buildSocialUrl('spotify', app.spotify)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">🎵 Spotify</a>}
                 </div>
               )}
               {app.note && <div className="bg-snow rounded-lg px-3 py-2 mb-2"><p className="text-charcoal text-sm italic">"{app.note}"</p></div>}

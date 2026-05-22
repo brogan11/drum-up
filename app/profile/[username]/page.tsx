@@ -7,6 +7,7 @@ import { milesBetween } from '@/lib/distance'
 import { Avatar } from '@/components/Avatar'
 import { useToast } from '@/components/Toast'
 import { SkeletonProfilePageMusician, SkeletonProfilePageLight } from '@/components/Skeleton'
+import { buildSocialUrl } from '@/lib/social-urls'
 
 // ---- Types ----
 
@@ -161,6 +162,12 @@ function SocialIcon({ type }: { type: 'instagram' | 'tiktok' | 'spotify' | 'yout
 
 // ---- Main Component ----
 
+interface ReturnTo {
+  partnerId: string
+  partnerName: string
+  partnerAvatar: string
+}
+
 export default function ProfilePage() {
   const params = useParams()
   const router = useRouter()
@@ -172,6 +179,7 @@ export default function ProfilePage() {
   const { toast } = useToast()
   const [viewer, setViewer] = useState<ViewerData | null>(null)
   const [viewerId, setViewerId] = useState('')
+  const [returnTo, setReturnTo] = useState<ReturnTo | null>(null)
 
   const [pastGigs, setPastGigs] = useState<PastGig[]>([])
   const [upcomingShows, setUpcomingShows] = useState<ShowEntry[]>([])
@@ -190,6 +198,27 @@ export default function ProfilePage() {
   const [reviewRating, setReviewRating] = useState(5)
   const [reviewText, setReviewText] = useState('')
   const [submittingReview, setSubmittingReview] = useState(false)
+
+  // Check if we navigated here from a messages conversation
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem('profileReturnTo')
+      if (stored) setReturnTo(JSON.parse(stored) as ReturnTo)
+    } catch { /* ignore */ }
+  }, [])
+
+  const handleReturnToMessages = () => {
+    if (!returnTo) return
+    sessionStorage.setItem('drumup_open_msg', JSON.stringify({
+      id: returnTo.partnerId,
+      name: returnTo.partnerName,
+      avatar: returnTo.partnerAvatar,
+    }))
+    sessionStorage.setItem('drumup_goto_messages', '1')
+    sessionStorage.removeItem('profileReturnTo')
+    setReturnTo(null)
+    router.push('/dashboard')
+  }
 
   const isOwnProfile = !!viewerId && viewerId === profile?.id
   const distance = profile && viewer?.latitude != null && viewer?.longitude != null
@@ -476,13 +505,26 @@ export default function ProfilePage() {
         {/* Floating nav — back left, DU logo right */}
         <div className="fixed top-0 left-0 right-0 z-50 pointer-events-none">
           <div className="max-w-2xl mx-auto px-4 pt-4 flex justify-between items-start pointer-events-auto">
-            <button onClick={() => router.back()}
-              className="w-10 h-10 rounded-full flex items-center justify-center"
-              style={{ background: 'rgba(42,42,42,0.80)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)' }}>
-              <svg className="w-4 h-4 text-snow" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
+            {returnTo ? (
+              <button
+                onClick={handleReturnToMessages}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold text-chestnut"
+                style={{ background: 'rgba(42,42,42,0.80)', backdropFilter: 'blur(10px)', border: '1px solid rgba(220,127,65,0.35)' }}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+                Messages
+              </button>
+            ) : (
+              <button onClick={() => router.back()}
+                className="w-10 h-10 rounded-full flex items-center justify-center"
+                style={{ background: 'rgba(42,42,42,0.80)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <svg className="w-4 h-4 text-snow" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+            )}
             <div className="rounded-xl p-1.5" style={{ background: 'rgba(42,42,42,0.80)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)' }}>
               <img src="/orange-drum-up.png" alt="Drum Up" className="w-7 h-7 object-contain" />
             </div>
@@ -541,11 +583,11 @@ export default function ProfilePage() {
             {/* Socials left · Actions right */}
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-4">
-                {profile.instagram_url && <a href={toAbsoluteUrl(profile.instagram_url)} target="_blank" rel="noopener noreferrer" className="text-snow/40 hover:text-chestnut transition-colors"><SocialIcon type="instagram" /></a>}
-                {profile.tiktok_url && <a href={toAbsoluteUrl(profile.tiktok_url)} target="_blank" rel="noopener noreferrer" className="text-snow/40 hover:text-chestnut transition-colors"><SocialIcon type="tiktok" /></a>}
-                {profile.spotify_url && <a href={toAbsoluteUrl(profile.spotify_url)} target="_blank" rel="noopener noreferrer" className="text-snow/40 hover:text-chestnut transition-colors"><SocialIcon type="spotify" /></a>}
-                {profile.youtube_url && <a href={toAbsoluteUrl(profile.youtube_url)} target="_blank" rel="noopener noreferrer" className="text-snow/40 hover:text-chestnut transition-colors"><SocialIcon type="youtube" /></a>}
-                {profile.website && <a href={toAbsoluteUrl(profile.website)} target="_blank" rel="noopener noreferrer" className="text-snow/40 hover:text-chestnut transition-colors"><SocialIcon type="website" /></a>}
+                {profile.instagram_url && <a href={buildSocialUrl('instagram', profile.instagram_url)} target="_blank" rel="noopener noreferrer" className="text-snow/40 hover:text-chestnut transition-colors"><SocialIcon type="instagram" /></a>}
+                {profile.tiktok_url && <a href={buildSocialUrl('tiktok', profile.tiktok_url)} target="_blank" rel="noopener noreferrer" className="text-snow/40 hover:text-chestnut transition-colors"><SocialIcon type="tiktok" /></a>}
+                {profile.spotify_url && <a href={buildSocialUrl('spotify', profile.spotify_url)} target="_blank" rel="noopener noreferrer" className="text-snow/40 hover:text-chestnut transition-colors"><SocialIcon type="spotify" /></a>}
+                {profile.youtube_url && <a href={buildSocialUrl('youtube', profile.youtube_url)} target="_blank" rel="noopener noreferrer" className="text-snow/40 hover:text-chestnut transition-colors"><SocialIcon type="youtube" /></a>}
+                {profile.website && <a href={buildSocialUrl('website', profile.website)} target="_blank" rel="noopener noreferrer" className="text-snow/40 hover:text-chestnut transition-colors"><SocialIcon type="website" /></a>}
               </div>
               <div className="flex gap-2 flex-wrap justify-end">
                 {isOwnProfile ? (
@@ -747,15 +789,28 @@ export default function ProfilePage() {
         {/* Floating nav — back left, DU logo right */}
         <div className="fixed top-0 left-0 right-0 z-50 pointer-events-none">
           <div className="max-w-2xl mx-auto px-4 pt-4 flex justify-between items-start pointer-events-auto">
-            <button
-              onClick={() => router.back()}
-              className="w-10 h-10 rounded-full flex items-center justify-center"
-              style={{ background: 'rgba(232,228,224,0.85)', backdropFilter: 'blur(10px)', border: '1px solid rgba(220,127,65,0.20)', boxShadow: '0 2px 8px rgba(0,0,0,0.10)' }}
-            >
-              <svg className="w-4 h-4 text-graphite" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
+            {returnTo ? (
+              <button
+                onClick={handleReturnToMessages}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold text-chestnut"
+                style={{ background: 'rgba(232,228,224,0.85)', backdropFilter: 'blur(10px)', border: '1px solid rgba(220,127,65,0.35)', boxShadow: '0 2px 8px rgba(0,0,0,0.10)' }}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+                Messages
+              </button>
+            ) : (
+              <button
+                onClick={() => router.back()}
+                className="w-10 h-10 rounded-full flex items-center justify-center"
+                style={{ background: 'rgba(232,228,224,0.85)', backdropFilter: 'blur(10px)', border: '1px solid rgba(220,127,65,0.20)', boxShadow: '0 2px 8px rgba(0,0,0,0.10)' }}
+              >
+                <svg className="w-4 h-4 text-graphite" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+            )}
             <div
               className="rounded-xl p-1.5"
               style={{ background: 'rgba(232,228,224,0.85)', backdropFilter: 'blur(10px)', border: '1px solid rgba(220,127,65,0.20)', boxShadow: '0 2px 8px rgba(0,0,0,0.10)' }}
@@ -905,35 +960,35 @@ export default function ProfilePage() {
               <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">· Connect</p>
               <div className="flex flex-wrap gap-3">
                 {profile.instagram_url && (
-                  <a href={toAbsoluteUrl(profile.instagram_url)} target="_blank" rel="noopener noreferrer"
+                  <a href={buildSocialUrl('instagram', profile.instagram_url)} target="_blank" rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 bg-white text-graphite text-sm font-semibold px-4 py-2 rounded-xl shadow-sm hover:shadow-md transition-shadow">
                     <SocialIcon type="instagram" />
                     Instagram
                   </a>
                 )}
                 {profile.tiktok_url && (
-                  <a href={toAbsoluteUrl(profile.tiktok_url)} target="_blank" rel="noopener noreferrer"
+                  <a href={buildSocialUrl('tiktok', profile.tiktok_url)} target="_blank" rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 bg-white text-graphite text-sm font-semibold px-4 py-2 rounded-xl shadow-sm hover:shadow-md transition-shadow">
                     <SocialIcon type="tiktok" />
                     TikTok
                   </a>
                 )}
                 {profile.youtube_url && (
-                  <a href={toAbsoluteUrl(profile.youtube_url)} target="_blank" rel="noopener noreferrer"
+                  <a href={buildSocialUrl('youtube', profile.youtube_url)} target="_blank" rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 bg-white text-graphite text-sm font-semibold px-4 py-2 rounded-xl shadow-sm hover:shadow-md transition-shadow">
                     <SocialIcon type="youtube" />
                     YouTube
                   </a>
                 )}
                 {profile.spotify_url && (
-                  <a href={toAbsoluteUrl(profile.spotify_url)} target="_blank" rel="noopener noreferrer"
+                  <a href={buildSocialUrl('spotify', profile.spotify_url)} target="_blank" rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 bg-white text-graphite text-sm font-semibold px-4 py-2 rounded-xl shadow-sm hover:shadow-md transition-shadow">
                     <SocialIcon type="spotify" />
                     Spotify
                   </a>
                 )}
                 {profile.website && (
-                  <a href={toAbsoluteUrl(profile.website)} target="_blank" rel="noopener noreferrer"
+                  <a href={buildSocialUrl('website', profile.website)} target="_blank" rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 bg-white text-graphite text-sm font-semibold px-4 py-2 rounded-xl shadow-sm hover:shadow-md transition-shadow">
                     <SocialIcon type="website" />
                     {profile.website.replace(/^https?:\/\//, '').split('/')[0]}
@@ -1081,12 +1136,24 @@ export default function ProfilePage() {
     <div className="min-h-screen" style={{ background: 'radial-gradient(ellipse 50% 40% at 12% 8%, rgba(108,154,139,0.10), transparent 70%), radial-gradient(ellipse 50% 40% at 88% 92%, rgba(220,127,65,0.12), transparent 70%), #E8E4E0' }}>
       <header className="sticky top-0 z-40 backdrop-blur-md bg-graphite/95 border-b border-charcoal/30">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
-          <button onClick={() => router.back()}
-            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors text-snow/60 hover:text-snow shrink-0">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
+          {returnTo ? (
+            <button
+              onClick={handleReturnToMessages}
+              className="flex items-center gap-1 text-chestnut text-xs font-bold hover:opacity-70 transition-opacity shrink-0"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+              Messages
+            </button>
+          ) : (
+            <button onClick={() => router.back()}
+              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors text-snow/60 hover:text-snow shrink-0">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
           <p className="text-snow font-black text-sm">{displayName}</p>
         </div>
       </header>

@@ -124,6 +124,13 @@ export default function MusicianDashboard() {
   const messagingRef = useRef<MessagingTabRef>(null)
   const [msgUnread, setMsgUnread] = useState(0)
 
+  // Return from profile page → messages tab
+  useEffect(() => {
+    const go = sessionStorage.getItem('drumup_goto_messages')
+    if (go) { sessionStorage.removeItem('drumup_goto_messages'); setActiveTab('messages') }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Newly confirmed gigs (unseen acceptances)
   const [newlyConfirmed, setNewlyConfirmed] = useState(0)
 
@@ -143,6 +150,12 @@ export default function MusicianDashboard() {
   const [analyticsReviewCount, setAnalyticsReviewCount] = useState<number | null>(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
   const [analyticsLoaded, setAnalyticsLoaded] = useState(false)
+
+  // Bookings tab
+  type BookingFilter = 'pending' | 'confirmed' | 'cancelled' | 'all'
+  const [bookingFilter, setBookingFilter] = useState<BookingFilter>('pending')
+  const [bookingsDisplayCount, setBookingsDisplayCount] = useState(10)
+  const [bookingArchiveOpen, setBookingArchiveOpen] = useState(false)
 
   // Stripe Connect
   const [stripeOnboarded, setStripeOnboarded] = useState<boolean | null>(null)
@@ -1046,6 +1059,7 @@ export default function MusicianDashboard() {
           const pastGigs = bookings
             .filter(b => b.status === 'confirmed' && new Date(b.gig.rawEndDatetime || b.gig.rawDate + 'T23:59') < tabNow)
             .sort((a, b) => b.gig.rawEndDatetime.localeCompare(a.gig.rawEndDatetime))
+          const cancelledBookings = bookings.filter(b => b.status === 'cancelled')
           const pendingEarnings = bookings
             .filter(b => b.status === 'confirmed' && b.paymentStatus === 'authorized' && !b.payoutReleased)
             .reduce((s, b) => s + b.price, 0)
@@ -1055,9 +1069,21 @@ export default function MusicianDashboard() {
           const totalConfirmedEarnings = bookings
             .filter(b => b.status === 'confirmed')
             .reduce((s, b) => s + b.price, 0)
+
+          const filteredBookings = (() => {
+            switch (bookingFilter) {
+              case 'pending': return pendingBookings
+              case 'confirmed': return upcomingConfirmed
+              case 'cancelled': return cancelledBookings
+              case 'all': return [...pendingBookings, ...upcomingConfirmed, ...cancelledBookings]
+            }
+          })()
+
+          const archiveItems = pastGigs
+
           return (
             <>
-              <div className="mb-6">
+              <div className="mb-5">
                 <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">The Setlist</p>
                 <h2 className="text-graphite text-3xl font-black tracking-tight leading-none">
                   My <span className="text-chestnut italic">Bookings.</span>
@@ -1066,7 +1092,7 @@ export default function MusicianDashboard() {
 
               {/* Earnings summary */}
               {totalConfirmedEarnings > 0 && (
-                <div className="bg-graphite rounded-2xl p-4 mb-6 shadow-sm">
+                <div className="bg-graphite rounded-2xl p-4 mb-5 shadow-sm">
                   <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">Earnings</p>
                   <div className="grid grid-cols-3 divide-x divide-white/10">
                     <div className="pr-3">
@@ -1090,176 +1116,189 @@ export default function MusicianDashboard() {
                 </div>
               )}
 
-              {/* Pending */}
-              <div className="mb-8">
-                <SectionHeader eyebrow="Waiting to Hear Back" title="Pending" accent="Applications." />
-                {dataLoading ? (
-                  <div className="space-y-3">
-                    <SkeletonBookingCard />
-                    <SkeletonBookingCard />
-                  </div>
-                ) : pendingBookings.length === 0 ? (
-                  <EmptyState
-                    icon="📬"
-                    title="No pending applications"
-                    body="Browse open gig slots and apply to restaurants looking for live music."
-                    action={{ label: 'Browse Open Gigs', onClick: () => setActiveTab('gigs') }}
-                  />
-                ) : (
-                  <div className="space-y-3">
-                    {pendingBookings.map(b => (
-                      <div key={b.id} className="bg-white rounded-2xl p-4 shadow-sm border-l-4 border-l-[#DC7F41]">
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center gap-3">
-                            <button onClick={() => router.push('/profile/' + b.gig.venue.id)}>
-                              <Avatar src={b.gig.venue.avatar} className="w-10 h-10 rounded-full" textSize="text-xl" />
-                            </button>
-                            <div>
-                              <button
-                                onClick={() => router.push('/profile/' + b.gig.venue.id)}
-                                className="text-graphite font-bold text-sm hover:text-chestnut transition-colors text-left block"
-                              >
-                                {b.gig.venue.name}
-                              </button>
-                              <p className="text-charcoal text-xs">{b.gig.date} · {b.gig.time}</p>
-                            </div>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className="text-teal font-black text-sm">${b.price}</p>
-                            <BookingBadge status={b.status} />
-                          </div>
-                        </div>
-                        {b.note && (
-                          <div className="bg-snow rounded-xl px-3 py-2 mb-2">
-                            <p className="text-charcoal text-xs italic">Your note: &ldquo;{b.note}&rdquo;</p>
-                          </div>
-                        )}
-                        <div className="flex items-center justify-between mt-1">
-                          <button
-                            onClick={() => openConversationWithVenue(b.gig)}
-                            className="text-charcoal/60 text-xs font-medium hover:text-chestnut transition-colors"
-                          >
-                            💬 Message Venue
-                          </button>
-                          <button
-                            onClick={() => handleCancelApplication(b.id)}
-                            className="text-charcoal/60 text-xs font-medium hover:text-red-500 transition-colors"
-                          >
-                            Cancel Application
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+              {/* Filter tabs */}
+              <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
+                {([
+                  { key: 'pending' as const, label: 'Pending', count: pendingBookings.length },
+                  { key: 'confirmed' as const, label: 'Confirmed', count: upcomingConfirmed.length },
+                  { key: 'cancelled' as const, label: 'Cancelled', count: cancelledBookings.length },
+                  { key: 'all' as const, label: 'All', count: pendingBookings.length + upcomingConfirmed.length + cancelledBookings.length },
+                ]).map(({ key, label, count }) => (
+                  <button
+                    key={key}
+                    onClick={() => { setBookingFilter(key); setBookingsDisplayCount(10) }}
+                    className={`shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all ${bookingFilter === key ? 'bg-chestnut text-snow shadow-sm' : 'bg-white text-charcoal border border-charcoal/15 hover:bg-[#E8E4E0]'}`}
+                  >
+                    {label}
+                    {count > 0 && (
+                      <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none ${bookingFilter === key ? 'bg-snow/25 text-snow' : 'bg-charcoal/10 text-charcoal'}`}>{count}</span>
+                    )}
+                  </button>
+                ))}
               </div>
 
-              {/* Upcoming Confirmed */}
-              <div className="mb-8">
-                <SectionHeader eyebrow="Confirmed" title="Upcoming" accent="Gigs." />
-                {dataLoading ? (
-                  <div className="space-y-3">
-                    <SkeletonBookingCard />
-                    <SkeletonBookingCard />
-                  </div>
-                ) : upcomingConfirmed.length === 0 ? (
-                  <EmptyState
-                    icon="🎸"
-                    title="No upcoming gigs"
-                    body="Keep applying! Your confirmed gigs will appear here once a restaurant accepts."
-                    action={{ label: 'Browse Gigs', onClick: () => setActiveTab('gigs') }}
-                  />
-                ) : (
-                  <div className="space-y-3">
-                    {upcomingConfirmed.map(b => {
+              {/* Filtered list */}
+              {dataLoading ? (
+                <div className="space-y-3">
+                  <SkeletonBookingCard /><SkeletonBookingCard /><SkeletonBookingCard />
+                </div>
+              ) : filteredBookings.length === 0 ? (
+                <EmptyState
+                  icon={bookingFilter === 'pending' ? '📬' : bookingFilter === 'confirmed' ? '🎸' : '🕐'}
+                  title={bookingFilter === 'pending' ? 'No pending applications' : bookingFilter === 'confirmed' ? 'No upcoming gigs' : 'Nothing here'}
+                  body={bookingFilter === 'pending' ? 'Browse open gig slots and apply to restaurants looking for live music.' : bookingFilter === 'confirmed' ? 'Keep applying! Confirmed gigs will appear here.' : ''}
+                  action={bookingFilter === 'pending' ? { label: 'Browse Open Gigs', onClick: () => setActiveTab('gigs') } : undefined}
+                />
+              ) : (
+                <>
+                  <p className="text-charcoal/50 text-xs mb-3">Showing {Math.min(bookingsDisplayCount, filteredBookings.length)} of {filteredBookings.length}</p>
+                  <div className="space-y-3 mb-4">
+                    {filteredBookings.slice(0, bookingsDisplayCount).map(b => {
+                      const isPast = new Date(b.gig.rawEndDatetime || b.gig.rawDate + 'T23:59') < tabNow
                       const [, datePart] = b.gig.date.split(', ')
                       const [mon, day] = (datePart || '').split(' ')
-                      return (
-                        <div key={b.id} className="bg-white rounded-2xl p-4 shadow-sm border-l-4 border-l-[#6C9A8B]">
-                          <div className="flex items-center gap-3">
-                            <div className="bg-teal/10 rounded-xl px-3 py-2.5 text-center shrink-0 min-w-[52px]">
-                              <p className="text-teal text-[10px] font-black uppercase tracking-wide">{mon}</p>
-                              <p className="text-teal text-2xl font-black leading-tight">{day}</p>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <button
-                                onClick={() => router.push('/profile/' + b.gig.venue.id)}
-                                className="text-graphite font-bold text-sm truncate hover:text-chestnut transition-colors text-left block"
-                              >
-                                {b.gig.venue.name}
-                              </button>
-                              <p className="text-charcoal text-xs mt-0.5">{b.gig.time}</p>
-                              {b.gig.venue.type && <p className="text-charcoal/60 text-xs">{b.gig.venue.type}</p>}
-                              <div className="flex gap-1 mt-1 flex-wrap">
-                                {b.gig.genres.map(g => <span key={g} className="text-[10px] bg-snow text-charcoal px-2 py-0.5 rounded-full font-medium">{g}</span>)}
+                      if (b.status === 'pending') {
+                        return (
+                          <div key={b.id} className="bg-white rounded-2xl p-4 shadow-sm border-l-4 border-l-[#DC7F41]">
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex items-center gap-3">
+                                <button onClick={() => router.push('/profile/' + b.gig.venue.id)}>
+                                  <Avatar src={b.gig.venue.avatar} className="w-10 h-10 rounded-full" textSize="text-xl" />
+                                </button>
+                                <div>
+                                  <button
+                                    onClick={() => router.push('/profile/' + b.gig.venue.id)}
+                                    className="text-graphite font-bold text-sm hover:text-chestnut transition-colors text-left block"
+                                  >
+                                    {b.gig.venue.name}
+                                  </button>
+                                  <p className="text-charcoal text-xs">{b.gig.date} · {b.gig.time}</p>
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="text-teal font-black text-sm">${b.price}</p>
+                                <BookingBadge status={b.status} />
                               </div>
                             </div>
+                            {b.note && (
+                              <div className="bg-snow rounded-xl px-3 py-2 mb-2">
+                                <p className="text-charcoal text-xs italic">Your note: &ldquo;{b.note}&rdquo;</p>
+                              </div>
+                            )}
+                            <div className="flex items-center justify-between mt-1">
+                              <button onClick={() => openConversationWithVenue(b.gig)} className="text-charcoal/60 text-xs font-medium hover:text-chestnut transition-colors">💬 Message Venue</button>
+                              <button onClick={() => handleCancelApplication(b.id)} className="text-charcoal/60 text-xs font-medium hover:text-red-500 transition-colors">Cancel Application</button>
+                            </div>
+                          </div>
+                        )
+                      }
+                      if (b.status === 'confirmed') {
+                        return (
+                          <div key={b.id} className="bg-white rounded-2xl p-4 shadow-sm border-l-4 border-l-[#6C9A8B]">
+                            <div className="flex items-center gap-3">
+                              <div className="bg-teal/10 rounded-xl px-3 py-2.5 text-center shrink-0 min-w-[52px]">
+                                <p className="text-teal text-[10px] font-black uppercase tracking-wide">{mon}</p>
+                                <p className="text-teal text-2xl font-black leading-tight">{day}</p>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <button onClick={() => router.push('/profile/' + b.gig.venue.id)} className="text-graphite font-bold text-sm truncate hover:text-chestnut transition-colors text-left block">{b.gig.venue.name}</button>
+                                <p className="text-charcoal text-xs mt-0.5">{b.gig.time}</p>
+                                {b.gig.venue.type && <p className="text-charcoal/60 text-xs">{b.gig.venue.type}</p>}
+                                <div className="flex gap-1 mt-1 flex-wrap">
+                                  {b.gig.genres.map(g => <span key={g} className="text-[10px] bg-snow text-charcoal px-2 py-0.5 rounded-full font-medium">{g}</span>)}
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="text-teal font-black">${b.price}</p>
+                                {b.paymentStatus === 'paid' ? (
+                                  <span className="inline-block bg-teal/10 text-teal text-[10px] font-black px-2 py-0.5 rounded-full mt-1">Paid</span>
+                                ) : b.paymentStatus === 'authorized' ? (
+                                  <span className="inline-block bg-chestnut/10 text-chestnut text-[10px] font-black px-2 py-0.5 rounded-full mt-1">Auth&apos;d</span>
+                                ) : null}
+                                <button onClick={() => openConversationWithVenue(b.gig)} className="text-charcoal/60 text-[10px] font-medium hover:text-chestnut transition-colors mt-1 block">💬 Message</button>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      }
+                      // cancelled
+                      return (
+                        <div key={b.id} className="bg-white rounded-2xl p-4 shadow-sm opacity-70 border-l-4 border-l-charcoal/20">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <button onClick={() => router.push('/profile/' + b.gig.venue.id)} className="text-graphite font-bold text-sm hover:text-chestnut transition-colors text-left block">{b.gig.venue.name}</button>
+                              <p className="text-charcoal/60 text-xs">{b.gig.date} · {b.gig.time}</p>
+                            </div>
                             <div className="text-right shrink-0">
-                              <p className="text-teal font-black">${b.price}</p>
-                              {b.paymentStatus === 'paid' ? (
-                                <span className="inline-block bg-teal/10 text-teal text-[10px] font-black px-2 py-0.5 rounded-full mt-1">Paid</span>
-                              ) : b.paymentStatus === 'authorized' ? (
-                                <span className="inline-block bg-chestnut/10 text-chestnut text-[10px] font-black px-2 py-0.5 rounded-full mt-1">Auth'd</span>
-                              ) : null}
-                              <button
-                                onClick={() => openConversationWithVenue(b.gig)}
-                                className="text-charcoal/60 text-[10px] font-medium hover:text-chestnut transition-colors mt-1 block"
-                              >
-                                💬 Message
-                              </button>
+                              <p className="text-charcoal/50 font-black text-sm">${b.price}</p>
+                              <span className="inline-block bg-charcoal/10 text-charcoal text-[10px] font-black px-2 py-0.5 rounded-full mt-0.5">Cancelled</span>
                             </div>
                           </div>
                         </div>
                       )
                     })}
                   </div>
-                )}
-              </div>
+                  {filteredBookings.length > bookingsDisplayCount && (
+                    <button
+                      onClick={() => setBookingsDisplayCount(n => n + 10)}
+                      className="w-full py-3 rounded-xl border border-charcoal/20 text-charcoal text-sm font-semibold hover:bg-white/60 transition-colors"
+                    >
+                      Load more
+                    </button>
+                  )}
+                </>
+              )}
 
-              {/* Past Gigs */}
-              <div>
-                <SectionHeader eyebrow="History" title="Past" accent="Gigs." />
-                {dataLoading ? (
-                  <div className="space-y-3">
-                    <SkeletonBookingCard />
-                  </div>
-                ) : pastGigs.length === 0 ? (
-                  <EmptyState
-                    icon="🕐"
-                    title="No past gigs yet"
-                    body="Your performance history will appear here after your first confirmed gig."
-                  />
-                ) : (
-                  <div className="space-y-3">
-                    {pastGigs.map(b => (
-                      <div key={b.id} className="bg-white rounded-2xl p-4 shadow-sm opacity-80">
-                        <div className="flex items-center gap-3">
-                          <div className="bg-charcoal/10 rounded-xl px-3 py-2.5 text-center shrink-0 min-w-[52px]">
-                            <p className="text-charcoal/60 text-[10px] font-black uppercase tracking-wide">{b.gig.date.split(' ')[0]}</p>
-                            <p className="text-charcoal/60 text-2xl font-black leading-tight">{b.gig.date.split(' ')[2]?.replace(',', '')}</p>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <button
-                              onClick={() => router.push('/profile/' + b.gig.venue.id)}
-                              className="text-graphite font-bold text-sm truncate hover:text-chestnut transition-colors text-left block"
-                            >
-                              {b.gig.venue.name}
-                            </button>
-                            <p className="text-charcoal text-xs mt-0.5">{b.gig.time}</p>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className="text-charcoal font-black">${b.price}</p>
-                            <span className="inline-flex items-center gap-0.5 bg-teal/10 text-teal text-[10px] font-black px-2 py-0.5 rounded-full mt-1">
-                              <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                              Done
-                            </span>
+              {/* Archive section — past gigs */}
+              {archiveItems.length > 0 && (
+                <div className="mt-6">
+                  <button
+                    onClick={() => setBookingArchiveOpen(o => !o)}
+                    className="w-full flex items-center justify-between px-4 py-3 bg-white/60 rounded-xl border border-charcoal/10 hover:bg-white/80 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <svg
+                        className={`w-4 h-4 text-charcoal/50 transition-transform ${bookingArchiveOpen ? 'rotate-90' : ''}`}
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                      <span className="text-charcoal text-sm font-bold">Archive</span>
+                      <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-charcoal/10 text-charcoal/60">{archiveItems.length}</span>
+                    </div>
+                    <span className="text-charcoal/40 text-xs">Past completed gigs</span>
+                  </button>
+
+                  {bookingArchiveOpen && (
+                    <div className="mt-3 space-y-3">
+                      {archiveItems.slice(0, 10).map(b => (
+                        <div key={b.id} className="bg-white rounded-2xl p-4 shadow-sm opacity-70" style={{ filter: 'grayscale(20%)' }}>
+                          <div className="flex items-center gap-3">
+                            <div className="bg-charcoal/10 rounded-xl px-3 py-2.5 text-center shrink-0 min-w-[52px]">
+                              <p className="text-charcoal/60 text-[10px] font-black uppercase tracking-wide">{b.gig.date.split(' ')[0]}</p>
+                              <p className="text-charcoal/60 text-2xl font-black leading-tight">{b.gig.date.split(' ')[2]?.replace(',', '')}</p>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <button onClick={() => router.push('/profile/' + b.gig.venue.id)} className="text-graphite font-bold text-sm truncate hover:text-chestnut transition-colors text-left block">{b.gig.venue.name}</button>
+                              <p className="text-charcoal text-xs mt-0.5">{b.gig.time}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-charcoal/60 font-black">${b.price}</p>
+                              <span className="inline-flex items-center gap-0.5 bg-teal/10 text-teal text-[10px] font-black px-2 py-0.5 rounded-full mt-1">
+                                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                Completed
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                      ))}
+                      {archiveItems.length > 10 && (
+                        <p className="text-center text-charcoal/40 text-xs py-2">+{archiveItems.length - 10} more past gigs</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )
         })()}
@@ -1361,11 +1400,14 @@ export default function MusicianDashboard() {
             {/* Profile preview card */}
             <div className="bg-white rounded-2xl p-5 shadow-sm mb-4">
               <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">Your Profile</p>
-              <div className="flex items-center gap-4">
+              <button
+                onClick={() => router.push('/profile/' + userId)}
+                className="w-full flex items-center gap-4 hover:opacity-80 transition-opacity"
+              >
                 {profile.avatar
                   ? <img src={profile.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover shadow-sm border border-charcoal/[0.07]" />
                   : <div className="w-14 h-14 bg-chestnut/10 rounded-2xl flex items-center justify-center text-3xl">♪</div>}
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 text-left">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-graphite font-black text-base truncate">{profile.name || 'Your Name'}</p>
                     {profile.performerType === 'solo' && (
@@ -1380,11 +1422,12 @@ export default function MusicianDashboard() {
                   {profile.genres.length > 0 && (
                     <p className="text-charcoal/60 text-sm mt-0.5">{profile.genres.slice(0, 3).join(' · ')}</p>
                   )}
+                  <p className="text-chestnut text-xs font-semibold mt-1">View Public Profile →</p>
                 </div>
                 <svg className="w-4 h-4 text-charcoal/30 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                 </svg>
-              </div>
+              </button>
             </div>
 
             {/* Account */}

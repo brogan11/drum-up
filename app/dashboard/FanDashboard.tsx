@@ -136,6 +136,13 @@ export default function FanDashboard() {
   const messagingRef = useRef<MessagingTabRef>(null)
   const [msgUnread, setMsgUnread] = useState(0)
 
+  // Return from profile page → messages tab
+  useEffect(() => {
+    const go = sessionStorage.getItem('drumup_goto_messages')
+    if (go) { sessionStorage.removeItem('drumup_goto_messages'); setActiveTab('messages') }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Keep coords ref in sync so the realtime callback always has fresh coords
   useEffect(() => { fanCoordsRef.current = fanCoords }, [fanCoords])
 
