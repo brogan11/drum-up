@@ -250,8 +250,12 @@ export default function MusicianDashboard() {
 
         setUserId(user.id)
 
+        // NOTE: legal_name is intentionally included here — this is the musician fetching their OWN
+        // profile. It is used for Stripe Connect pre-fill. Never include legal_name in public queries.
         const { data, error: profileErr } = await supabase
-          .from('profiles').select('*').eq('id', user.id).maybeSingle()
+          .from('profiles')
+          .select('full_name, bio, avatar_url, instagram_url, youtube_url, spotify_url, website, role_metadata, performer_type, band_members, legal_name, stripe_onboarded, latitude, longitude, max_distance_miles')
+          .eq('id', user.id).maybeSingle()
         if (profileErr) throw profileErr
         if (!data) return
 

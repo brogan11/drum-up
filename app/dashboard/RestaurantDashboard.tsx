@@ -473,8 +473,12 @@ export default function RestaurantDashboard() {
       if (authErr) throw authErr
       if (!user) return
       setUserId(user.id)
+      // NOTE: Never include legal_name in queries unless fetching the current user's own profile
+      // or in server-side Stripe routes. legal_name is private.
       const { data, error: profileErr } = await supabase
-        .from('profiles').select('*').eq('id', user.id).maybeSingle()
+        .from('profiles')
+        .select('full_name, bio, avatar_url, location_text, latitude, longitude, website, role_metadata, discovery_radius_miles')
+        .eq('id', user.id).maybeSingle()
       if (profileErr) throw profileErr
       if (!data) return
       const meta = (data.role_metadata ?? {}) as Record<string, unknown>

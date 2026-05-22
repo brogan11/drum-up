@@ -16,6 +16,10 @@ export async function POST(request: Request) {
     const { data: { user }, error: authErr } = await supabaseAdmin.auth.getUser(token)
     if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    // NOTE: legal_name is intentionally read here — this is a server-side Stripe Connect route
+    // fetching the authenticated user's OWN profile. This is one of the only two places
+    // (along with the user's settings page) where legal_name may be accessed. Never expose
+    // legal_name in client-facing profile queries.
     const { data: profile } = await supabaseAdmin
       .from('profiles')
       .select('stripe_account_id, full_name, legal_name, performer_type')

@@ -109,6 +109,9 @@ export default function SettingsPage() {
         setUserId(user.id)
         setEmail(user.email ?? '')
 
+        // NOTE: legal_name is intentionally included here — this is the user fetching their OWN
+        // profile in their settings. Never include legal_name in public queries or when viewing
+        // another user's profile. legal_name is private and only for Stripe Connect pre-fill.
         const { data: profile, error: pErr } = await supabase
           .from('profiles')
           .select('*')

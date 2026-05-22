@@ -234,14 +234,19 @@ export default function ProfilePage() {
       const user = session.user
       setViewerId(user.id)
 
+      // NOTE: Never include legal_name in queries unless fetching the current user's own profile
+      // or in server-side Stripe routes. legal_name is private.
       const { data: vp, error: vpErr } = await supabase.from('profiles')
         .select('id, user_type, latitude, longitude').eq('id', user.id).maybeSingle()
       if (vpErr) throw vpErr
       if (vp) setViewer(vp as ViewerData)
 
+      // NOTE: Never include legal_name here — this is a public query readable by any logged-in user.
+      // legal_name is private and only allowed in the user's own settings page or server-side Stripe routes.
+      const publicColumns = 'id, username, full_name, avatar_url, bio, user_type, location_text, latitude, longitude, instagram_url, tiktok_url, spotify_url, youtube_url, website, role_metadata, created_at, performer_type, band_members'
       const q = UUID_RE.test(slug)
-        ? supabase.from('profiles').select('*').eq('id', slug)
-        : supabase.from('profiles').select('*').eq('username', slug)
+        ? supabase.from('profiles').select(publicColumns).eq('id', slug)
+        : supabase.from('profiles').select(publicColumns).eq('username', slug)
       const { data: pd, error: pdErr } = await q.maybeSingle()
       if (pdErr) throw pdErr
       setLoading(false)
