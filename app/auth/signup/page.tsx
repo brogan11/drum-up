@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { eqBarStyle } from '@/lib/eq'
 import { WaveDivider } from '@/components/WaveDivider'
@@ -8,10 +8,22 @@ import { useRouter } from 'next/navigation'
 
 const EQ_BARS = 28
 
+const USER_TYPE_ICONS: Record<string, React.ReactNode> = {
+  restaurant: (
+    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>
+  ),
+  musician: (
+    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+  ),
+  fan: (
+    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+  ),
+}
+
 const USER_TYPES = [
-  { key: 'restaurant', icon: '🍽', label: 'Restaurant' },
-  { key: 'musician',   icon: '♪',  label: 'Musician'   },
-  { key: 'fan',        icon: '★',  label: 'Fan'        },
+  { key: 'restaurant', label: 'Restaurant' },
+  { key: 'musician',   label: 'Musician'   },
+  { key: 'fan',        label: 'Fan'        },
 ]
 
 const DARK_PANEL_BG = `
@@ -131,15 +143,21 @@ export default function SignupPage() {
 
           <div className="flex flex-col gap-3 w-full">
             <div className="flex items-center gap-3 bg-white/5 backdrop-blur-sm rounded-2xl px-4 py-3 border border-white/10">
-              <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-chestnut/20 text-chestnut text-lg shrink-0">♪</span>
+              <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-chestnut/20 shrink-0">
+                <svg className="w-5 h-5 text-chestnut" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+              </span>
               <span className="text-snow/90 text-sm">Musicians find venues looking for live music</span>
             </div>
             <div className="flex items-center gap-3 bg-white/5 backdrop-blur-sm rounded-2xl px-4 py-3 border border-white/10">
-              <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-teal/25 text-base shrink-0">🍽</span>
+              <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-teal/25 shrink-0">
+                <svg className="w-5 h-5 text-teal" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>
+              </span>
               <span className="text-snow/90 text-sm">Restaurants post availability and book talent</span>
             </div>
             <div className="flex items-center gap-3 bg-white/5 backdrop-blur-sm rounded-2xl px-4 py-3 border border-white/10">
-              <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-chestnut/20 text-chestnut text-lg shrink-0">★</span>
+              <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-chestnut/20 shrink-0">
+                <svg className="w-5 h-5 text-chestnut" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              </span>
               <span className="text-snow/90 text-sm">Fans discover who is playing where tonight</span>
             </div>
           </div>
@@ -168,7 +186,7 @@ export default function SignupPage() {
 
           <label className="block text-charcoal font-semibold text-sm mb-2">I am a...</label>
           <div className="grid grid-cols-3 gap-3 mb-6">
-            {USER_TYPES.map(({ key, icon, label }) => {
+            {USER_TYPES.map(({ key, label }) => {
               const active = userType === key
               return (
                 <button
@@ -180,7 +198,7 @@ export default function SignupPage() {
                       : 'bg-white text-charcoal hover:shadow-md'
                   }`}
                 >
-                  <span className={`text-2xl ${active ? '' : 'text-chestnut'}`}>{icon}</span>
+                  <span className={active ? 'text-snow' : 'text-chestnut'}>{USER_TYPE_ICONS[key]}</span>
                   <span className="text-sm">{label}</span>
                 </button>
               )

@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, useEffect, useState } from 'react'
+import React, { ChangeEvent, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
@@ -413,7 +413,7 @@ export default function SettingsPage() {
               {form.avatarPreview ? (
                 <img src={form.avatarPreview} alt="" className="w-20 h-20 rounded-2xl object-cover shadow-sm" />
               ) : (
-                <div className="w-20 h-20 rounded-2xl bg-snow shadow-sm flex items-center justify-center text-3xl text-chestnut">♪</div>
+                <div className="w-20 h-20 rounded-2xl bg-snow shadow-sm flex items-center justify-center text-chestnut"><svg className="w-9 h-9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
               )}
               <div>
                 <label className="inline-block bg-snow text-graphite font-bold text-sm px-4 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer">
@@ -482,7 +482,7 @@ export default function SettingsPage() {
                 >
                   {locationLoading
                     ? <span className="w-4 h-4 border-2 border-snow border-t-transparent rounded-full animate-spin" />
-                    : <span>📍</span>}
+                    : <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>}
                   Use my location
                 </button>
               </div>
@@ -501,7 +501,7 @@ export default function SettingsPage() {
                     {form.bannerPreview && /^(https?:\/\/|blob:)/.test(form.bannerPreview) ? (
                       <img src={form.bannerPreview} alt="Banner preview" className="w-full h-full object-cover" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-4xl opacity-20 select-none" style={{ background: 'linear-gradient(135deg, #DC7F41 0%, #3D2419 100%)' }}>🍽</div>
+                      <div className="w-full h-full flex items-center justify-center opacity-20 select-none text-snow" style={{ background: 'linear-gradient(135deg, #DC7F41 0%, #3D2419 100%)' }}><svg className="w-16 h-16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg></div>
                     )}
                   </div>
                   <label className="inline-block bg-snow text-graphite font-bold text-sm px-4 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer">
@@ -538,7 +538,7 @@ export default function SettingsPage() {
                     {form.bannerPreview && /^(https?:\/\/|blob:)/.test(form.bannerPreview) ? (
                       <img src={form.bannerPreview} alt="Cover preview" className="w-full h-full object-cover" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-4xl opacity-20 select-none" style={{ background: 'linear-gradient(135deg, #DC7F41 0%, #2A2A2A 100%)' }}>♪</div>
+                      <div className="w-full h-full flex items-center justify-center opacity-20 select-none text-snow" style={{ background: 'linear-gradient(135deg, #DC7F41 0%, #2A2A2A 100%)' }}><svg className="w-16 h-16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
                     )}
                   </div>
                   <label className="inline-block bg-snow text-graphite font-bold text-sm px-4 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer">
@@ -570,7 +570,7 @@ export default function SettingsPage() {
                             : 'bg-snow text-charcoal border border-charcoal/20 hover:shadow-md'
                         }`}
                       >
-                        <span className="text-xl">{val === 'solo' ? '🎤' : '🎸'}</span>
+                        {val === 'solo' ? <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg> : <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m11.9 12.1 4.514-4.514"/><path d="M20.1 2.3a1 1 0 0 0-1.4 0l-1.114 1.114A2 2 0 0 0 17 4.828v1.344a2 2 0 0 1-.586 1.414L14 10l1.5 1.5"/><path d="m13.5 8.5 1.5 1.5"/><path d="M9.2 14.8a3 3 0 0 1-3.9.4l-.3-.3a3 3 0 0 1 .4-3.9l5.6-5.6a3 3 0 0 1 3.9-.4l.3.3a3 3 0 0 1-.4 3.9z"/></svg>}
                         <span>{val === 'solo' ? 'Solo Artist' : 'Band'}</span>
                       </button>
                     ))}
@@ -584,7 +584,7 @@ export default function SettingsPage() {
                 <Field label="Years performing">
                   <Input value={form.yearsPerforming} onChange={v => update('yearsPerforming', v)} type="number" placeholder="3" />
                 </Field>
-                <Field label="🔒 Legal name">
+                <Field label={<><svg className="w-3.5 h-3.5 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Legal name</>}>
                   <Input
                     value={form.legalName}
                     onChange={v => update('legalName', v)}
@@ -658,10 +658,10 @@ export default function SettingsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <SocialInput label="Instagram" prefix="@" value={form.instagram} onChange={v => update('instagram', v)} />
               <SocialInput label="TikTok"    prefix="@" value={form.tiktok}    onChange={v => update('tiktok', v)} />
-              <SocialInput label="Spotify"   prefix="🎵" value={form.spotify}   onChange={v => update('spotify', v)} placeholder="profile URL" />
-              <SocialInput label="YouTube"   prefix="▶"  value={form.youtube}   onChange={v => update('youtube', v)} placeholder="channel URL" />
+              <SocialInput label="Spotify"   prefix={<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>} value={form.spotify}   onChange={v => update('spotify', v)} placeholder="profile URL" />
+              <SocialInput label="YouTube"   prefix={<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 3 14 9-14 9V3z"/></svg>}  value={form.youtube}   onChange={v => update('youtube', v)} placeholder="channel URL" />
               <div className="sm:col-span-2">
-                <SocialInput label="Website" prefix="🌐" value={form.website} onChange={v => update('website', v)} placeholder="https://..." />
+                <SocialInput label="Website" prefix={<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>} value={form.website} onChange={v => update('website', v)} placeholder="https://..." />
               </div>
             </div>
           </Card>
@@ -727,10 +727,10 @@ function Card({ title, eyebrow, children }: { title: string; eyebrow: string; ch
   )
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({ label, hint, children }: { label: React.ReactNode; hint?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-charcoal font-semibold text-sm mb-2">{label}</label>
+      <label className="flex items-center gap-1.5 text-charcoal font-semibold text-sm mb-2">{label}</label>
       {children}
       {hint && <p className="text-xs text-teal font-semibold mt-1.5 flex items-center gap-1.5">
         <span className="inline-block w-1.5 h-1.5 rounded-full bg-teal" />{hint}
@@ -778,13 +778,13 @@ function ChipRow({ items, selected, onToggle }: {
 }
 
 function SocialInput({ label, prefix, value, onChange, placeholder }: {
-  label: string; prefix: string; value: string; onChange: (v: string) => void; placeholder?: string
+  label: string; prefix: React.ReactNode; value: string; onChange: (v: string) => void; placeholder?: string
 }) {
   return (
     <div>
       <label className="block text-charcoal font-semibold text-sm mb-2">{label}</label>
       <div className="flex items-center bg-snow rounded-xl shadow-sm focus-within:shadow-md transition-shadow overflow-hidden">
-        <span className="pl-4 pr-2 text-charcoal/60 text-base">{prefix}</span>
+        <span className="pl-4 pr-2 text-charcoal/60 flex items-center">{prefix}</span>
         <input
           type="text"
           placeholder={placeholder ?? 'username'}

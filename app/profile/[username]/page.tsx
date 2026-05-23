@@ -111,8 +111,8 @@ function Stars({ rating, interactive, onSelect, dark }: {
     <div className="flex gap-0.5">
       {[1, 2, 3, 4, 5].map(n => (
         <button key={n} type="button" onClick={() => interactive && onSelect?.(n)}
-          className={`text-xl leading-none transition-transform ${interactive ? 'cursor-pointer hover:scale-110' : 'cursor-default'}`}>
-          <span className={n <= rating ? 'text-chestnut' : dark ? 'text-snow/20' : 'text-charcoal/20'}>★</span>
+          className={`transition-transform ${interactive ? 'cursor-pointer hover:scale-110' : 'cursor-default'}`}>
+          <svg className={`w-5 h-5 ${n <= rating ? 'text-chestnut' : dark ? 'text-snow/20' : 'text-charcoal/20'}`} viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
         </button>
       ))}
     </div>
@@ -456,7 +456,7 @@ export default function ProfilePage() {
   if (loadError) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-graphite">
-        <div className="text-4xl mb-4">🎵</div>
+        <div className="w-16 h-16 bg-chestnut/20 rounded-2xl flex items-center justify-center text-chestnut mb-4 mx-auto"><svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
         <p className="text-snow font-black text-lg mb-1">Something went wrong</p>
         <p className="text-snow/60 text-sm mb-6">{loadError}</p>
         <button onClick={() => window.location.reload()} className="bg-chestnut text-snow px-6 py-2.5 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity">
@@ -470,7 +470,7 @@ export default function ProfilePage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-4" style={{ background: '#E8E4E0' }}>
         <div className="bg-white rounded-3xl p-10 shadow-xl text-center max-w-sm w-full">
-          <div className="text-6xl mb-4">🎵</div>
+          <div className="w-20 h-20 bg-chestnut/10 rounded-2xl flex items-center justify-center text-chestnut mb-4 mx-auto"><svg className="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
           <h1 className="text-graphite text-2xl font-black mb-2">Profile not found</h1>
           <p className="text-charcoal text-sm mb-6 leading-relaxed">This profile doesn&apos;t exist — but the music plays on.</p>
           <button onClick={() => router.back()} className="bg-chestnut text-snow px-6 py-2.5 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity">
@@ -570,11 +570,11 @@ export default function ProfilePage() {
             {(genres.length > 0 || instruments || performerType) && (
               <div className="flex flex-wrap gap-1.5 mb-4">
                 {performerType === 'solo' && (
-                  <span className="text-xs font-bold px-3 py-1 rounded-full" style={{ background: 'rgba(108,154,139,0.25)', color: '#6C9A8B' }}>🎤 Solo Artist</span>
+                  <span className="inline-flex items-center gap-1 text-xs font-bold px-3 py-1 rounded-full" style={{ background: 'rgba(108,154,139,0.25)', color: '#6C9A8B' }}><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>Solo Artist</span>
                 )}
                 {performerType === 'band' && (
-                  <span className="text-xs font-bold px-3 py-1 rounded-full" style={{ background: 'rgba(220,127,65,0.2)', color: '#DC7F41' }}>
-                    🎸 Band{bandMembers ? ` · ${bandMembers} members` : ''}
+                  <span className="inline-flex items-center gap-1 text-xs font-bold px-3 py-1 rounded-full" style={{ background: 'rgba(220,127,65,0.2)', color: '#DC7F41' }}>
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m11.9 12.1 4.514-4.514"/><path d="M20.1 2.3a1 1 0 0 0-1.4 0l-1.114 1.114A2 2 0 0 0 17 4.828v1.344a2 2 0 0 1-.586 1.414L14 10l1.5 1.5"/><path d="m13.5 8.5 1.5 1.5"/><path d="M9.2 14.8a3 3 0 0 1-3.9.4l-.3-.3a3 3 0 0 1 .4-3.9l5.6-5.6a3 3 0 0 1 3.9-.4l.3.3a3 3 0 0 1-.4 3.9z"/></svg>Band{bandMembers ? ` · ${bandMembers} members` : ''}
                   </span>
                 )}
                 {genres.map(g => (
@@ -634,7 +634,7 @@ export default function ProfilePage() {
             {[
               { value: pastGigs.length, label: 'Gigs Played' },
               { value: followersCount, label: 'Followers' },
-              { value: avgRating != null ? `${avgRating.toFixed(1)} ★` : '—', label: 'Avg Rating' },
+              { value: avgRating != null ? <span className="inline-flex items-center gap-1">{avgRating.toFixed(1)}<svg className="w-5 h-5 text-chestnut" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></span> : '—', label: 'Avg Rating' },
               { value: memberSince, label: 'Member Since' },
             ].map(s => (
               <div key={s.label} className="text-center px-3">
@@ -703,7 +703,7 @@ export default function ProfilePage() {
             <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-5">· Live History</p>
             {pastGigs.length === 0 ? (
               <div className="p-8 rounded-2xl text-center" style={{ background: '#3D3D3D', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <p className="text-2xl mb-2">🎤</p>
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-2 mx-auto" style={{ background: 'rgba(108,154,139,0.25)', color: '#6C9A8B' }}><svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg></div>
                 <p className="text-snow/60 font-bold text-sm mb-1">No gigs yet</p>
                 <p className="text-snow/30 text-xs">Their story starts somewhere.</p>
               </div>
@@ -730,7 +730,7 @@ export default function ProfilePage() {
                 <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-2">· Reviews</p>
                 {avgRating != null && (
                   <div className="flex items-center gap-2">
-                    <span className="text-chestnut text-3xl font-black">{avgRating.toFixed(1)} ★</span>
+                    <span className="inline-flex items-center gap-1 text-chestnut text-3xl font-black">{avgRating.toFixed(1)}<svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></span>
                     <span className="text-snow/40 text-sm">({reviews.length} review{reviews.length !== 1 ? 's' : ''})</span>
                   </div>
                 )}
@@ -835,7 +835,7 @@ export default function ProfilePage() {
           ) : (
             <>
               <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, #DC7F41 0%, #3D2419 55%, #2A1A0A 100%)' }} />
-              <div className="absolute inset-0 flex items-center justify-center text-[9rem] opacity-[0.07] select-none pointer-events-none">🍽</div>
+              <div className="absolute inset-0 flex items-center justify-center opacity-[0.07] select-none pointer-events-none text-snow"><svg className="w-36 h-36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg></div>
             </>
           )}
           {/* Bottom fade to page bg */}
@@ -1009,7 +1009,7 @@ export default function ProfilePage() {
             <h2 className="text-graphite text-xl font-black tracking-tight mb-4">Upcoming Live Music</h2>
             {upcomingShows.length === 0 ? (
               <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
-                <p className="text-3xl mb-2">🎵</p>
+                <div className="w-12 h-12 bg-chestnut/10 rounded-2xl flex items-center justify-center text-chestnut mb-2 mx-auto"><svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
                 <p className="text-graphite font-bold text-sm mb-1">Nothing booked yet</p>
                 <p className="text-charcoal/50 text-xs">Check back soon for upcoming shows.</p>
               </div>
@@ -1169,7 +1169,7 @@ export default function ProfilePage() {
           <Avatar src={profile.avatar_url ?? ''} className="w-16 h-16 rounded-2xl shrink-0" textSize="text-3xl" bg="bg-chestnut/10" />
           <div className="flex-1 min-w-0">
             <h1 className="text-graphite text-xl font-black truncate">{displayName}</h1>
-            {profile.location_text && <p className="text-charcoal text-sm">📍 {profile.location_text}</p>}
+            {profile.location_text && <p className="inline-flex items-center gap-1 text-charcoal text-sm"><svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>{profile.location_text}</p>}
             <div className="flex gap-4 mt-1.5">
               <span className="text-charcoal text-sm"><span className="font-bold text-graphite">{followersCount}</span> followers</span>
               <span className="text-charcoal text-sm"><span className="font-bold text-graphite">{followingCount}</span> following</span>
@@ -1241,7 +1241,7 @@ function ReviewModal({ displayName, reviewRating, reviewText, submitting, onClos
             <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em]">Your Experience</p>
             <h3 className="text-snow text-xl font-black tracking-tight">Leave a Review</h3>
           </div>
-          <button onClick={onClose} className="text-snow/60 hover:text-snow transition-colors text-xl">✕</button>
+          <button onClick={onClose} className="text-snow/60 hover:text-snow transition-colors"><svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
         </div>
         <div className="p-6">
           <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-3">Rating</p>

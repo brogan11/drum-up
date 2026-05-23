@@ -17,7 +17,9 @@ export default function GlobalError({
     <html lang="en">
       <body style={{ margin: 0, background: '#333333', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, sans-serif' }}>
         <div style={{ textAlign: 'center', padding: '24px', maxWidth: '320px' }}>
-          <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🎵</div>
+          <div style={{ width: '64px', height: '64px', background: 'rgba(220,127,65,0.15)', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#DC7F41" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          </div>
           <h1 style={{ color: '#FCFAF9', fontSize: '1.5rem', fontWeight: 900, marginBottom: '8px', letterSpacing: '-0.02em' }}>
             We hit a sour note.
           </h1>

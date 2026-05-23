@@ -11,8 +11,8 @@ export default function NotFound() {
         <span className="text-snow text-xl font-black tracking-tight">Drum Up</span>
       </div>
 
-      <div className="w-16 h-16 bg-chestnut/20 border border-chestnut/30 rounded-2xl flex items-center justify-center text-3xl mb-6 shadow-inner">
-        🎶
+      <div className="w-16 h-16 bg-chestnut/20 border border-chestnut/30 rounded-2xl flex items-center justify-center mb-6 shadow-inner">
+        <svg className="w-8 h-8 text-chestnut" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
       </div>
 
       <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-2">404</p>

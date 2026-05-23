@@ -67,7 +67,9 @@ export default function DashboardPage() {
   if (error) {
     return (
       <div className="min-h-screen bg-snow flex flex-col items-center justify-center px-6 text-center">
-        <div className="w-14 h-14 bg-chestnut/10 rounded-2xl flex items-center justify-center text-2xl mb-4">🎵</div>
+        <div className="w-14 h-14 bg-chestnut/10 rounded-2xl flex items-center justify-center mb-4">
+          <svg className="w-7 h-7 text-chestnut" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        </div>
         <p className="text-graphite font-bold text-lg mb-1">Something went wrong</p>
         <p className="text-charcoal text-sm mb-6">{error}</p>
         <button

@@ -4,8 +4,9 @@ import { Suspense, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 
-function CallbackHandler({ onError }: { onError: () => void }) {
-  const router = useRouter()
+type Status = 'loading' | 'confirmed' | 'failed'
+
+function CallbackHandler({ onDone }: { onDone: (status: 'confirmed' | 'failed') => void }) {
   const searchParams = useSearchParams()
 
   useEffect(() => {
@@ -24,21 +25,11 @@ function CallbackHandler({ onError }: { onError: () => void }) {
 
         const { data: { user }, error: userErr } = await supabase.auth.getUser()
         if (userErr) throw userErr
-        if (!user) {
-          router.push('/auth/login')
-          return
-        }
 
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('full_name')
-          .eq('id', user.id)
-          .maybeSingle()
-
-        router.replace(profile?.full_name ? '/dashboard' : '/onboarding')
+        onDone(user ? 'confirmed' : 'failed')
       } catch (e) {
         console.error('Auth callback failed', e)
-        onError()
+        onDone('failed')
       }
     }
 
@@ -51,12 +42,32 @@ function CallbackHandler({ onError }: { onError: () => void }) {
 
 export default function AuthCallback() {
   const router = useRouter()
-  const [failed, setFailed] = useState(false)
+  const [status, setStatus] = useState<Status>('loading')
 
-  if (failed) {
+  if (status === 'confirmed') {
     return (
       <div className="min-h-screen bg-snow flex flex-col items-center justify-center px-6 text-center">
-        <div className="w-14 h-14 bg-chestnut/10 rounded-2xl flex items-center justify-center text-2xl mb-4">🎵</div>
+        <div className="w-16 h-16 bg-teal/10 rounded-2xl flex items-center justify-center mb-5">
+          <svg className="w-8 h-8 text-teal" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <p className="text-graphite font-black text-2xl mb-2">Email confirmed!</p>
+        <p className="text-charcoal text-sm mb-8">Your account is ready. Log in to complete your profile.</p>
+        <button
+          onClick={() => router.push('/auth/login')}
+          className="bg-chestnut text-snow px-8 py-3 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity"
+        >
+          Log In →
+        </button>
+      </div>
+    )
+  }
+
+  if (status === 'failed') {
+    return (
+      <div className="min-h-screen bg-snow flex flex-col items-center justify-center px-6 text-center">
+        <div className="w-14 h-14 bg-chestnut/10 rounded-2xl flex items-center justify-center mb-4">
+          <svg className="w-7 h-7 text-chestnut" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        </div>
         <p className="text-graphite font-bold text-lg mb-1">Sign-in didn&apos;t complete</p>
         <p className="text-charcoal text-sm mb-6">Something went wrong during authentication. Please try again.</p>
         <button
@@ -76,9 +87,9 @@ export default function AuthCallback() {
       </div>
       <div className="w-10 h-10 border-4 border-chestnut border-t-transparent rounded-full animate-spin mb-4" />
       <p className="text-graphite font-bold text-base">Confirming your account…</p>
-      <p className="text-charcoal text-sm mt-1">You&apos;ll be redirected automatically.</p>
+      <p className="text-charcoal text-sm mt-1">Just a moment.</p>
       <Suspense fallback={null}>
-        <CallbackHandler onError={() => setFailed(true)} />
+        <CallbackHandler onDone={setStatus} />
       </Suspense>
     </div>
   )

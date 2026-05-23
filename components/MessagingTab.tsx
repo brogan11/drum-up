@@ -58,7 +58,39 @@ export interface MessagingTabRef {
 
 // ---- Constants ----
 
-const REACTION_EMOJIS = ['❤️', '😂', '😮', '😢', '👏', '🔥']
+// Each reaction has a stable emoji key (stored in DB) and an SVG label for display.
+const REACTIONS: { emoji: string; label: string; color: string }[] = [
+  { emoji: '❤️', label: 'Love',  color: '#e05' },
+  { emoji: '😂', label: 'Haha',  color: '#f90' },
+  { emoji: '😮', label: 'Wow',   color: '#f90' },
+  { emoji: '😢', label: 'Sad',   color: '#5af' },
+  { emoji: '👏', label: 'Clap',  color: '#f90' },
+  { emoji: '🔥', label: 'Fire',  color: '#f50' },
+]
+
+function ReactionIcon({ emoji, size = 16 }: { emoji: string; size?: number }) {
+  const s = `${size}px`
+  if (emoji === '❤️') return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="#ee0055" stroke="none"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+  )
+  if (emoji === '😂') return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="#f90" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9" strokeWidth="2.5"/><line x1="15" x2="15.01" y1="9" y2="9" strokeWidth="2.5"/></svg>
+  )
+  if (emoji === '😮') return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="#f90" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s0-2 4-2 4 2 4 2"/><line x1="9" x2="9.01" y1="9" y2="9" strokeWidth="2.5"/><line x1="15" x2="15.01" y1="9" y2="9" strokeWidth="2.5"/></svg>
+  )
+  if (emoji === '😢') return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="#5af" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16 16s-1.5-2-4-2-4 2-4 2"/><line x1="9" x2="9.01" y1="9" y2="9" strokeWidth="2.5"/><line x1="15" x2="15.01" y1="9" y2="9" strokeWidth="2.5"/></svg>
+  )
+  if (emoji === '👏') return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="#f90" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9.5C6.5 7 8.5 6 9 5.5"/><path d="M9 5.5c.5-.5 1.5-1 2.5-.5s1.5 1.5 1 3"/><path d="M9 5.5 7 9.5c-1.5 2.5-.5 5.5 2 7.5C12 19.5 16 19 17.5 16.5"/><path d="M12.5 8c.5-1 1.5-1.5 2.5-1s1.5 1.5 1 3l-1 2"/><path d="M15 10c.5-1 1.5-1 2.5-.5s1 2 .5 3l-2.5 4"/></svg>
+  )
+  // 🔥
+  return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="#f50" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+  )
+}
+
 const REPORT_REASONS = ['Spam', 'Inappropriate content', 'Harassment', 'Other']
 
 // ---- Helpers ----
@@ -641,7 +673,9 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
         {/* Empty state */}
         {conversations.length === 0 ? (
           <div className="text-center py-16">
-            <div className="w-16 h-16 bg-chestnut/10 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4">💬</div>
+            <div className="w-16 h-16 bg-chestnut/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-chestnut" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+            </div>
             <p className="text-graphite font-bold text-lg">No messages yet</p>
             <p className="text-charcoal/60 text-sm mt-1 leading-relaxed max-w-xs mx-auto">
               Start a conversation by visiting a musician or venue profile.
@@ -763,13 +797,15 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
                 onClick={goToProfile}
                 className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2.5"
               >
-                <span>👤</span> View Profile
+                <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                View Profile
               </button>
               <button
                 disabled
                 className="w-full px-4 py-3 text-left text-sm font-semibold text-charcoal/30 flex items-center gap-2.5 cursor-not-allowed"
               >
-                <span>🔇</span> Mute
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" x2="17" y1="9" y2="15"/><line x1="17" x2="23" y1="9" y2="15"/></svg>
+                Mute
                 <span className="text-[10px] ml-auto font-normal">Soon</span>
               </button>
               <div style={{ borderTop: '1px solid rgba(94,94,94,0.07)' }} />
@@ -777,13 +813,15 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
                 onClick={() => { setDeleteConfirmConvId(selectedConvId); setMenuOpen(false) }}
                 className="w-full px-4 py-3 text-left text-sm font-semibold text-red-500 hover:bg-red-50 transition-colors flex items-center gap-2.5"
               >
-                <span>🗑</span> Delete Thread
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                Delete Thread
               </button>
               <button
                 onClick={() => { setReportConvId(selectedConvId); setMenuOpen(false) }}
                 className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2.5"
               >
-                <span>🚩</span> Report
+                <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>
+                Report
               </button>
             </div>
           )}
@@ -841,16 +879,17 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
                 {/* Reaction picker popover */}
                 {reactionMsgId === msg.id && (
                   <div
-                    className={`absolute ${isMe ? 'right-0' : 'left-0'} -top-14 z-20 bg-white rounded-2xl shadow-xl px-3 py-2.5 flex gap-2.5 border border-charcoal/10`}
+                    className={`absolute ${isMe ? 'right-0' : 'left-0'} -top-14 z-20 bg-white rounded-2xl shadow-xl px-3 py-2.5 flex gap-2 border border-charcoal/10`}
                     onClick={e => e.stopPropagation()}
                   >
-                    {REACTION_EMOJIS.map(emoji => (
+                    {REACTIONS.map(({ emoji, label }) => (
                       <button
                         key={emoji}
                         onClick={() => handleReaction(msg.id, emoji)}
-                        className="text-xl hover:scale-125 transition-transform leading-none"
+                        className="flex flex-col items-center gap-0.5 hover:scale-125 transition-transform"
+                        title={label}
                       >
-                        {emoji}
+                        <ReactionIcon emoji={emoji} size={20} />
                       </button>
                     ))}
                   </div>
@@ -882,14 +921,14 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
                       <button
                         key={r.emoji}
                         onClick={() => handleReaction(msg.id, r.emoji)}
-                        className={`flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs font-medium border transition-colors ${
+                        className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border transition-colors ${
                           r.userReacted
                             ? 'bg-chestnut/15 text-chestnut border-chestnut/20'
                             : 'bg-white text-charcoal/70 border-charcoal/10 shadow-sm'
                         }`}
                       >
-                        <span>{r.emoji}</span>
-                        {r.count > 1 && <span className="ml-0.5">{r.count}</span>}
+                        <ReactionIcon emoji={r.emoji} size={14} />
+                        {r.count > 1 && <span>{r.count}</span>}
                       </button>
                     ))}
                   </div>
@@ -1020,7 +1059,9 @@ function ReportModal({ convName, reason, details, reporting, onReason, onDetails
             <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em]">Report User</p>
             <h3 className="text-snow text-xl font-black">{convName}</h3>
           </div>
-          <button onClick={onCancel} className="text-snow/60 hover:text-snow transition-colors text-xl">✕</button>
+          <button onClick={onCancel} className="text-snow/60 hover:text-snow transition-colors w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
+          </button>
         </div>
         <div className="p-6">
           <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-3">Reason</p>

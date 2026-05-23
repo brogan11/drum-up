@@ -1,0 +1,28 @@
+{
+  "id": "5301556c",
+  "phase": "variants_ready",
+  "pageUrl": "/",
+  "sourceFile": "app/page.tsx",
+  "expectedVariants": 3,
+  "arrivedVariants": 3,
+  "visibleVariant": 2,
+  "paramValues": {
+    "color-amount": 0.5,
+    "bar-opacity": 1
+  },
+  "pendingEventSeq": null,
+  "pendingEvent": null,
+  "deliveryLease": null,
+  "checkpointRevision": 29,
+  "activeOwner": "bd7ec534",
+  "sourceMarkers": {},
+  "fallbackMode": null,
+  "annotationArtifacts": [],
+  "diagnostics": [
+    {
+      "error": "stale_checkpoint_ignored",
+      "revision": 1
+    }
+  ],
+  "updatedAt": "2026-05-22T03:30:58.155Z"
+}

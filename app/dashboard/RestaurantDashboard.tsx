@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { eqBarStyle } from '@/lib/eq'
@@ -181,7 +181,7 @@ function PaymentModalInner({ slot, app, onClose, onConfirmed }: {
             <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em]">Confirm & Pay</p>
             <h3 className="text-snow text-xl font-black tracking-tight">Confirm <span className="text-chestnut italic">Booking.</span></h3>
           </div>
-          <button onClick={onClose} className="text-snow/60 hover:text-snow transition-colors text-xl leading-none relative z-10">✕</button>
+          <button onClick={onClose} className="text-snow/60 hover:text-snow transition-colors leading-none relative z-10"><svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
         </div>
         <div className="p-6">
           {/* Summary card */}
@@ -936,17 +936,21 @@ export default function RestaurantDashboard() {
                 <div className="fixed inset-0 z-40" onClick={() => setHeaderMenuOpen(false)} />
                 <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl z-50 overflow-hidden border border-charcoal/10">
                   <button onClick={() => { router.push('/profile/' + userId); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
-                    <span>👤</span> View Profile
+                    <svg className="w-4 h-4 text-charcoal/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    View Profile
                   </button>
                   <button onClick={() => { setActiveTab('profile'); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
-                    <span>✏️</span> Edit Profile
+                    <svg className="w-4 h-4 text-charcoal/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                    Edit Profile
                   </button>
                   <button onClick={() => { router.push('/settings'); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
-                    <span>⚙️</span> Settings
+                    <svg className="w-4 h-4 text-charcoal/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                    Settings
                   </button>
                   <div className="border-t border-charcoal/10" />
                   <button onClick={() => { handleLogout(); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-medium text-charcoal hover:bg-snow transition-colors flex items-center gap-2">
-                    <span>🚪</span> Log Out
+                    <svg className="w-4 h-4 text-charcoal/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+                    Log Out
                   </button>
                 </div>
               </>
@@ -972,7 +976,7 @@ export default function RestaurantDashboard() {
               <div className="relative z-10 p-5 flex items-center gap-4">
                 {profile.avatar
                   ? <img src={profile.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover shrink-0 shadow-inner border border-chestnut/30" />
-                  : <div className="w-14 h-14 rounded-2xl bg-chestnut/20 border border-chestnut/30 flex items-center justify-center text-2xl shrink-0 shadow-inner">🍽</div>}
+                  : <div className="w-14 h-14 rounded-2xl bg-chestnut/20 border border-chestnut/30 flex items-center justify-center shrink-0 shadow-inner text-chestnut"><svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg></div>}
                 <div className="flex-1 min-w-0">
                   <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">For Restaurants</p>
                   <p className="text-snow font-black text-lg leading-tight truncate">{profile.name}</p>
@@ -994,10 +998,10 @@ export default function RestaurantDashboard() {
               </div>
             ) : (
               <div className="grid grid-cols-4 gap-2.5 mb-7">
-                <StatCard value={openSlots} label="Open" color="text-teal" icon="🎵" />
-                <StatCard value={pendingApps} label="Pending" color="text-chestnut" icon="📬" highlight />
-                <StatCard value={upcomingGigs} label="Booked" color="text-graphite" icon="✅" />
-                <StatCard value={pastGigs} label="Past" color="text-charcoal" icon="🕐" />
+                <StatCard value={openSlots} label="Open" color="text-teal" icon={<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>} />
+                <StatCard value={pendingApps} label="Pending" color="text-chestnut" icon={<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>} highlight />
+                <StatCard value={upcomingGigs} label="Booked" color="text-graphite" icon={<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>} />
+                <StatCard value={pastGigs} label="Past" color="text-charcoal" icon={<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>} />
               </div>
             )}
 
@@ -1005,7 +1009,7 @@ export default function RestaurantDashboard() {
             {pendingApps > 0 && (
               <div className="bg-chestnut/10 border border-chestnut/20 rounded-2xl p-4 mb-6 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">
-                  <span className="text-xl">📬</span>
+                  <svg className="w-5 h-5 text-chestnut shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
                   <p className="text-chestnut font-bold text-sm">You have <span className="font-black">{pendingApps}</span> pending application{pendingApps !== 1 ? 's' : ''} waiting for review</p>
                 </div>
                 <button
@@ -1060,7 +1064,7 @@ export default function RestaurantDashboard() {
               </div>
             ) : pendingApps === 0 ? (
               <EmptyState
-                icon="🎵"
+                icon={<svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>}
                 title="No pending applications"
                 body="Post a slot to start receiving applications from musicians."
                 action={{ label: 'Post Your First Slot', onClick: () => setPostSlotOpen(true) }}
@@ -1084,15 +1088,15 @@ export default function RestaurantDashboard() {
                             </div>
                             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                               {app.performerType === 'solo' && (
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-teal/10 text-teal">🎤 Solo</span>
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-teal/10 text-teal"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg> Solo</span>
                               )}
                               {app.performerType === 'band' && (
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-chestnut/10 text-chestnut">
-                                  🎸 Band{app.bandMembers ? ` · ${app.bandMembers}` : ''}
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-chestnut/10 text-chestnut">
+                                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m11.9 12.1 4.514-4.514"/><path d="M20.1 2.3a1 1 0 0 0-1.4 0l-1.114 1.114A2 2 0 0 0 17 4.828v1.344a2 2 0 0 1-.586 1.414L14 10l1.5 1.5"/><path d="m13.5 8.5 1.5 1.5"/><path d="M9.2 14.8a3 3 0 0 1-3.9.4l-.3-.3a3 3 0 0 1 .4-3.9l5.6-5.6a3 3 0 0 1 3.9-.4l.3.3a3 3 0 0 1-.4 3.9z"/></svg> Band{app.bandMembers ? ` · ${app.bandMembers}` : ''}
                                 </span>
                               )}
                               <span className="text-charcoal text-xs">{app.musicianGenre}</span>
-                              {app.musicianLocation && <><span className="text-charcoal/40 text-xs">·</span><span className="text-charcoal text-xs">📍 {app.musicianLocation}</span></>}
+                              {app.musicianLocation && <><span className="text-charcoal/40 text-xs">·</span><span className="inline-flex items-center gap-0.5 text-charcoal text-xs"><svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>{app.musicianLocation}</span></>}
                               {app.musicianDistance && <span className="text-chestnut text-xs font-semibold">{app.musicianDistance}</span>}
                             </div>
                             <p className="text-charcoal/60 text-xs mt-0.5">For: {slot.date} · {slot.time}</p>
@@ -1105,14 +1109,14 @@ export default function RestaurantDashboard() {
                         )}
                         {(app.instagram || app.youtube || app.spotify) && (
                           <div className="flex flex-wrap gap-3 mb-3">
-                            {app.instagram && <a href={buildSocialUrl('instagram', app.instagram)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">📷 Instagram</a>}
-                            {app.youtube && <a href={buildSocialUrl('youtube', app.youtube)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">▶ YouTube</a>}
-                            {app.spotify && <a href={buildSocialUrl('spotify', app.spotify)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">🎵 Spotify</a>}
+                            {app.instagram && <a href={buildSocialUrl('instagram', app.instagram)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg>Instagram</a>}
+                            {app.youtube && <a href={buildSocialUrl('youtube', app.youtube)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 3 14 9-14 9V3z"/></svg>YouTube</a>}
+                            {app.spotify && <a href={buildSocialUrl('spotify', app.spotify)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>Spotify</a>}
                           </div>
                         )}
                         <div className="flex gap-2">
                           <button onClick={() => openPaymentModal(slot, app)} className="flex-1 bg-teal text-snow py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">Accept</button>
-                          <button onClick={() => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })} className="px-4 py-2.5 rounded-xl text-sm font-bold bg-graphite/10 text-graphite hover:bg-graphite/20 transition-colors">💬</button>
+                          <button onClick={() => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })} className="px-4 py-2.5 rounded-xl text-sm font-bold bg-graphite/10 text-graphite hover:bg-graphite/20 transition-colors"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></button>
                           <button onClick={() => handleApplicationAction(slot.id, app.id, 'decline')} className="flex-1 bg-snow text-charcoal py-2.5 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10">Decline</button>
                         </div>
                       </div>
@@ -1149,7 +1153,7 @@ export default function RestaurantDashboard() {
                 <SectionHeader eyebrow="Review" title="Pending" accent="Applications." />
                 {allPendingApps.length === 0 ? (
                   <EmptyState
-                    icon="📬"
+                    icon={<svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>}
                     title="No pending applications"
                     body="Post a slot to start receiving applications from musicians."
                     action={{ label: 'Post a Slot', onClick: () => setPostSlotOpen(true) }}
@@ -1175,11 +1179,11 @@ export default function RestaurantDashboard() {
                             </div>
                             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                               {app.performerType === 'solo' && (
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-teal/10 text-teal">🎤 Solo</span>
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-teal/10 text-teal"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg> Solo</span>
                               )}
                               {app.performerType === 'band' && (
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-chestnut/10 text-chestnut">
-                                  🎸 Band{app.bandMembers ? ` · ${app.bandMembers}` : ''}
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-chestnut/10 text-chestnut">
+                                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m11.9 12.1 4.514-4.514"/><path d="M20.1 2.3a1 1 0 0 0-1.4 0l-1.114 1.114A2 2 0 0 0 17 4.828v1.344a2 2 0 0 1-.586 1.414L14 10l1.5 1.5"/><path d="m13.5 8.5 1.5 1.5"/><path d="M9.2 14.8a3 3 0 0 1-3.9.4l-.3-.3a3 3 0 0 1 .4-3.9l5.6-5.6a3 3 0 0 1 3.9-.4l.3.3a3 3 0 0 1-.4 3.9z"/></svg> Band{app.bandMembers ? ` · ${app.bandMembers}` : ''}
                                 </span>
                               )}
                               {app.musicianGenre && <span className="text-charcoal text-xs">{app.musicianGenre}</span>}
@@ -1195,14 +1199,14 @@ export default function RestaurantDashboard() {
                         )}
                         {(app.instagram || app.youtube || app.spotify) && (
                           <div className="flex flex-wrap gap-3 mb-3">
-                            {app.instagram && <a href={buildSocialUrl('instagram', app.instagram)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">📷 Instagram</a>}
-                            {app.youtube && <a href={buildSocialUrl('youtube', app.youtube)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">▶ YouTube</a>}
-                            {app.spotify && <a href={buildSocialUrl('spotify', app.spotify)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">🎵 Spotify</a>}
+                            {app.instagram && <a href={buildSocialUrl('instagram', app.instagram)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg>Instagram</a>}
+                            {app.youtube && <a href={buildSocialUrl('youtube', app.youtube)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 3 14 9-14 9V3z"/></svg>YouTube</a>}
+                            {app.spotify && <a href={buildSocialUrl('spotify', app.spotify)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>Spotify</a>}
                           </div>
                         )}
                         <div className="flex gap-2">
                           <button onClick={() => openPaymentModal(slot, app)} className="flex-1 bg-chestnut text-snow py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">Accept</button>
-                          <button onClick={() => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })} className="px-4 py-2.5 rounded-xl text-sm font-bold bg-graphite/10 text-graphite hover:bg-graphite/20 transition-colors">💬</button>
+                          <button onClick={() => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })} className="px-4 py-2.5 rounded-xl text-sm font-bold bg-graphite/10 text-graphite hover:bg-graphite/20 transition-colors"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></button>
                           <button onClick={() => handleApplicationAction(slot.id, app.id, 'decline')} className="flex-1 bg-snow text-charcoal py-2.5 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10">Decline</button>
                         </div>
                       </div>
@@ -1216,7 +1220,7 @@ export default function RestaurantDashboard() {
                 <SectionHeader eyebrow="Confirmed" title="Booked" accent="Gigs." />
                 {upcomingBooked.length === 0 && pastBooked.length === 0 ? (
                   <EmptyState
-                    icon="✅"
+                    icon={<svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
                     title="No confirmed bookings yet"
                     body="Accept a musician's application to create a confirmed booking."
                   />
@@ -1259,9 +1263,9 @@ export default function RestaurantDashboard() {
                                   ) : null}
                                   <button
                                     onClick={() => confirmedApp && openConversation({ id: confirmedApp.musicianId, name: confirmedApp.musicianName, avatar: confirmedApp.avatar })}
-                                    className="text-charcoal/60 text-[10px] font-medium hover:text-chestnut transition-colors mt-1 block"
+                                    className="inline-flex items-center gap-1 text-charcoal/60 text-[10px] font-medium hover:text-chestnut transition-colors mt-1"
                                   >
-                                    💬 Message
+                                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Message
                                   </button>
                                 </div>
                               </div>
@@ -1310,8 +1314,8 @@ export default function RestaurantDashboard() {
                   <SectionHeader eyebrow="All" title="Posted" accent="Slots." />
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="flex bg-white rounded-xl shadow-sm overflow-hidden border border-charcoal/10">
-                      <button onClick={() => setSlotsView('list')} className={`px-3 py-2 text-sm font-medium transition-all ${slotsView === 'list' ? 'bg-graphite text-snow' : 'text-charcoal hover:bg-snow'}`} title="List view">☰</button>
-                      <button onClick={() => setSlotsView('calendar')} className={`px-3 py-2 text-sm font-medium transition-all ${slotsView === 'calendar' ? 'bg-graphite text-snow' : 'text-charcoal hover:bg-snow'}`} title="Calendar view">▦</button>
+                      <button onClick={() => setSlotsView('list')} className={`px-3 py-2 flex items-center transition-all ${slotsView === 'list' ? 'bg-graphite text-snow' : 'text-charcoal hover:bg-snow'}`} title="List view"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></svg></button>
+                      <button onClick={() => setSlotsView('calendar')} className={`px-3 py-2 flex items-center transition-all ${slotsView === 'calendar' ? 'bg-graphite text-snow' : 'text-charcoal hover:bg-snow'}`} title="Calendar view"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg></button>
                     </div>
                   </div>
                 </div>
@@ -1342,7 +1346,7 @@ export default function RestaurantDashboard() {
 
                     {/* Slot list with pagination */}
                     {filteredSlots.length === 0 ? (
-                      <EmptyState icon="📅" title="No slots found" body="Post a slot to start receiving applications from musicians." />
+                      <EmptyState icon={<svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>} title="No slots found" body="Post a slot to start receiving applications from musicians." />
                     ) : (
                       <>
                         <p className="text-charcoal/50 text-xs mb-3">Showing {Math.min(slotsDisplayCount, filteredSlots.length)} of {filteredSlots.length} slots</p>
@@ -1480,13 +1484,13 @@ export default function RestaurantDashboard() {
                 disabled={browseLoading}
                 className="text-chestnut text-sm font-bold hover:underline disabled:opacity-40 transition-opacity"
               >
-                {browseLoading ? 'Loading…' : '↺ Refresh'}
+                {browseLoading ? 'Loading…' : <span className="inline-flex items-center gap-1"><svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>Refresh</span>}
               </button>
             </div>
 
             {/* Search */}
             <div className="relative mb-4">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-charcoal/40 text-sm pointer-events-none">🔍</span>
+              <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-charcoal/40 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
               <input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
@@ -1513,7 +1517,7 @@ export default function RestaurantDashboard() {
             {/* No location */}
             {!browseLoading && restaurantCoords.lat == null && (
               <EmptyState
-                icon="📍"
+                icon={<svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>}
                 title="Location not set"
                 body="Add your location in Settings so we can find musicians near you."
               />
@@ -1522,7 +1526,7 @@ export default function RestaurantDashboard() {
             {/* Empty state */}
             {!browseLoading && restaurantCoords.lat != null && filteredMusicians.length === 0 && (
               <EmptyState
-                icon="🎸"
+                icon={<svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m11.9 12.1 4.514-4.514"/><path d="M20.1 2.3a1 1 0 0 0-1.4 0l-1.114 1.114A2 2 0 0 0 17 4.828v1.344a2 2 0 0 1-.586 1.414L14 10l1.5 1.5"/><path d="m13.5 8.5 1.5 1.5"/><path d="M9.2 14.8a3 3 0 0 1-3.9.4l-.3-.3a3 3 0 0 1 .4-3.9l5.6-5.6a3 3 0 0 1 3.9-.4l.3.3a3 3 0 0 1-.4 3.9z"/></svg>}
                 title={`No musicians found within ${discoveryRadius} miles`}
                 body="Try increasing your discovery radius in your profile settings."
                 action={{ label: 'Update Radius in Profile', onClick: () => setActiveTab('profile') }}
@@ -1540,16 +1544,16 @@ export default function RestaurantDashboard() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-graphite font-bold text-sm">{m.name}</p>
                           {m.performerType === 'solo' && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal/10 text-teal">🎤 Solo</span>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal/10 text-teal"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>Solo</span>
                           )}
                           {m.performerType === 'band' && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-chestnut/10 text-chestnut">
-                              🎸 Band{m.bandMembers ? ` · ${m.bandMembers}` : ''}
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-chestnut/10 text-chestnut">
+                              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m11.9 12.1 4.514-4.514"/><path d="M20.1 2.3a1 1 0 0 0-1.4 0l-1.114 1.114A2 2 0 0 0 17 4.828v1.344a2 2 0 0 1-.586 1.414L14 10l1.5 1.5"/><path d="m13.5 8.5 1.5 1.5"/><path d="M9.2 14.8a3 3 0 0 1-3.9.4l-.3-.3a3 3 0 0 1 .4-3.9l5.6-5.6a3 3 0 0 1 3.9-.4l.3.3a3 3 0 0 1-.4 3.9z"/></svg>Band{m.bandMembers ? ` · ${m.bandMembers}` : ''}
                             </span>
                           )}
                         </div>
                         {m.location && <p className="text-charcoal text-xs mt-0.5">{m.location}</p>}
-                        <p className="text-chestnut text-xs font-semibold mt-0.5">📍 {m.distanceStr}</p>
+                        <p className="inline-flex items-center gap-0.5 text-chestnut text-xs font-semibold mt-0.5"><svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>{m.distanceStr}</p>
                         {m.bio && <p className="text-charcoal/70 text-xs mt-1.5 line-clamp-2 leading-relaxed">{m.bio}</p>}
                       </div>
                     </div>
@@ -1560,17 +1564,17 @@ export default function RestaurantDashboard() {
                     )}
                     {(m.instagram || m.youtube || m.spotify) && (
                       <div className="flex flex-wrap gap-3 mb-3">
-                        {m.instagram && <a href={buildSocialUrl('instagram', m.instagram)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">📷 Instagram</a>}
-                        {m.youtube && <a href={buildSocialUrl('youtube', m.youtube)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">▶ YouTube</a>}
-                        {m.spotify && <a href={buildSocialUrl('spotify', m.spotify)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">🎵 Spotify</a>}
+                        {m.instagram && <a href={buildSocialUrl('instagram', m.instagram)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg>Instagram</a>}
+                        {m.youtube && <a href={buildSocialUrl('youtube', m.youtube)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 3 14 9-14 9V3z"/></svg>YouTube</a>}
+                        {m.spotify && <a href={buildSocialUrl('spotify', m.spotify)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>Spotify</a>}
                       </div>
                     )}
                     <div className="flex gap-2">
                       <button
                         onClick={() => openConversation({ id: m.id, name: m.name, avatar: m.avatar })}
-                        className="flex-1 bg-snow text-charcoal py-2.5 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10"
+                        className="inline-flex items-center justify-center gap-1.5 flex-1 bg-snow text-charcoal py-2.5 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10"
                       >
-                        💬 Message
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Message
                       </button>
                       <button
                         onClick={() => router.push('/profile/' + m.id)}
@@ -1600,7 +1604,7 @@ export default function RestaurantDashboard() {
                   {selectedLiveMusician.genres.length > 0 && (
                     <p className="text-charcoal text-sm mt-0.5">{selectedLiveMusician.genres.join(' · ')}</p>
                   )}
-                  <p className="text-chestnut text-sm mt-1 font-semibold">📍 {selectedLiveMusician.distanceStr}</p>
+                  <p className="inline-flex items-center gap-1 text-chestnut text-sm mt-1 font-semibold"><svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>{selectedLiveMusician.distanceStr}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3 mb-5">
@@ -1624,13 +1628,13 @@ export default function RestaurantDashboard() {
                   <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-2">Links</p>
                   <div className="flex flex-wrap gap-2">
                     {selectedLiveMusician.instagram && (
-                      <a href={buildSocialUrl('instagram', selectedLiveMusician.instagram)} target="_blank" rel="noopener noreferrer" className="bg-snow px-3 py-1.5 rounded-xl text-xs font-medium text-charcoal hover:bg-[#E8E4E0] transition-colors">📷 Instagram</a>
+                      <a href={buildSocialUrl('instagram', selectedLiveMusician.instagram)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 bg-snow px-3 py-1.5 rounded-xl text-xs font-medium text-charcoal hover:bg-[#E8E4E0] transition-colors"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg>Instagram</a>
                     )}
                     {selectedLiveMusician.youtube && (
-                      <a href={buildSocialUrl('youtube', selectedLiveMusician.youtube)} target="_blank" rel="noopener noreferrer" className="bg-snow px-3 py-1.5 rounded-xl text-xs font-medium text-charcoal hover:bg-[#E8E4E0] transition-colors">▶ YouTube</a>
+                      <a href={buildSocialUrl('youtube', selectedLiveMusician.youtube)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 bg-snow px-3 py-1.5 rounded-xl text-xs font-medium text-charcoal hover:bg-[#E8E4E0] transition-colors"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 3 14 9-14 9V3z"/></svg>YouTube</a>
                     )}
                     {selectedLiveMusician.spotify && (
-                      <a href={buildSocialUrl('spotify', selectedLiveMusician.spotify)} target="_blank" rel="noopener noreferrer" className="bg-snow px-3 py-1.5 rounded-xl text-xs font-medium text-charcoal hover:bg-[#E8E4E0] transition-colors">🎵 Spotify</a>
+                      <a href={buildSocialUrl('spotify', selectedLiveMusician.spotify)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 bg-snow px-3 py-1.5 rounded-xl text-xs font-medium text-charcoal hover:bg-[#E8E4E0] transition-colors"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>Spotify</a>
                     )}
                   </div>
                 </div>
@@ -1639,9 +1643,9 @@ export default function RestaurantDashboard() {
             <div className="flex gap-3">
               <button
                 onClick={() => openConversation({ id: selectedLiveMusician.id, name: selectedLiveMusician.name, avatar: selectedLiveMusician.avatar })}
-                className="flex-1 bg-graphite text-snow py-3 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity"
+                className="inline-flex items-center justify-center gap-1.5 flex-1 bg-graphite text-snow py-3 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity"
               >
-                💬 Message
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Message
               </button>
               <button
                 onClick={() => { setSelectedLiveMusician(null) }}
@@ -1747,7 +1751,7 @@ export default function RestaurantDashboard() {
               >
                 {profile.avatar
                   ? <img src={profile.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover shadow-sm border border-charcoal/[0.07]" />
-                  : <div className="w-14 h-14 bg-chestnut/10 rounded-2xl flex items-center justify-center text-3xl">🍽</div>}
+                  : <div className="w-14 h-14 bg-chestnut/10 rounded-2xl flex items-center justify-center text-chestnut"><svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg></div>}
                 <div className="flex-1 min-w-0 text-left">
                   <p className="text-graphite font-black text-base truncate">{profile.name || 'Your Venue'}</p>
                   {profile.type && <p className="text-charcoal/60 text-sm mt-0.5">{profile.type}</p>}
@@ -1783,11 +1787,11 @@ export default function RestaurantDashboard() {
       {/* ---- BOTTOM TAB BAR ---- */}
       <nav className="fixed bottom-0 left-0 right-0 bg-graphite/95 backdrop-blur-md border-t border-charcoal/30 z-40">
         <div className="max-w-2xl mx-auto grid grid-cols-5 px-2 py-2">
-          <TabButton icon="🏠" label="Home" active={activeTab === 'home'} onClick={() => setActiveTab('home')} />
-          <TabButton icon="📋" label="Bookings" active={activeTab === 'slots'} onClick={() => setActiveTab('slots')} badge={pendingApps > 0 ? pendingApps : undefined} />
-          <TabButton icon="🔍" label="Browse" active={activeTab === 'browse'} onClick={() => setActiveTab('browse')} />
-          <TabButton icon="💬" label="Messages" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} badge={msgUnread} />
-          <TabButton icon="🍽" label="Profile" active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
+          <TabButton icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>} label="Home" active={activeTab === 'home'} onClick={() => setActiveTab('home')} />
+          <TabButton icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>} label="Bookings" active={activeTab === 'slots'} onClick={() => setActiveTab('slots')} badge={pendingApps > 0 ? pendingApps : undefined} />
+          <TabButton icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>} label="Browse" active={activeTab === 'browse'} onClick={() => setActiveTab('browse')} />
+          <TabButton icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>} label="Messages" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} badge={msgUnread} />
+          <TabButton icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>} label="Profile" active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
         </div>
       </nav>
 
@@ -1800,12 +1804,12 @@ export default function RestaurantDashboard() {
                 <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em]">Edit Slot</p>
                 <h3 className="text-snow text-xl font-black tracking-tight">{editingSlot.date}</h3>
               </div>
-              <button onClick={() => setEditingSlot(null)} className="text-snow/60 hover:text-snow transition-colors text-xl leading-none">✕</button>
+              <button onClick={() => setEditingSlot(null)} className="text-snow/60 hover:text-snow transition-colors leading-none"><svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
             </div>
             <div className="p-6">
               {editingSlot.applications.some(a => a.status === 'pending') && (
                 <div className="bg-chestnut/10 border border-chestnut/20 rounded-xl px-4 py-3 mb-5 flex items-start gap-2.5">
-                  <span className="text-chestnut text-base shrink-0">⚠️</span>
+                  <svg className="w-4 h-4 text-chestnut shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
                   <p className="text-chestnut text-xs leading-relaxed font-medium">This slot has pending applications. Editing the details will not automatically notify applicants.</p>
                 </div>
               )}
@@ -1861,7 +1865,7 @@ export default function RestaurantDashboard() {
         <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-snow w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden">
             <div className="p-6">
-              <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center text-2xl mx-auto mb-4">🚫</div>
+              <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-4"><svg className="w-6 h-6 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg></div>
               <h3 className="text-graphite text-xl font-black text-center mb-2">Cancel this slot?</h3>
               {(() => {
                 const slot = slots.find(s => s.id === cancelSlotId)
@@ -1894,7 +1898,7 @@ export default function RestaurantDashboard() {
                 <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em]">New Listing</p>
                 <h3 className="text-snow text-xl font-black tracking-tight">Post a <span className="text-chestnut italic">Slot.</span></h3>
               </div>
-              <button onClick={() => setPostSlotOpen(false)} className="text-snow/60 hover:text-snow transition-colors text-xl leading-none relative z-10">✕</button>
+              <button onClick={() => setPostSlotOpen(false)} className="text-snow/60 hover:text-snow transition-colors leading-none relative z-10"><svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
             </div>
             <div className="p-6">
               <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Date</label>
@@ -2038,7 +2042,7 @@ function SectionHeader({ title, eyebrow, accent }: { title: string; eyebrow?: st
 }
 
 function EmptyState({ icon, title, body, action }: {
-  icon: string
+  icon: React.ReactNode
   title: string
   body: string
   action?: { label: string; onClick: () => void }
@@ -2052,7 +2056,7 @@ function EmptyState({ icon, title, body, action }: {
       </div>
       <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-chestnut opacity-15 blur-2xl pointer-events-none" />
       <div className="relative z-10 p-8 text-center">
-        <div className="w-16 h-16 bg-chestnut/20 border border-chestnut/30 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 shadow-inner">{icon}</div>
+        <div className="w-16 h-16 bg-chestnut/20 border border-chestnut/30 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner text-chestnut">{icon}</div>
         <p className="text-snow font-black text-lg mb-1.5 tracking-tight">{title}</p>
         <p className="text-snow/60 text-sm leading-relaxed mb-5 max-w-xs mx-auto">{body}</p>
         {action && (
@@ -2065,11 +2069,11 @@ function EmptyState({ icon, title, body, action }: {
   )
 }
 
-function StatCard({ value, label, color, icon, highlight }: { value: number | string; label: string; color: string; icon: string; highlight?: boolean }) {
+function StatCard({ value, label, color, icon, highlight }: { value: number | string; label: string; color: string; icon: React.ReactNode; highlight?: boolean }) {
   if (highlight) {
     return (
       <div className="relative bg-chestnut rounded-2xl p-3 shadow-md overflow-hidden">
-        <span className="absolute -bottom-2 -right-1 text-4xl opacity-25 pointer-events-none select-none">{icon}</span>
+        <span className="absolute top-2 right-2 text-snow/20 pointer-events-none">{icon}</span>
         <p className="text-snow text-2xl font-black tracking-tight leading-none">{value}</p>
         <p className="text-snow/70 text-[9px] font-bold uppercase tracking-[0.2em] mt-2">{label}</p>
       </div>
@@ -2077,18 +2081,18 @@ function StatCard({ value, label, color, icon, highlight }: { value: number | st
   }
   return (
     <div className="relative bg-white rounded-2xl p-3 shadow-sm overflow-hidden">
-      <span className="absolute -bottom-2 -right-1 text-4xl opacity-10 pointer-events-none select-none">{icon}</span>
+      <span className="absolute top-2 right-2 text-charcoal/10 pointer-events-none">{icon}</span>
       <p className={`text-2xl font-black tracking-tight leading-none ${color}`}>{value}</p>
       <p className="text-charcoal text-[9px] font-bold uppercase tracking-[0.2em] mt-2">{label}</p>
     </div>
   )
 }
 
-function TabButton({ icon, label, active, onClick, badge }: { icon: string; label: string; active: boolean; onClick: () => void; badge?: number }) {
+function TabButton({ icon, label, active, onClick, badge }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void; badge?: number }) {
   return (
     <button onClick={onClick} className="py-1 flex flex-col items-center gap-1 transition-colors relative">
       <div className={`relative w-11 h-9 rounded-xl flex items-center justify-center transition-all ${active ? 'bg-chestnut shadow-md' : ''}`}>
-        <span className="text-lg leading-none">{icon}</span>
+        <span className={`flex items-center justify-center ${active ? 'text-snow' : 'text-charcoal/60'}`}>{icon}</span>
         {badge != null && badge > 0 && (
           <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-chestnut border-2 border-graphite rounded-full text-[9px] text-snow font-bold flex items-center justify-center">{badge}</span>
         )}
@@ -2165,21 +2169,21 @@ function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAc
                     </div>
                   </div>
                   <p className="text-charcoal text-xs">{app.musicianGenre}</p>
-                  {app.musicianLocation && <p className="text-charcoal/60 text-xs mt-0.5">📍 {app.musicianLocation}{app.musicianDistance ? ` · ${app.musicianDistance}` : ''}</p>}
+                  {app.musicianLocation && <p className="inline-flex items-center gap-0.5 text-charcoal/60 text-xs mt-0.5"><svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>{app.musicianLocation}{app.musicianDistance ? ` · ${app.musicianDistance}` : ''}</p>}
                 </div>
               </div>
               {(app.instagram || app.youtube || app.spotify) && (
                 <div className="flex flex-wrap gap-3 mb-2">
-                  {app.instagram && <a href={buildSocialUrl('instagram', app.instagram)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">📷 Instagram</a>}
-                  {app.youtube && <a href={buildSocialUrl('youtube', app.youtube)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">▶ YouTube</a>}
-                  {app.spotify && <a href={buildSocialUrl('spotify', app.spotify)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors">🎵 Spotify</a>}
+                  {app.instagram && <a href={buildSocialUrl('instagram', app.instagram)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg>Instagram</a>}
+                  {app.youtube && <a href={buildSocialUrl('youtube', app.youtube)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 3 14 9-14 9V3z"/></svg>YouTube</a>}
+                  {app.spotify && <a href={buildSocialUrl('spotify', app.spotify)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>Spotify</a>}
                 </div>
               )}
               {app.note && <div className="bg-snow rounded-lg px-3 py-2 mb-2"><p className="text-charcoal text-sm italic">"{app.note}"</p></div>}
               {app.status === 'pending' ? (
                 <div className="flex gap-2">
                   <button onClick={() => onAccept(app)} className="flex-1 bg-teal text-snow py-2 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity">Accept</button>
-                  <button onClick={() => onMessage(app)} className="px-3 py-2 rounded-lg text-xs font-medium bg-graphite/10 text-graphite hover:bg-graphite/20">💬</button>
+                  <button onClick={() => onMessage(app)} className="px-3 py-2 rounded-lg text-xs font-medium bg-graphite/10 text-graphite hover:bg-graphite/20"><svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></button>
                   <button onClick={() => handleApplicationAction(slot.id, app.id, 'decline')} className="flex-1 bg-snow text-charcoal py-2 rounded-lg text-xs font-medium hover:bg-[#E8E4E0] border border-charcoal/10">Decline</button>
                 </div>
               ) : (

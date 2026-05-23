@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, useEffect, useState } from 'react'
+import React, { ChangeEvent, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { generateUsername } from '@/lib/generate-username'
 import { useRouter } from 'next/navigation'
@@ -414,12 +414,14 @@ export default function OnboardingPage() {
       ? (role.venueName || basic.fullName || 'Your Venue')
       : (basic.fullName || 'Your Profile')
     const initials = displayName.slice(0, 2).toUpperCase()
-    const roleLabel = userType === 'restaurant' ? '🍽 Restaurant' : userType === 'musician' ? '♪ Musician' : '★ Fan'
+    const roleLabel = userType === 'restaurant' ? 'Restaurant' : userType === 'musician' ? 'Musician' : 'Fan'
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-4" style={{ background: PANEL_BG }}>
         <div className="w-full max-w-sm">
           <div className="text-center mb-8">
-            <div className="w-20 h-20 bg-chestnut rounded-2xl flex items-center justify-center text-4xl mx-auto mb-4 shadow-xl">🎉</div>
+            <div className="w-20 h-20 bg-chestnut rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl">
+              <svg className="w-10 h-10 text-snow" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4M19 17v4M3 5h4M17 19h4"/></svg>
+            </div>
             <h1 className="text-graphite text-3xl font-black tracking-tight mb-2">
               Your profile is <span className="text-chestnut italic">live!</span>
             </h1>
@@ -435,7 +437,12 @@ export default function OnboardingPage() {
               <div className="min-w-0">
                 <p className="text-graphite font-black text-lg leading-tight truncate">{displayName}</p>
                 <p className="text-charcoal text-sm">{roleLabel}</p>
-                {basic.locationText && <p className="text-charcoal/60 text-xs mt-0.5">📍 {basic.locationText}</p>}
+                {basic.locationText && (
+                  <p className="text-charcoal/60 text-xs mt-0.5 flex items-center gap-1">
+                    <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                    {basic.locationText}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -587,14 +594,14 @@ export default function OnboardingPage() {
                     {basic.avatarPreview ? (
                       <img src={basic.avatarPreview} alt="" className="w-20 h-20 rounded-2xl object-cover shadow-sm" />
                     ) : (
-                      <div className="w-20 h-20 rounded-2xl bg-snow shadow-sm flex items-center justify-center text-3xl text-chestnut">
-                        ♪
+                      <div className="w-20 h-20 rounded-2xl bg-snow shadow-sm flex items-center justify-center text-chestnut">
+                        <svg className="w-9 h-9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
                       </div>
                     )}
                   </div>
                   <div>
                     <label className="flex items-center gap-2 bg-snow text-graphite font-bold text-sm px-4 py-3 rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer min-h-[44px]">
-                      <span className="text-base">📷</span>
+                      <svg className="w-4 h-4 text-charcoal/60 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
                       {basic.avatarPreview ? 'Change photo' : 'Upload photo'}
                       <input type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
                     </label>
@@ -620,7 +627,10 @@ export default function OnboardingPage() {
                               : 'bg-snow text-charcoal border border-charcoal/20 hover:shadow-md'
                           }`}
                         >
-                          <span className="text-2xl">{val === 'solo' ? '🎤' : '🎸'}</span>
+                          {val === 'solo'
+                            ? <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                            : <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m11.9 12.1 4.514-4.514"/><path d="M20.1 2.3a1 1 0 0 0-1.4 0l-1.114 1.114A2 2 0 0 0 17 4.828v1.344a2 2 0 0 1-.586 1.414L14 10l1.5 1.5"/><path d="m13.5 8.5 1.5 1.5"/><path d="M9.2 14.8a3 3 0 0 1-3.9.4l-.3-.3a3 3 0 0 1 .4-3.9l5.6-5.6a3 3 0 0 1 3.9-.4l.3.3a3 3 0 0 1-.4 3.9z"/></svg>
+                          }
                           <span>{val === 'solo' ? 'Solo Artist' : 'Band'}</span>
                         </button>
                       ))}
@@ -669,8 +679,9 @@ export default function OnboardingPage() {
                           </>
                         )}
 
-                        <label className="block text-charcoal font-semibold text-sm mb-2">
-                          🔒 Your Legal Name <span className="text-chestnut">*</span>
+                        <label className="flex items-center gap-1.5 text-charcoal font-semibold text-sm mb-2">
+                          <svg className="w-3.5 h-3.5 text-charcoal/50 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                          Your Legal Name <span className="text-chestnut">*</span>
                         </label>
                         <input
                           type="text"
@@ -719,7 +730,7 @@ export default function OnboardingPage() {
                     {locationLoading ? (
                       <span className="w-4 h-4 border-2 border-snow border-t-transparent rounded-full animate-spin" />
                     ) : (
-                      <span>📍</span>
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
                     )}
                     Use my location
                   </button>
@@ -882,10 +893,10 @@ export default function OnboardingPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <SocialInput label="Instagram"  prefix="@" value={social.instagram} onChange={v => setSocial(p => ({ ...p, instagram: v }))} />
                   <SocialInput label="TikTok"     prefix="@" value={social.tiktok}    onChange={v => setSocial(p => ({ ...p, tiktok: v }))} />
-                  <SocialInput label="Spotify"    prefix="🎵" value={social.spotify}   onChange={v => setSocial(p => ({ ...p, spotify: v }))} placeholder="profile URL" />
-                  <SocialInput label="YouTube"    prefix="▶"  value={social.youtube}   onChange={v => setSocial(p => ({ ...p, youtube: v }))} placeholder="channel URL" />
+                  <SocialInput label="Spotify"    prefix={<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>} value={social.spotify}   onChange={v => setSocial(p => ({ ...p, spotify: v }))} placeholder="profile URL" />
+                  <SocialInput label="YouTube"    prefix={<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>} value={social.youtube}   onChange={v => setSocial(p => ({ ...p, youtube: v }))} placeholder="channel URL" />
                   <div className="sm:col-span-2">
-                    <SocialInput label="Website"  prefix="🌐" value={social.website}   onChange={v => setSocial(p => ({ ...p, website: v }))} placeholder="https://..." />
+                    <SocialInput label="Website"  prefix={<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" x2="22" y1="12" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>} value={social.website}   onChange={v => setSocial(p => ({ ...p, website: v }))} placeholder="https://..." />
                   </div>
                 </div>
               </div>
@@ -894,7 +905,9 @@ export default function OnboardingPage() {
             {/* Step 5 — Stripe Connect (musicians only) */}
             {step === 5 && userType === 'musician' && (
               <div>
-                <div className="w-16 h-16 bg-chestnut/10 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-5">🏦</div>
+                <div className="w-16 h-16 bg-chestnut/10 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                  <svg className="w-8 h-8 text-chestnut" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+                </div>
                 <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.35em] mb-3 text-center">— Get paid</p>
                 <h2 className="text-graphite text-3xl md:text-4xl font-black tracking-tight mb-2 text-center">
                   Set up <span className="text-chestnut italic">payouts.</span>
@@ -911,7 +924,7 @@ export default function OnboardingPage() {
                 >
                   {stripeConnecting
                     ? <><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg> Connecting…</>
-                    : <>🔗 Connect Bank Account</>}
+                    : <><svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> Connect Bank Account</>}
                 </button>
                 <div className="text-center">
                   <button
@@ -994,7 +1007,7 @@ function SocialInput({
   label, prefix, value, onChange, placeholder,
 }: {
   label: string
-  prefix: string
+  prefix: React.ReactNode
   value: string
   onChange: (v: string) => void
   placeholder?: string
@@ -1003,7 +1016,7 @@ function SocialInput({
     <div>
       <label className="block text-charcoal font-semibold text-sm mb-2">{label}</label>
       <div className="flex items-center bg-snow rounded-xl shadow-sm focus-within:shadow-md transition-shadow overflow-hidden">
-        <span className="pl-4 pr-2 text-charcoal/60 text-base">{prefix}</span>
+        <span className="pl-4 pr-2 text-charcoal/60 flex items-center">{prefix}</span>
         <input
           type="text"
           placeholder={placeholder ?? 'username'}

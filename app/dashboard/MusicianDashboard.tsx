@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { eqBarStyle } from '@/lib/eq'
@@ -347,7 +347,7 @@ export default function MusicianDashboard() {
               name,
               type: (vMeta.cuisine_type as string | undefined) ?? '',
               distance: `${distance.toFixed(1)} mi`,
-              avatar: v?.avatar_url || '🍽',
+              avatar: v?.avatar_url || '',
             },
             date: dateLabel,
             rawDate: s.date,
@@ -697,17 +697,17 @@ export default function MusicianDashboard() {
                 <div className="fixed inset-0 z-40" onClick={() => setHeaderMenuOpen(false)} />
                 <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl z-50 overflow-hidden border border-charcoal/10">
                   <button onClick={() => { router.push('/profile/' + userId); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
-                    <span>👤</span> View Profile
+                    <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> View Profile
                   </button>
                   <button onClick={() => { setActiveTab('profile'); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
-                    <span>✏️</span> Edit Profile
+                    <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg> Edit Profile
                   </button>
                   <button onClick={() => { router.push('/settings'); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
-                    <span>⚙️</span> Settings
+                    <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg> Settings
                   </button>
                   <div className="border-t border-charcoal/10" />
                   <button onClick={() => { handleLogout(); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-medium text-charcoal hover:bg-snow transition-colors flex items-center gap-2">
-                    <span>🚪</span> Log Out
+                    <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg> Log Out
                   </button>
                 </div>
               </>
@@ -721,7 +721,7 @@ export default function MusicianDashboard() {
         {/* Payout setup banner */}
         {stripeOnboarded === false && (
           <div className="bg-chestnut rounded-2xl px-4 py-4 mb-4 flex items-center gap-3">
-            <span className="text-2xl shrink-0">⚠️</span>
+            <svg className="w-6 h-6 text-snow shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
             <div className="flex-1 min-w-0">
               <p className="text-snow font-bold text-sm leading-snug">Set up payouts to receive payment for your gigs</p>
               <p className="text-snow/70 text-xs mt-0.5">You won't be paid until your bank account is connected.</p>
@@ -749,12 +749,12 @@ export default function MusicianDashboard() {
               <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-chestnut opacity-25 blur-2xl pointer-events-none" />
               <div className="absolute -bottom-14 -left-10 w-36 h-36 rounded-full bg-teal opacity-15 blur-2xl pointer-events-none" />
               <span className="absolute top-3 right-3 bg-chestnut text-snow text-[9px] font-bold tracking-[0.2em] px-2.5 py-1 rounded-full shadow-md uppercase z-20">
-                {profile.performerType === 'band' ? '🎸 Band' : '🎤 Solo Artist'}
+                {profile.performerType === 'band' ? <span className="inline-flex items-center gap-1"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m11.9 12.1 4.514-4.514"/><path d="M20.1 2.3a1 1 0 0 0-1.4 0l-1.114 1.114A2 2 0 0 0 17 4.828v1.344a2 2 0 0 1-.586 1.414L14 10l1.5 1.5"/><path d="m13.5 8.5 1.5 1.5"/><path d="M9.2 14.8a3 3 0 0 1-3.9.4l-.3-.3a3 3 0 0 1 .4-3.9l5.6-5.6a3 3 0 0 1 3.9-.4l.3.3a3 3 0 0 1-.4 3.9z"/></svg>Band</span> : <span className="inline-flex items-center gap-1"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>Solo Artist</span>}
               </span>
               <div className="relative z-10 p-5 flex items-center gap-4">
                 {profile.avatar
                   ? <img src={profile.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover shrink-0 shadow-inner border border-chestnut/30" />
-                  : <div className="w-14 h-14 rounded-2xl bg-chestnut/20 border border-chestnut/30 flex items-center justify-center text-2xl shrink-0 shadow-inner">♪</div>}
+                  : <div className="w-14 h-14 rounded-2xl bg-chestnut/20 border border-chestnut/30 flex items-center justify-center shrink-0 shadow-inner text-chestnut"><svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>}
                 <div className="flex-1 min-w-0">
                   <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">For Musicians</p>
                   <p className="text-snow font-black text-lg leading-tight truncate">{profile.name || 'Your Name'}</p>
@@ -780,16 +780,16 @@ export default function MusicianDashboard() {
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-2.5 mb-7">
-                <StatCard value={upcomingGigs} label="Upcoming" color="text-teal" icon="✅" />
-                <StatCard value={pendingApps} label="Pending" color="text-chestnut" icon="📬" />
-                <StatCard value={`$${totalEarned}`} label="Earned" color="text-graphite" icon="💰" highlight />
+                <StatCard value={upcomingGigs} label="Upcoming" color="text-teal" icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>} />
+                <StatCard value={pendingApps} label="Pending" color="text-chestnut" icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>} />
+                <StatCard value={`$${totalEarned}`} label="Earned" color="text-graphite" icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>} highlight />
               </div>
             )}
 
             {/* Newly confirmed notification banner */}
             {newlyConfirmed > 0 && (
               <div className="bg-teal/10 border border-teal/30 rounded-2xl px-4 py-3 mb-5 flex items-center gap-3">
-                <span className="text-2xl">🎉</span>
+                <svg className="w-6 h-6 text-teal shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5.8 11.3 2 22l10.7-3.79"/><path d="M4 3h.01"/><path d="M22 8h.01"/><path d="M15 2h.01"/><path d="M22 20h.01"/><path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12v0c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10"/><path d="m22 13-.82-.33c-.86-.34-1.82.2-1.98 1.11v0c-.11.7-.72 1.22-1.43 1.22H17"/><path d="m11 2 .33.82c.34.86-.2 1.82-1.11 1.98v0C9.52 4.9 9 5.52 9 6.23V7"/><path d="M11 13c1.93 1.93 2.83 4.17 2 5-.83.83-3.07-.07-5-2-1.93-1.93-2.83-4.17-2-5 .83-.83 3.07.07 5 2z"/></svg>
                 <p className="text-teal font-bold text-sm">
                   <span className="font-black">{newlyConfirmed}</span> application{newlyConfirmed !== 1 ? 's were' : ' was'} accepted — you have a new confirmed gig!
                 </p>
@@ -849,7 +849,7 @@ export default function MusicianDashboard() {
               </div>
             ) : pendingApps === 0 ? (
               <EmptyState
-                icon="🎸"
+                icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m11.9 12.1 4.514-4.514"/><path d="M20.1 2.3a1 1 0 0 0-1.4 0l-1.114 1.114A2 2 0 0 0 17 4.828v1.344a2 2 0 0 1-.586 1.414L14 10l1.5 1.5"/><path d="m13.5 8.5 1.5 1.5"/><path d="M9.2 14.8a3 3 0 0 1-3.9.4l-.3-.3a3 3 0 0 1 .4-3.9l5.6-5.6a3 3 0 0 1 3.9-.4l.3.3a3 3 0 0 1-.4 3.9z"/></svg>}
                 title="No pending applications"
                 body="Browse open gig slots and apply to restaurants looking for live music."
                 action={{ label: 'Browse Open Gigs', onClick: () => setActiveTab('gigs') }}
@@ -901,7 +901,7 @@ export default function MusicianDashboard() {
               </h2>
             </div>
             <div className="relative mb-4">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-charcoal/40 text-sm pointer-events-none">🔍</span>
+              <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-charcoal/40 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
               <input
                 value={gigSearch}
                 onChange={e => setGigSearch(e.target.value)}
@@ -935,7 +935,7 @@ export default function MusicianDashboard() {
               </div>
             ) : filteredGigs.length === 0 ? (
               <EmptyState
-                icon="🔍"
+                icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>}
                 title="No open gigs right now"
                 body="Restaurants post available slots here. Check back soon — new gigs appear as venues look for talent."
               />
@@ -971,7 +971,7 @@ export default function MusicianDashboard() {
                         className="bg-snow text-charcoal px-3 py-2.5 rounded-xl text-sm hover:bg-[#E8E4E0] transition-colors border border-charcoal/10"
                         title="Message Venue"
                       >
-                        💬
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                       </button>
                       <button
                         onClick={() => setSelectedGig(gig)}
@@ -1148,7 +1148,7 @@ export default function MusicianDashboard() {
                 </div>
               ) : filteredBookings.length === 0 ? (
                 <EmptyState
-                  icon={bookingFilter === 'pending' ? '📬' : bookingFilter === 'confirmed' ? '🎸' : '🕐'}
+                  icon={bookingFilter === 'pending' ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg> : bookingFilter === 'confirmed' ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m11.9 12.1 4.514-4.514"/><path d="M20.1 2.3a1 1 0 0 0-1.4 0l-1.114 1.114A2 2 0 0 0 17 4.828v1.344a2 2 0 0 1-.586 1.414L14 10l1.5 1.5"/><path d="m13.5 8.5 1.5 1.5"/><path d="M9.2 14.8a3 3 0 0 1-3.9.4l-.3-.3a3 3 0 0 1 .4-3.9l5.6-5.6a3 3 0 0 1 3.9-.4l.3.3a3 3 0 0 1-.4 3.9z"/></svg> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>}
                   title={bookingFilter === 'pending' ? 'No pending applications' : bookingFilter === 'confirmed' ? 'No upcoming gigs' : 'Nothing here'}
                   body={bookingFilter === 'pending' ? 'Browse open gig slots and apply to restaurants looking for live music.' : bookingFilter === 'confirmed' ? 'Keep applying! Confirmed gigs will appear here.' : ''}
                   action={bookingFilter === 'pending' ? { label: 'Browse Open Gigs', onClick: () => setActiveTab('gigs') } : undefined}
@@ -1190,7 +1190,7 @@ export default function MusicianDashboard() {
                               </div>
                             )}
                             <div className="flex items-center justify-between mt-1">
-                              <button onClick={() => openConversationWithVenue(b.gig)} className="text-charcoal/60 text-xs font-medium hover:text-chestnut transition-colors">💬 Message Venue</button>
+                              <button onClick={() => openConversationWithVenue(b.gig)} className="inline-flex items-center gap-1 text-charcoal/60 text-xs font-medium hover:text-chestnut transition-colors"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Message Venue</button>
                               <button onClick={() => handleCancelApplication(b.id)} className="text-charcoal/60 text-xs font-medium hover:text-red-500 transition-colors">Cancel Application</button>
                             </div>
                           </div>
@@ -1219,7 +1219,7 @@ export default function MusicianDashboard() {
                                 ) : b.paymentStatus === 'authorized' ? (
                                   <span className="inline-block bg-chestnut/10 text-chestnut text-[10px] font-black px-2 py-0.5 rounded-full mt-1">Auth&apos;d</span>
                                 ) : null}
-                                <button onClick={() => openConversationWithVenue(b.gig)} className="text-charcoal/60 text-[10px] font-medium hover:text-chestnut transition-colors mt-1 block">💬 Message</button>
+                                <button onClick={() => openConversationWithVenue(b.gig)} className="inline-flex items-center gap-1 text-charcoal/60 text-[10px] font-medium hover:text-chestnut transition-colors mt-1"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Message</button>
                               </div>
                             </div>
                           </div>
@@ -1410,16 +1410,16 @@ export default function MusicianDashboard() {
               >
                 {profile.avatar
                   ? <img src={profile.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover shadow-sm border border-charcoal/[0.07]" />
-                  : <div className="w-14 h-14 bg-chestnut/10 rounded-2xl flex items-center justify-center text-3xl">♪</div>}
+                  : <div className="w-14 h-14 bg-chestnut/10 rounded-2xl flex items-center justify-center text-chestnut"><svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>}
                 <div className="flex-1 min-w-0 text-left">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-graphite font-black text-base truncate">{profile.name || 'Your Name'}</p>
                     {profile.performerType === 'solo' && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal/10 text-teal shrink-0">🎤 Solo</span>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal/10 text-teal shrink-0"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>Solo</span>
                     )}
                     {profile.performerType === 'band' && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-chestnut/10 text-chestnut shrink-0">
-                        🎸 Band{profile.bandMembers ? ` · ${profile.bandMembers}` : ''}
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-chestnut/10 text-chestnut shrink-0">
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m11.9 12.1 4.514-4.514"/><path d="M20.1 2.3a1 1 0 0 0-1.4 0l-1.114 1.114A2 2 0 0 0 17 4.828v1.344a2 2 0 0 1-.586 1.414L14 10l1.5 1.5"/><path d="m13.5 8.5 1.5 1.5"/><path d="M9.2 14.8a3 3 0 0 1-3.9.4l-.3-.3a3 3 0 0 1 .4-3.9l5.6-5.6a3 3 0 0 1 3.9-.4l.3.3a3 3 0 0 1-.4 3.9z"/></svg>Band{profile.bandMembers ? ` · ${profile.bandMembers}` : ''}
                       </span>
                     )}
                   </div>
@@ -1458,11 +1458,11 @@ export default function MusicianDashboard() {
       {/* ---- BOTTOM TAB BAR ---- */}
       <nav className="fixed bottom-0 left-0 right-0 bg-graphite/95 backdrop-blur-md border-t border-charcoal/30 z-40">
         <div className="max-w-2xl mx-auto grid grid-cols-5 px-2 py-2">
-          <TabButton icon="🏠" label="Home"     active={activeTab === 'home'}     onClick={() => setActiveTab('home')} />
-          <TabButton icon="🎵" label="Gigs"     active={activeTab === 'gigs'}     onClick={() => setActiveTab('gigs')} />
-          <TabButton icon="📋" label="Bookings" active={activeTab === 'bookings'} onClick={() => setActiveTab('bookings')} badge={newlyConfirmed > 0 ? newlyConfirmed : undefined} />
-          <TabButton icon="💬" label="Messages" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} badge={msgUnread} />
-          <TabButton icon="♪"  label="Profile"  active={activeTab === 'profile'}  onClick={() => setActiveTab('profile')} />
+          <TabButton icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>} label="Home"     active={activeTab === 'home'}     onClick={() => setActiveTab('home')} />
+          <TabButton icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>} label="Gigs"     active={activeTab === 'gigs'}     onClick={() => setActiveTab('gigs')} />
+          <TabButton icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>} label="Bookings" active={activeTab === 'bookings'} onClick={() => setActiveTab('bookings')} badge={newlyConfirmed > 0 ? newlyConfirmed : undefined} />
+          <TabButton icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>} label="Messages" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} badge={msgUnread} />
+          <TabButton icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>} label="Profile"  active={activeTab === 'profile'}  onClick={() => setActiveTab('profile')} />
         </div>
       </nav>
 
@@ -1478,8 +1478,8 @@ export default function MusicianDashboard() {
               </div>
               <button
                 onClick={() => { setApplyGigId(null); setApplyNote('') }}
-                className="text-snow/60 hover:text-snow transition-colors text-xl leading-none relative z-10"
-              >✕</button>
+                className="text-snow/60 hover:text-snow transition-colors leading-none relative z-10"
+              ><svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
             </div>
             <div className="p-6">
               <div className="bg-white rounded-xl p-4 mb-5 space-y-3">
@@ -1545,12 +1545,12 @@ export default function MusicianDashboard() {
             {/* Info cards */}
             <div className="px-5 pt-5 space-y-3">
               {[
-                { icon: '🕐', title: 'Takes about 2 minutes', text: 'You only need to do this once. After setup, payments land in your bank automatically after each gig.' },
-                { icon: '📋', title: 'What you\'ll need', text: 'Your legal name, date of birth, last 4 digits of your SSN, and your bank account details.' },
-                { icon: '🔒', title: 'Bank-level security', text: 'Your financial information is handled entirely by Stripe. Drum Up never sees or stores your sensitive data.' },
+                { icon: <svg className="w-5 h-5 text-chestnut" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>, title: 'Takes about 2 minutes', text: 'You only need to do this once. After setup, payments land in your bank automatically after each gig.' },
+                { icon: <svg className="w-5 h-5 text-chestnut" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>, title: 'What you\'ll need', text: 'Your legal name, date of birth, last 4 digits of your SSN, and your bank account details.' },
+                { icon: <svg className="w-5 h-5 text-chestnut" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, title: 'Bank-level security', text: 'Your financial information is handled entirely by Stripe. Drum Up never sees or stores your sensitive data.' },
               ].map(({ icon, title, text }) => (
                 <div key={title} className="flex items-start gap-3 bg-[#F5F5F5] rounded-xl px-4 py-3">
-                  <span className="text-xl mt-0.5 shrink-0">{icon}</span>
+                  <span className="shrink-0 mt-0.5">{icon}</span>
                   <div>
                     <p className="text-graphite font-bold text-sm">{title}</p>
                     <p className="text-charcoal text-xs mt-0.5 leading-relaxed">{text}</p>
@@ -1560,7 +1560,7 @@ export default function MusicianDashboard() {
 
               {/* Warning box */}
               <div className="flex items-start gap-3 bg-chestnut/10 border border-chestnut/40 rounded-xl px-4 py-3">
-                <span className="text-xl mt-0.5 shrink-0 text-chestnut">⚠️</span>
+                <svg className="w-5 h-5 text-chestnut shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
                 <div>
                   <p className="text-chestnut font-bold text-sm">Important — please read</p>
                   <p className="text-graphite text-xs mt-1 leading-relaxed">
@@ -1597,7 +1597,7 @@ export default function MusicianDashboard() {
         <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden">
             <div className="bg-graphite px-6 py-5">
-              <h2 className="text-snow font-black text-2xl tracking-tight">You're all set! 🎉</h2>
+              <h2 className="text-snow font-black text-2xl tracking-tight">You're all set!</h2>
               <p className="text-snow/60 text-sm mt-2 leading-relaxed">
                 Your payout account is connected. You'll automatically receive payment within 2 business days after each completed gig.
               </p>
@@ -1606,7 +1606,7 @@ export default function MusicianDashboard() {
               <div className="bg-[#F5F5F5] rounded-xl px-4 py-4 space-y-3">
                 {['Bank account connected', 'Identity verified', 'Ready to receive payments'].map(item => (
                   <div key={item} className="flex items-center gap-3">
-                    <span className="text-teal font-bold text-lg">✅</span>
+                    <svg className="w-5 h-5 text-teal shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
                     <p className="text-graphite text-sm font-semibold">{item}</p>
                   </div>
                 ))}
@@ -1670,7 +1670,7 @@ function SectionHeader({ title, eyebrow, accent }: { title: string; eyebrow?: st
 }
 
 function EmptyState({ icon, title, body, action }: {
-  icon: string
+  icon: React.ReactNode
   title: string
   body: string
   action?: { label: string; onClick: () => void }
@@ -1684,7 +1684,7 @@ function EmptyState({ icon, title, body, action }: {
       </div>
       <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-chestnut opacity-15 blur-2xl pointer-events-none" />
       <div className="relative z-10 p-8 text-center">
-        <div className="w-16 h-16 bg-chestnut/20 border border-chestnut/30 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 shadow-inner">{icon}</div>
+        <div className="w-16 h-16 bg-chestnut/20 border border-chestnut/30 rounded-2xl flex items-center justify-center text-chestnut mx-auto mb-4 shadow-inner">{icon}</div>
         <p className="text-snow font-black text-lg mb-1.5 tracking-tight">{title}</p>
         <p className="text-snow/60 text-sm leading-relaxed mb-5 max-w-xs mx-auto">{body}</p>
         {action && (
@@ -1701,13 +1701,13 @@ function StatCard({ value, label, color, icon, highlight }: {
   value: number | string
   label: string
   color: string
-  icon: string
+  icon: React.ReactNode
   highlight?: boolean
 }) {
   if (highlight) {
     return (
       <div className="relative bg-chestnut rounded-2xl p-3 shadow-md overflow-hidden">
-        <span className="absolute -bottom-2 -right-1 text-4xl opacity-25 pointer-events-none select-none">{icon}</span>
+        <span className="absolute -bottom-1 -right-1 w-9 h-9 opacity-20 pointer-events-none select-none text-snow">{icon}</span>
         <p className="text-snow text-2xl font-black tracking-tight leading-none">{value}</p>
         <p className="text-snow/70 text-[9px] font-bold uppercase tracking-[0.2em] mt-2">{label}</p>
       </div>
@@ -1715,7 +1715,7 @@ function StatCard({ value, label, color, icon, highlight }: {
   }
   return (
     <div className="relative bg-white rounded-2xl p-3 shadow-sm overflow-hidden">
-      <span className="absolute -bottom-2 -right-1 text-4xl opacity-10 pointer-events-none select-none">{icon}</span>
+      <span className="absolute -bottom-1 -right-1 w-9 h-9 opacity-10 pointer-events-none select-none text-graphite">{icon}</span>
       <p className={`text-2xl font-black tracking-tight leading-none ${color}`}>{value}</p>
       <p className="text-charcoal text-[9px] font-bold uppercase tracking-[0.2em] mt-2">{label}</p>
     </div>
@@ -1723,7 +1723,7 @@ function StatCard({ value, label, color, icon, highlight }: {
 }
 
 function TabButton({ icon, label, active, onClick, badge }: {
-  icon: string
+  icon: React.ReactNode
   label: string
   active: boolean
   onClick: () => void
@@ -1732,7 +1732,7 @@ function TabButton({ icon, label, active, onClick, badge }: {
   return (
     <button onClick={onClick} className="py-1 flex flex-col items-center gap-1 transition-colors relative">
       <div className={`relative w-11 h-9 rounded-xl flex items-center justify-center transition-all ${active ? 'bg-chestnut shadow-md' : ''}`}>
-        <span className="text-lg leading-none">{icon}</span>
+        <span className={`w-5 h-5 ${active ? 'text-snow' : 'text-snow/50'}`}>{icon}</span>
         {badge != null && badge > 0 && (
           <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-chestnut border-2 border-graphite rounded-full text-[9px] text-snow font-bold flex items-center justify-center">
             {badge}

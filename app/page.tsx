@@ -34,61 +34,61 @@ export default function HomePage() {
       {/* HERO */}
       <section className="relative min-h-screen bg-graphite overflow-hidden pt-32 pb-12 flex flex-col justify-center">
 
-        {/* Animated equalizer bars across the floor of the hero */}
-        <div className="absolute inset-x-0 bottom-0 top-1/3 flex items-end justify-around opacity-[0.12] pointer-events-none">
-          {Array.from({ length: EQ_BARS }).map((_, i) => (
-            <div
-              key={i}
-              className="eq-bar w-2 md:w-3 bg-chestnut rounded-t"
-              style={eqBarStyle(i, 11)}
-            />
-          ))}
-        </div>
+            {/* Animated equalizer bars across the floor of the hero */}
+            <div className="absolute inset-x-0 bottom-0 top-1/3 flex items-end justify-around opacity-[0.12] pointer-events-none">
+              {Array.from({ length: EQ_BARS }).map((_, i) => (
+                <div
+                  key={i}
+                  className="eq-bar w-2 md:w-3 bg-chestnut rounded-t"
+                  style={eqBarStyle(i, 11)}
+                />
+              ))}
+            </div>
 
-        {/* Stage glows */}
-        <div className="absolute top-[20%] left-1/2 -translate-x-1/2 w-[900px] h-[900px] rounded-full bg-chestnut opacity-10 blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-32 -left-32 w-[500px] h-[500px] rounded-full bg-teal opacity-10 blur-3xl pointer-events-none" />
-        <div className="absolute -top-20 -right-20 w-[500px] h-[500px] rounded-full bg-chestnut opacity-10 blur-3xl pointer-events-none" />
+            {/* Stage glows */}
+            <div className="absolute top-[20%] left-1/2 -translate-x-1/2 w-[900px] h-[900px] rounded-full bg-chestnut opacity-10 blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-32 -left-32 w-[500px] h-[500px] rounded-full bg-teal opacity-10 blur-3xl pointer-events-none" />
+            <div className="absolute -top-20 -right-20 w-[500px] h-[500px] rounded-full bg-chestnut opacity-10 blur-3xl pointer-events-none" />
 
-        <div className="relative z-10 px-6 md:px-8 max-w-7xl mx-auto w-full">
+            <div className="relative z-10 px-6 md:px-8 max-w-7xl mx-auto w-full">
 
-          {/* Live indicator */}
-          <div className="flex items-center justify-center gap-3 mb-8">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-chestnut opacity-75" />
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-chestnut" />
-            </span>
-            <p className="text-teal text-xs md:text-sm font-semibold uppercase tracking-[0.35em]">Live Music Booking, Reimagined</p>
-          </div>
+              {/* Live indicator */}
+              <div className="flex items-center justify-center gap-3 mb-8">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-chestnut opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-chestnut" />
+                </span>
+                <p className="text-teal text-xs md:text-sm font-semibold uppercase tracking-[0.35em]">Live Music Booking, Reimagined</p>
+              </div>
 
-          {/* Marquee-style headline */}
-          <h2 className="text-center text-snow font-black leading-[0.85] tracking-tight">
-            <span className="block text-[16vw] md:text-[11vw]">BOOK THE</span>
-            <span className="block text-[16vw] md:text-[11vw] text-chestnut italic">SOUND</span>
-            <span className="block text-[16vw] md:text-[11vw]">OF TONIGHT.</span>
-          </h2>
+              {/* Marquee-style headline */}
+              <h2 className="text-center text-snow font-black leading-[0.85] tracking-tight">
+                <span className="block text-[16vw] md:text-[11vw]">BOOK THE</span>
+                <span className="block text-[16vw] md:text-[11vw] text-chestnut italic">SOUND</span>
+                <span className="block text-[16vw] md:text-[11vw]">OF TONIGHT.</span>
+              </h2>
 
-          <p className="text-snow/70 text-lg md:text-2xl mt-10 max-w-2xl mx-auto text-center">
-            Restaurants, musicians, fans — one app, one stage.
-            Drum Up is where local live music gets made.
-          </p>
+              <p className="text-snow/70 text-lg md:text-2xl mt-10 max-w-2xl mx-auto text-center">
+                Restaurants, musicians, fans — one app, one stage.
+                Drum Up is where local live music gets made.
+              </p>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mt-10">
-            <Link href="/auth/signup" className="bg-chestnut text-snow px-10 py-5 rounded-xl font-bold text-lg hover:opacity-90 transition-opacity shadow-lg inline-flex items-center justify-center gap-2 group">
-              Get on the Bill
-              <span className="group-hover:translate-x-1 transition-transform">→</span>
-            </Link>
-            <Link href="#how" className="border border-snow/30 text-snow px-10 py-5 rounded-xl font-bold text-lg hover:border-chestnut hover:text-chestnut transition-colors text-center">
-              See How It Works
-            </Link>
-          </div>
-        </div>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center mt-10">
+                <Link href="/auth/signup" className="bg-chestnut text-snow px-10 py-5 rounded-xl font-bold text-lg hover:opacity-90 transition-opacity shadow-lg inline-flex items-center justify-center gap-2 group">
+                  Get on the Bill
+                  <span className="group-hover:translate-x-1 transition-transform">→</span>
+                </Link>
+                <Link href="#how" className="border border-snow/30 text-snow px-10 py-5 rounded-xl font-bold text-lg hover:border-chestnut hover:text-chestnut transition-colors text-center">
+                  See How It Works
+                </Link>
+              </div>
+            </div>
 
-        {/* Scroll hint */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-snow/40 text-xs uppercase tracking-[0.3em] font-semibold">
-          Scroll
-        </div>
-      </section>
+            {/* Scroll hint */}
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-snow/40 text-xs uppercase tracking-[0.3em] font-semibold">
+              Scroll
+            </div>
+              </section>
 
       {/* MARQUEE BAND */}
       <div className="bg-chestnut py-5 overflow-hidden border-y-4 border-graphite">
@@ -134,7 +134,7 @@ export default function HomePage() {
 
             {/* Musician — popped */}
             <div className="bg-chestnut text-snow rounded-3xl p-8 md:p-10 shadow-2xl md:-translate-y-6 hover:-translate-y-10 transition-transform duration-500 relative">
-              <div className="absolute -top-3 -right-3 bg-graphite text-snow text-[10px] font-bold tracking-widest px-4 py-2 rounded-full shadow-md">★ HEADLINER</div>
+              <div className="absolute -top-3 -right-3 bg-graphite text-snow text-[10px] font-bold tracking-widest px-4 py-2 rounded-full shadow-md flex items-center gap-1"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>HEADLINER</div>
               <div className="text-snow text-6xl md:text-7xl font-black mb-4 leading-none">02</div>
               <p className="text-graphite text-[11px] uppercase tracking-[0.25em] font-bold mb-2">For Musicians & Bands</p>
               <h3 className="text-3xl font-black mb-3">Get more gigs.</h3>
