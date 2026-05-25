@@ -34,10 +34,9 @@ export function Microphone({ className, ...p }: P) {
 export function Guitar({ className, ...p }: P) {
   return (
     <svg className={className} {...base} {...p}>
-      <path d="m11.9 12.1 4.514-4.514" />
-      <path d="M20.1 2.3a1 1 0 0 0-1.4 0l-1.114 1.114A2 2 0 0 0 17 4.828v1.344a2 2 0 0 1-.586 1.414L14 10l1.5 1.5" />
-      <path d="m13.5 8.5 1.5 1.5" />
-      <path d="M9.2 14.8a3 3 0 0 1-3.9.4l-.3-.3a3 3 0 0 1 .4-3.9l5.6-5.6a3 3 0 0 1 3.9-.4l.3.3a3 3 0 0 1-.4 3.9z" />
+      <path d="M9 18V5l12-2v13" />
+      <circle cx="6" cy="18" r="3" />
+      <circle cx="18" cy="16" r="3" />
     </svg>
   )
 }

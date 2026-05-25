@@ -64,7 +64,7 @@ const REACTIONS: { emoji: string; label: string; color: string }[] = [
   { emoji: '😂', label: 'Haha',  color: '#f90' },
   { emoji: '😮', label: 'Wow',   color: '#f90' },
   { emoji: '😢', label: 'Sad',   color: '#5af' },
-  { emoji: '👏', label: 'Clap',  color: '#f90' },
+  { emoji: '👏', label: 'Like',  color: '#f90' },
   { emoji: '🔥', label: 'Fire',  color: '#f50' },
 ]
 
@@ -83,7 +83,7 @@ function ReactionIcon({ emoji, size = 16 }: { emoji: string; size?: number }) {
     <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="#5af" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16 16s-1.5-2-4-2-4 2-4 2"/><line x1="9" x2="9.01" y1="9" y2="9" strokeWidth="2.5"/><line x1="15" x2="15.01" y1="9" y2="9" strokeWidth="2.5"/></svg>
   )
   if (emoji === '👏') return (
-    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="#f90" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9.5C6.5 7 8.5 6 9 5.5"/><path d="M9 5.5c.5-.5 1.5-1 2.5-.5s1.5 1.5 1 3"/><path d="M9 5.5 7 9.5c-1.5 2.5-.5 5.5 2 7.5C12 19.5 16 19 17.5 16.5"/><path d="M12.5 8c.5-1 1.5-1.5 2.5-1s1.5 1.5 1 3l-1 2"/><path d="M15 10c.5-1 1.5-1 2.5-.5s1 2 .5 3l-2.5 4"/></svg>
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="#f90" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
   )
   // 🔥
   return (
@@ -489,6 +489,14 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length, selectedConvId])
 
+  // Lock body scroll when conversation is open so it doesn't bleed through the overlay
+  useEffect(() => {
+    if (selectedConvId) {
+      document.body.style.overflow = 'hidden'
+      return () => { document.body.style.overflow = '' }
+    }
+  }, [selectedConvId])
+
   // ---- Send ----
 
   const handleSend = async () => {
@@ -743,258 +751,281 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
   }
 
   // =============================
-  // RENDER: Conversation view
+  // RENDER: Conversation view (fixed full-screen overlay — no browser scrollbar)
   // =============================
 
   return (
-    <div className="-mx-4 -mt-5 flex flex-col" style={{ height: 'calc(100vh - 130px)' }}>
+    // Outer shell: fills the screen, shows brand gradient on the sides on wide viewports
+    <div
+      className="fixed inset-0 z-50 flex items-stretch justify-center"
+      style={{ background: 'radial-gradient(ellipse 60% 50% at 10% 10%, rgba(108,154,139,0.13), transparent 65%), radial-gradient(ellipse 60% 50% at 90% 90%, rgba(220,127,65,0.15), transparent 65%), #E8E4E0' }}
+    >
+      {/* Centered conversation column — max 672px so messages aren't spread across a 27" monitor */}
+      <div className="w-full max-w-2xl flex flex-col" style={{ boxShadow: '0 0 80px rgba(0,0,0,0.10)' }}>
 
-      {/* Header */}
-      <div className="bg-white px-4 py-3 flex items-center gap-3 shadow-sm shrink-0 relative"
-        style={{ borderBottom: '1px solid rgba(94,94,94,0.08)' }}>
-        {/* Back arrow */}
-        <button
-          onClick={() => { setSelectedConvId(null); setMenuOpen(false) }}
-          className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-snow transition-colors shrink-0"
-        >
-          <svg className="w-4 h-4 text-charcoal" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
+        {/* Header — dark graphite, no overflow-hidden so dropdown isn't clipped */}
+        <div className="shrink-0 relative" style={{ background: '#333333' }}>
+          {/* Subtle chestnut glow — decorative only, allowed to bleed */}
+          <div className="absolute -top-6 left-16 w-28 h-28 rounded-full bg-chestnut opacity-15 blur-3xl pointer-events-none" />
 
-        {/* Avatar — navigates to profile */}
-        <button onClick={goToProfile} className="shrink-0">
-          <Avatar src={selectedConv?.otherAvatar ?? ''} className="w-10 h-10 rounded-full" textSize="text-lg" />
-        </button>
-
-        {/* Name + subtitle — navigates to profile */}
-        <button onClick={goToProfile} className="flex-1 min-w-0 text-left">
-          <p className="text-graphite font-bold text-sm leading-tight truncate hover:text-chestnut transition-colors">
-            {selectedConv?.otherName}
-          </p>
-          {(selectedConv?.otherUserType || selectedConv?.otherLocation) && (
-            <p className="text-charcoal/45 text-[11px] truncate capitalize">
-              {[selectedConv.otherUserType, selectedConv.otherLocation].filter(Boolean).join(' · ')}
-            </p>
-          )}
-        </button>
-
-        {/* Three dots menu */}
-        <div className="relative shrink-0" ref={menuRef}>
-          <button
-            onClick={() => setMenuOpen(o => !o)}
-            className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-snow transition-colors"
-          >
-            <svg className="w-4 h-4 text-charcoal/50" fill="currentColor" viewBox="0 0 24 24">
-              <circle cx="12" cy="5" r="1.5" />
-              <circle cx="12" cy="12" r="1.5" />
-              <circle cx="12" cy="19" r="1.5" />
-            </svg>
-          </button>
-          {menuOpen && (
-            <div className="absolute right-0 top-11 bg-white rounded-2xl shadow-xl border border-charcoal/[0.08] overflow-hidden z-30 w-52">
-              <button
-                onClick={goToProfile}
-                className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2.5"
-              >
-                <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                View Profile
-              </button>
-              <button
-                disabled
-                className="w-full px-4 py-3 text-left text-sm font-semibold text-charcoal/30 flex items-center gap-2.5 cursor-not-allowed"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" x2="17" y1="9" y2="15"/><line x1="17" x2="23" y1="9" y2="15"/></svg>
-                Mute
-                <span className="text-[10px] ml-auto font-normal">Soon</span>
-              </button>
-              <div style={{ borderTop: '1px solid rgba(94,94,94,0.07)' }} />
-              <button
-                onClick={() => { setDeleteConfirmConvId(selectedConvId); setMenuOpen(false) }}
-                className="w-full px-4 py-3 text-left text-sm font-semibold text-red-500 hover:bg-red-50 transition-colors flex items-center gap-2.5"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                Delete Thread
-              </button>
-              <button
-                onClick={() => { setReportConvId(selectedConvId); setMenuOpen(false) }}
-                className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2.5"
-              >
-                <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>
-                Report
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Messages area */}
-      <div
-        className="flex-1 overflow-y-auto px-4 py-4"
-        style={{ background: '#F5F0EC' }}
-        onClick={() => { setReactionMsgId(null); setMenuOpen(false) }}
-      >
-        {/* Empty conversation state */}
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-center gap-3 py-12">
-            <Avatar src={selectedConv?.otherAvatar ?? ''} className="w-20 h-20 rounded-full mb-2" textSize="text-3xl" />
-            <p className="text-graphite font-bold text-lg">{selectedConv?.otherName}</p>
-            <p className="text-charcoal/50 text-sm max-w-[200px] leading-relaxed">
-              Start a conversation — say hello!
-            </p>
-          </div>
-        )}
-
-        {displayItems.map((item, idx) => {
-          if (item.type === 'date') {
-            return (
-              <div key={'d' + idx} className="flex items-center gap-3 my-5">
-                <div className="flex-1 h-px bg-charcoal/10" />
-                <span className="text-charcoal/40 text-[11px] font-semibold px-3 py-1 bg-charcoal/[0.06] rounded-full shrink-0">
-                  {item.label}
-                </span>
-                <div className="flex-1 h-px bg-charcoal/10" />
-              </div>
-            )
-          }
-
-          const { msg, showAvatar, showTimestamp, isGroupStart } = item
-          const isMe = msg.from === 'me'
-
-          return (
-            <div
-              key={msg.id}
-              className={`flex ${isMe ? 'justify-end' : 'justify-start items-end gap-2'} ${isGroupStart ? 'mt-3' : 'mt-0.5'}`}
+          <div className="relative flex items-center gap-2 px-4 py-3">
+            {/* Back arrow — standalone, not part of the profile tap target */}
+            <button
+              onClick={() => { setSelectedConvId(null); setMenuOpen(false) }}
+              className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors shrink-0"
             >
-              {/* Avatar column for received messages */}
-              {!isMe && (
-                <div className="w-7 h-7 shrink-0 mb-1">
-                  {showAvatar && (
-                    <Avatar src={selectedConv?.otherAvatar ?? ''} className="w-7 h-7 rounded-full" textSize="text-xs" />
-                  )}
-                </div>
-              )}
+              <svg className="w-4 h-4 text-snow" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
 
-              <div className={`relative max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                {/* Reaction picker popover */}
-                {reactionMsgId === msg.id && (
-                  <div
-                    className={`absolute ${isMe ? 'right-0' : 'left-0'} -top-14 z-20 bg-white rounded-2xl shadow-xl px-3 py-2.5 flex gap-2 border border-charcoal/10`}
-                    onClick={e => e.stopPropagation()}
-                  >
-                    {REACTIONS.map(({ emoji, label }) => (
-                      <button
-                        key={emoji}
-                        onClick={() => handleReaction(msg.id, emoji)}
-                        className="flex flex-col items-center gap-0.5 hover:scale-125 transition-transform"
-                        title={label}
-                      >
-                        <ReactionIcon emoji={emoji} size={20} />
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* Message bubble */}
-                <div
-                  className={`px-4 py-2.5 text-sm shadow-sm cursor-pointer select-none ${
-                    isMe
-                      ? 'bg-chestnut text-snow rounded-2xl rounded-br-[4px]'
-                      : 'bg-white text-graphite rounded-2xl rounded-bl-[4px]'
-                  }`}
-                  onClick={e => { e.stopPropagation(); setReactionMsgId(reactionMsgId === msg.id ? null : msg.id) }}
-                >
-                  <p className="leading-relaxed break-words">{msg.text}</p>
-                </div>
-
-                {/* Timestamp — only on last message in group */}
-                {showTimestamp && (
-                  <p className="text-[10px] mt-1 text-charcoal/40">
-                    {formatMessageTime(msg.isoTime)}
+            {/* Single combined profile button — avatar + name + subtitle */}
+            <button onClick={goToProfile} className="flex-1 min-w-0 flex items-center gap-3 text-left group">
+              <div className="relative shrink-0">
+                <Avatar src={selectedConv?.otherAvatar ?? ''} className="w-10 h-10 rounded-full border-2 border-chestnut/40 group-hover:border-chestnut transition-colors" textSize="text-lg" />
+                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-teal rounded-full border-2 border-[#333333]" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-snow font-bold text-sm leading-tight truncate group-hover:text-chestnut transition-colors">
+                  {selectedConv?.otherName}
+                </p>
+                {(selectedConv?.otherUserType || selectedConv?.otherLocation) && (
+                  <p className="text-snow/45 text-[11px] truncate capitalize">
+                    {[selectedConv.otherUserType, selectedConv.otherLocation].filter(Boolean).join(' · ')}
                   </p>
                 )}
+              </div>
+            </button>
 
-                {/* Reactions */}
-                {msg.reactions.length > 0 && (
-                  <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
-                    {msg.reactions.map(r => (
-                      <button
-                        key={r.emoji}
-                        onClick={() => handleReaction(msg.id, r.emoji)}
-                        className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border transition-colors ${
-                          r.userReacted
-                            ? 'bg-chestnut/15 text-chestnut border-chestnut/20'
-                            : 'bg-white text-charcoal/70 border-charcoal/10 shadow-sm'
-                        }`}
-                      >
-                        <ReactionIcon emoji={r.emoji} size={14} />
-                        {r.count > 1 && <span>{r.count}</span>}
-                      </button>
-                    ))}
-                  </div>
+            {/* Three dots menu — z-[200] so dropdown floats above messages area */}
+            <div className="relative shrink-0" ref={menuRef}>
+              <button
+                onClick={() => setMenuOpen(o => !o)}
+                className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
+              >
+                <svg className="w-4 h-4 text-snow/60" fill="currentColor" viewBox="0 0 24 24">
+                  <circle cx="12" cy="5" r="1.5" />
+                  <circle cx="12" cy="12" r="1.5" />
+                  <circle cx="12" cy="19" r="1.5" />
+                </svg>
+              </button>
+              {menuOpen && (
+                <div className="absolute right-0 top-11 bg-white rounded-2xl shadow-2xl border border-charcoal/[0.08] overflow-hidden z-[200] w-52">
+                  <button
+                    onClick={goToProfile}
+                    className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2.5"
+                  >
+                    <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    View Profile
+                  </button>
+                  <button
+                    disabled
+                    className="w-full px-4 py-3 text-left text-sm font-semibold text-charcoal/30 flex items-center gap-2.5 cursor-not-allowed"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" x2="17" y1="9" y2="15"/><line x1="17" x2="23" y1="9" y2="15"/></svg>
+                    Mute
+                    <span className="text-[10px] ml-auto font-normal">Soon</span>
+                  </button>
+                  <div style={{ borderTop: '1px solid rgba(94,94,94,0.07)' }} />
+                  <button
+                    onClick={() => { setDeleteConfirmConvId(selectedConvId); setMenuOpen(false) }}
+                    className="w-full px-4 py-3 text-left text-sm font-semibold text-red-500 hover:bg-red-50 transition-colors flex items-center gap-2.5"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    Delete Thread
+                  </button>
+                  <button
+                    onClick={() => { setReportConvId(selectedConvId); setMenuOpen(false) }}
+                    className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2.5"
+                  >
+                    <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>
+                    Report
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Messages area — owns its own scroll, no browser scrollbar */}
+        <div
+          className="flex-1 overflow-y-auto px-4 py-4"
+          style={{ background: '#F5F0EC' }}
+          onClick={() => { setReactionMsgId(null); setMenuOpen(false) }}
+        >
+          {/* Empty conversation state */}
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-full text-center gap-3 py-12">
+              <div className="relative">
+                <Avatar src={selectedConv?.otherAvatar ?? ''} className="w-24 h-24 rounded-full border-4 border-white shadow-xl" textSize="text-4xl" />
+                <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-chestnut rounded-full flex items-center justify-center shadow-md">
+                  <svg className="w-4 h-4 text-snow" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                </div>
+              </div>
+              <div className="mt-2">
+                <p className="text-graphite font-black text-xl">{selectedConv?.otherName}</p>
+                {selectedConv?.otherLocation && (
+                  <p className="text-charcoal/50 text-xs mt-1 capitalize">{selectedConv.otherLocation}</p>
                 )}
               </div>
+              <p className="text-charcoal/50 text-sm max-w-[220px] leading-relaxed mt-1">
+                This is the beginning of your conversation. Say hello!
+              </p>
             </div>
-          )
-        })}
-        <div ref={messagesEndRef} />
-      </div>
+          )}
 
-      {/* Input area */}
-      <div
-        className="bg-white px-4 py-3 flex items-end gap-2.5 shrink-0"
-        style={{ borderTop: '1px solid rgba(94,94,94,0.08)' }}
-      >
-        <textarea
-          ref={textareaRef}
-          value={chatInput}
-          onChange={e => {
-            setChatInput(e.target.value)
-            const ta = textareaRef.current
-            if (ta) { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 96) + 'px' }
-          }}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
-          }}
-          placeholder={`Message ${selectedConv?.otherName ?? ''}…`}
-          rows={1}
-          className="flex-1 bg-[#F5F0EC] rounded-[20px] px-5 py-2.5 text-sm focus:outline-none resize-none placeholder:text-charcoal/40 leading-relaxed"
-          style={{ maxHeight: '96px', overflowY: 'auto' }}
-        />
-        <button
-          onClick={handleSend}
-          disabled={!chatInput.trim()}
-          className="w-10 h-10 bg-chestnut rounded-full flex items-center justify-center shrink-0 hover:opacity-90 transition-opacity disabled:opacity-30 mb-0.5"
+          {displayItems.map((item, idx) => {
+            if (item.type === 'date') {
+              return (
+                <div key={'d' + idx} className="flex items-center gap-3 my-5">
+                  <div className="flex-1 h-px bg-charcoal/10" />
+                  <span className="text-charcoal/40 text-[11px] font-semibold px-3 py-1 bg-charcoal/[0.06] rounded-full shrink-0">
+                    {item.label}
+                  </span>
+                  <div className="flex-1 h-px bg-charcoal/10" />
+                </div>
+              )
+            }
+
+            const { msg, showAvatar, showTimestamp, isGroupStart } = item
+            const isMe = msg.from === 'me'
+
+            return (
+              <div
+                key={msg.id}
+                className={`flex ${isMe ? 'justify-end' : 'justify-start items-end gap-2'} ${isGroupStart ? 'mt-3' : 'mt-0.5'}`}
+              >
+                {/* Avatar column for received messages */}
+                {!isMe && (
+                  <div className="w-7 h-7 shrink-0 mb-1">
+                    {showAvatar && (
+                      <Avatar src={selectedConv?.otherAvatar ?? ''} className="w-7 h-7 rounded-full" textSize="text-xs" />
+                    )}
+                  </div>
+                )}
+
+                <div className={`relative max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                  {/* Reaction picker popover */}
+                  {reactionMsgId === msg.id && (
+                    <div
+                      className={`absolute ${isMe ? 'right-0' : 'left-0'} -top-14 z-20 bg-white rounded-2xl shadow-xl px-3 py-2.5 flex gap-2 border border-charcoal/10`}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      {REACTIONS.map(({ emoji, label }) => (
+                        <button
+                          key={emoji}
+                          onClick={() => handleReaction(msg.id, emoji)}
+                          className="flex flex-col items-center gap-0.5 hover:scale-125 transition-transform"
+                          title={label}
+                        >
+                          <ReactionIcon emoji={emoji} size={20} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Message bubble */}
+                  <div
+                    className={`px-4 py-2.5 text-sm shadow-sm cursor-pointer select-none ${
+                      isMe
+                        ? 'bg-chestnut text-snow rounded-2xl rounded-br-[4px]'
+                        : 'bg-white text-graphite rounded-2xl rounded-bl-[4px]'
+                    }`}
+                    onClick={e => { e.stopPropagation(); setReactionMsgId(reactionMsgId === msg.id ? null : msg.id) }}
+                  >
+                    <p className="leading-relaxed break-words">{msg.text}</p>
+                  </div>
+
+                  {/* Timestamp — only on last message in group */}
+                  {showTimestamp && (
+                    <p className="text-[10px] mt-1 text-charcoal/40">
+                      {formatMessageTime(msg.isoTime)}
+                    </p>
+                  )}
+
+                  {/* Reactions */}
+                  {msg.reactions.length > 0 && (
+                    <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                      {msg.reactions.map(r => (
+                        <button
+                          key={r.emoji}
+                          onClick={() => handleReaction(msg.id, r.emoji)}
+                          className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border transition-colors ${
+                            r.userReacted
+                              ? 'bg-chestnut/15 text-chestnut border-chestnut/20'
+                              : 'bg-white text-charcoal/70 border-charcoal/10 shadow-sm'
+                          }`}
+                        >
+                          <ReactionIcon emoji={r.emoji} size={14} />
+                          {r.count > 1 && <span>{r.count}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Input area */}
+        <div
+          className="bg-white px-4 py-3 flex items-end gap-2.5 shrink-0"
+          style={{ borderTop: '1px solid rgba(94,94,94,0.08)' }}
         >
-          <svg className="w-4 h-4 text-white rotate-90" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-          </svg>
-        </button>
+          <textarea
+            ref={textareaRef}
+            value={chatInput}
+            onChange={e => {
+              setChatInput(e.target.value)
+              const ta = textareaRef.current
+              if (ta) { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 96) + 'px' }
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
+            }}
+            placeholder={`Message ${selectedConv?.otherName ?? ''}…`}
+            rows={1}
+            className="flex-1 bg-[#F5F0EC] rounded-[20px] px-5 py-2.5 text-sm focus:outline-none resize-none placeholder:text-charcoal/40 leading-relaxed"
+            style={{ maxHeight: '96px', overflowY: 'auto' }}
+          />
+          <button
+            onClick={handleSend}
+            disabled={!chatInput.trim()}
+            className="w-10 h-10 bg-chestnut rounded-full flex items-center justify-center shrink-0 hover:opacity-90 transition-opacity disabled:opacity-30 mb-0.5"
+          >
+            <svg className="w-4 h-4 text-white rotate-90" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Delete confirmation modal */}
+        {deleteConfirmConvId && (
+          <DeleteConfirmModal
+            convName={conversations.find(c => c.id === deleteConfirmConvId)?.otherName ?? ''}
+            deleting={deleting}
+            onConfirm={() => handleDeleteThread(deleteConfirmConvId)}
+            onCancel={() => setDeleteConfirmConvId(null)}
+          />
+        )}
+
+        {/* Report modal */}
+        {reportConvId && (
+          <ReportModal
+            convName={conversations.find(c => c.id === reportConvId)?.otherName ?? ''}
+            reason={reportReason}
+            details={reportDetails}
+            reporting={reporting}
+            onReason={setReportReason}
+            onDetails={setReportDetails}
+            onSubmit={handleReport}
+            onCancel={() => { setReportConvId(null); setReportReason(''); setReportDetails('') }}
+          />
+        )}
+
       </div>
-
-      {/* Delete confirmation modal */}
-      {deleteConfirmConvId && (
-        <DeleteConfirmModal
-          convName={conversations.find(c => c.id === deleteConfirmConvId)?.otherName ?? ''}
-          deleting={deleting}
-          onConfirm={() => handleDeleteThread(deleteConfirmConvId)}
-          onCancel={() => setDeleteConfirmConvId(null)}
-        />
-      )}
-
-      {/* Report modal */}
-      {reportConvId && (
-        <ReportModal
-          convName={conversations.find(c => c.id === reportConvId)?.otherName ?? ''}
-          reason={reportReason}
-          details={reportDetails}
-          reporting={reporting}
-          onReason={setReportReason}
-          onDetails={setReportDetails}
-          onSubmit={handleReport}
-          onCancel={() => { setReportConvId(null); setReportReason(''); setReportDetails('') }}
-        />
-      )}
     </div>
   )
 })
