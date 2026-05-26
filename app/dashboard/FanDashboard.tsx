@@ -525,23 +525,24 @@ export default function FanDashboard() {
           <>
             {/* Profile hero */}
             <div className="relative bg-graphite rounded-3xl overflow-hidden mb-6 shadow-xl">
-              <div className="absolute inset-x-0 bottom-0 top-1/2 flex items-end justify-around opacity-[0.10] pointer-events-none">
+              <div className="absolute inset-x-0 bottom-0 top-1/3 flex items-end justify-around opacity-[0.18] pointer-events-none">
                 {Array.from({ length: 18 }).map((_, i) => (
                   <div key={i} className="eq-bar w-1.5 bg-teal rounded-t" style={eqBarStyle(i, 19)} />
                 ))}
               </div>
               <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-teal opacity-20 blur-2xl pointer-events-none" />
               <div className="absolute -bottom-14 -left-10 w-36 h-36 rounded-full bg-chestnut opacity-20 blur-2xl pointer-events-none" />
-              <div className="relative z-10 p-5 flex items-center gap-4">
+              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3/4 h-16 bg-teal opacity-[0.18] blur-2xl pointer-events-none" />
+              <div className="relative z-10 p-6 flex items-center gap-4">
                 {profile.avatar
-                  ? <img src={profile.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover shrink-0 shadow-inner border border-chestnut/30" />
-                  : <div className="w-14 h-14 rounded-2xl bg-chestnut/20 border border-chestnut/30 flex items-center justify-center shrink-0 shadow-inner text-chestnut"><svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>}
+                  ? <img src={profile.avatar} alt="" className="w-16 h-16 rounded-2xl object-cover shrink-0 shadow-inner border-2 border-teal/40" />
+                  : <div className="w-16 h-16 rounded-2xl bg-teal/20 border-2 border-teal/40 flex items-center justify-center shrink-0 shadow-inner text-teal"><svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>}
                 <div className="flex-1 min-w-0">
-                  <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">For Fans</p>
-                  <p className="text-snow font-black text-lg leading-tight truncate">{profile.name}</p>
-                  <p className="text-snow/50 text-xs mt-0.5 truncate">{profile.location || 'Set your location in Profile'}</p>
+                  <p className="text-teal text-[10px] font-bold uppercase tracking-[0.3em] mb-1">Fan</p>
+                  <p className="text-snow font-black text-xl leading-tight truncate">{profile.name}</p>
+                  <p className="text-snow/55 text-xs mt-1 truncate">{profile.location || 'Set your location in Profile'}</p>
                 </div>
-                <button onClick={() => setActiveTab('discover')} className="bg-chestnut text-snow px-4 py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity shrink-0 shadow-lg">
+                <button onClick={() => setActiveTab('discover')} className="bg-chestnut text-snow px-5 py-3 rounded-xl text-sm font-black hover:opacity-90 transition-opacity shrink-0 shadow-lg">
                   Discover
                 </button>
               </div>
@@ -1016,12 +1017,12 @@ function GigCard({
   const isFollowingMusician = followedIds.has(gig.musicianId)
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm overflow-hidden animate-fade-in">
+    <div className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow overflow-hidden animate-fade-in">
       {/* Restaurant header */}
       <div className="px-4 pt-3.5 pb-3 flex items-center gap-3">
         <Avatar src={gig.restaurantAvatar} className="w-10 h-10 rounded-full" textSize="text-lg" />
         <div className="flex-1 min-w-0">
-          <p className="font-bold text-graphite text-sm truncate">{gig.restaurantName}</p>
+          <p className="font-black text-graphite text-sm truncate">{gig.restaurantName}</p>
           <p className="inline-flex items-center gap-0.5 text-charcoal text-xs truncate"><svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>{gig.restaurantLocation || 'See profile for location'}</p>
         </div>
         {showDistance && gig.distance != null && (
@@ -1048,8 +1049,7 @@ function GigCard({
             {gig.performerType === 'solo' ? <span className="inline-flex items-center gap-1"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>Solo Artist</span> : <span className="inline-flex items-center gap-1"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>Band{gig.bandMembers ? ` · ${gig.bandMembers} members` : ''}</span>}
           </span>
         ) : <div className="mb-3" />}
-        <p className="text-chestnut font-bold text-sm">{gig.date}</p>
-        <p className="text-snow/60 text-sm">{gig.time}</p>
+        <p className="text-chestnut font-black text-sm">{gig.date} · {gig.time}</p>
       </div>
 
       {/* Action row */}
@@ -1102,7 +1102,7 @@ function DateGroupHeader({ label }: { label: string }) {
 
 function SectionHeader({ title, eyebrow, accent, live }: { title: string; eyebrow?: string; accent?: string; live?: boolean }) {
   return (
-    <div className="mb-4 mt-2">
+    <div className="mb-5 mt-3">
       {(eyebrow || live) && (
         <div className="flex items-center gap-2 mb-1">
           {live && (
@@ -1111,10 +1111,10 @@ function SectionHeader({ title, eyebrow, accent, live }: { title: string; eyebro
               <span className="relative inline-flex rounded-full h-2 w-2 bg-teal" />
             </span>
           )}
-          {eyebrow && <p className={`text-[10px] font-semibold uppercase tracking-[0.3em] ${live ? 'text-teal' : 'text-chestnut'}`}>{eyebrow}</p>}
+          {eyebrow && <p className={`text-[10px] font-bold uppercase tracking-[0.3em] ${live ? 'text-teal' : 'text-chestnut'}`}>{eyebrow}</p>}
         </div>
       )}
-      <h3 className="text-graphite text-2xl font-black tracking-tight leading-none">
+      <h3 className="text-graphite text-[1.65rem] font-black tracking-tight leading-none">
         {title}
         {accent && <span className={`italic ${live ? 'text-teal' : 'text-chestnut'}`}> {accent}</span>}
       </h3>
@@ -1168,17 +1168,17 @@ function StatCard({ value, label, color, icon, highlight }: {
 }) {
   if (highlight) {
     return (
-      <div className="relative bg-teal rounded-2xl p-3 shadow-md overflow-hidden">
-        <span className="absolute -bottom-1 -right-1 w-9 h-9 opacity-20 pointer-events-none select-none text-snow">{icon}</span>
-        <p className="text-snow text-2xl font-black tracking-tight leading-none">{value}</p>
+      <div className="relative bg-teal rounded-2xl p-4 shadow-md overflow-hidden">
+        <span className="absolute -bottom-1 -right-1 w-10 h-10 opacity-20 pointer-events-none select-none text-snow">{icon}</span>
+        <p className="text-snow text-3xl font-black tracking-tight leading-none">{value}</p>
         <p className="text-snow/80 text-[9px] font-bold uppercase tracking-[0.2em] mt-2">{label}</p>
       </div>
     )
   }
   return (
-    <div className="relative bg-white rounded-2xl p-3 shadow-sm overflow-hidden">
-      <span className="absolute -bottom-1 -right-1 w-9 h-9 opacity-10 pointer-events-none select-none text-graphite">{icon}</span>
-      <p className={`text-2xl font-black tracking-tight leading-none ${color}`}>{value}</p>
+    <div className="relative bg-white rounded-2xl p-4 shadow-sm overflow-hidden">
+      <span className="absolute -bottom-1 -right-1 w-10 h-10 opacity-10 pointer-events-none select-none text-graphite">{icon}</span>
+      <p className={`text-3xl font-black tracking-tight leading-none ${color}`}>{value}</p>
       <p className="text-charcoal text-[9px] font-bold uppercase tracking-[0.2em] mt-2">{label}</p>
     </div>
   )

@@ -792,30 +792,31 @@ export default function MusicianDashboard() {
           <>
             {/* Profile hero */}
             <div className="relative bg-graphite rounded-3xl overflow-hidden mb-6 shadow-xl">
-              <div className="absolute inset-x-0 bottom-0 top-1/2 flex items-end justify-around opacity-[0.10] pointer-events-none">
+              <div className="absolute inset-x-0 bottom-0 top-1/3 flex items-end justify-around opacity-[0.18] pointer-events-none">
                 {Array.from({ length: 18 }).map((_, i) => (
                   <div key={i} className="eq-bar w-1.5 bg-chestnut rounded-t" style={eqBarStyle(i, 13)} />
                 ))}
               </div>
               <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-chestnut opacity-25 blur-2xl pointer-events-none" />
               <div className="absolute -bottom-14 -left-10 w-36 h-36 rounded-full bg-teal opacity-15 blur-2xl pointer-events-none" />
+              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3/4 h-16 bg-chestnut opacity-[0.18] blur-2xl pointer-events-none" />
               <span className="absolute top-3 right-3 bg-chestnut text-snow text-[9px] font-bold tracking-[0.2em] px-2.5 py-1 rounded-full shadow-md uppercase z-20">
                 {profile.performerType === 'band' ? <span className="inline-flex items-center gap-1"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>Band</span> : <span className="inline-flex items-center gap-1"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>Solo Artist</span>}
               </span>
-              <div className="relative z-10 p-5 flex items-center gap-4">
+              <div className="relative z-10 p-6 flex items-center gap-4">
                 {profile.avatar
-                  ? <img src={profile.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover shrink-0 shadow-inner border border-chestnut/30" />
-                  : <div className="w-14 h-14 rounded-2xl bg-chestnut/20 border border-chestnut/30 flex items-center justify-center shrink-0 shadow-inner text-chestnut"><svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>}
+                  ? <img src={profile.avatar} alt="" className="w-16 h-16 rounded-2xl object-cover shrink-0 shadow-inner border-2 border-chestnut/40" />
+                  : <div className="w-16 h-16 rounded-2xl bg-chestnut/20 border-2 border-chestnut/40 flex items-center justify-center shrink-0 shadow-inner text-chestnut"><svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>}
                 <div className="flex-1 min-w-0">
-                  <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">For Musicians</p>
-                  <p className="text-snow font-black text-lg leading-tight truncate">{profile.name || 'Your Name'}</p>
-                  <p className="text-snow/50 text-xs mt-0.5 truncate">
+                  <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-1">Musician</p>
+                  <p className="text-snow font-black text-xl leading-tight truncate">{profile.name || 'Your Name'}</p>
+                  <p className="text-snow/55 text-xs mt-1 truncate">
                     {profile.genres.length > 0 ? profile.genres.slice(0, 3).join(' · ') : 'Set your genres in Profile'}
                   </p>
                 </div>
                 <button
                   onClick={() => setActiveTab('gigs')}
-                  className="bg-chestnut text-snow px-4 py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity shrink-0 shadow-lg"
+                  className="bg-chestnut text-snow px-5 py-3 rounded-xl text-sm font-black hover:opacity-90 transition-opacity shrink-0 shadow-lg"
                 >
                   Browse Gigs
                 </button>
@@ -862,8 +863,8 @@ export default function MusicianDashboard() {
                     const [, datePart] = b.gig.date.split(', ')
                     const [mon, day] = (datePart || '').split(' ')
                     return (
-                      <div key={b.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3">
-                        <div className="bg-chestnut/10 rounded-xl px-3 py-2.5 text-center shrink-0 min-w-[52px]">
+                      <div key={b.id} className="bg-white rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex items-center gap-3">
+                        <div className="bg-chestnut/15 rounded-xl px-3 py-2.5 text-center shrink-0 min-w-[52px]">
                           <p className="text-chestnut text-[10px] font-black uppercase tracking-wide">{mon}</p>
                           <p className="text-chestnut text-2xl font-black leading-tight">{day}</p>
                         </div>
@@ -872,12 +873,12 @@ export default function MusicianDashboard() {
                           <p className="text-charcoal text-xs mt-0.5">{b.gig.time}</p>
                           <div className="flex gap-1 mt-1.5 flex-wrap">
                             {b.gig.genres.map(g => (
-                              <span key={g} className="text-[10px] bg-snow text-charcoal px-2 py-0.5 rounded-full font-medium">{g}</span>
+                              <span key={g} className="text-[10px] bg-charcoal/10 text-charcoal px-2.5 py-0.5 rounded-full font-semibold">{g}</span>
                             ))}
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="text-teal font-black">${b.price}</p>
+                          <p className="text-teal text-lg font-black">${b.price}</p>
                           <div className="flex items-center gap-1 justify-end mt-1">
                             <div className="w-1.5 h-1.5 rounded-full bg-teal" />
                             <span className="text-teal text-[10px] font-bold">Confirmed</span>
@@ -1771,9 +1772,9 @@ export default function MusicianDashboard() {
 
 function SectionHeader({ title, eyebrow, accent }: { title: string; eyebrow?: string; accent?: string }) {
   return (
-    <div className="mb-4 mt-2">
-      {eyebrow && <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">{eyebrow}</p>}
-      <h3 className="text-graphite text-2xl font-black tracking-tight leading-none">
+    <div className="mb-5 mt-3">
+      {eyebrow && <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-1">{eyebrow}</p>}
+      <h3 className="text-graphite text-[1.65rem] font-black tracking-tight leading-none">
         {title}
         {accent && <span className="text-chestnut italic"> {accent}</span>}
       </h3>
@@ -1818,17 +1819,17 @@ function StatCard({ value, label, color, icon, highlight }: {
 }) {
   if (highlight) {
     return (
-      <div className="relative bg-chestnut rounded-2xl p-3 shadow-md overflow-hidden">
-        <span className="absolute -bottom-1 -right-1 w-9 h-9 opacity-20 pointer-events-none select-none text-snow">{icon}</span>
-        <p className="text-snow text-2xl font-black tracking-tight leading-none">{value}</p>
+      <div className="relative bg-chestnut rounded-2xl p-4 shadow-md overflow-hidden">
+        <span className="absolute -bottom-1 -right-1 w-10 h-10 opacity-20 pointer-events-none select-none text-snow">{icon}</span>
+        <p className="text-snow text-3xl font-black tracking-tight leading-none">{value}</p>
         <p className="text-snow/70 text-[9px] font-bold uppercase tracking-[0.2em] mt-2">{label}</p>
       </div>
     )
   }
   return (
-    <div className="relative bg-white rounded-2xl p-3 shadow-sm overflow-hidden">
-      <span className="absolute -bottom-1 -right-1 w-9 h-9 opacity-10 pointer-events-none select-none text-graphite">{icon}</span>
-      <p className={`text-2xl font-black tracking-tight leading-none ${color}`}>{value}</p>
+    <div className="relative bg-white rounded-2xl p-4 shadow-sm overflow-hidden">
+      <span className="absolute -bottom-1 -right-1 w-10 h-10 opacity-10 pointer-events-none select-none text-graphite">{icon}</span>
+      <p className={`text-3xl font-black tracking-tight leading-none ${color}`}>{value}</p>
       <p className="text-charcoal text-[9px] font-bold uppercase tracking-[0.2em] mt-2">{label}</p>
     </div>
   )

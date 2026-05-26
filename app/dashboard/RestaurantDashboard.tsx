@@ -1019,25 +1019,26 @@ export default function RestaurantDashboard() {
           <>
             {/* Profile hero */}
             <div className="relative bg-graphite rounded-3xl overflow-hidden mb-6 shadow-xl">
-              <div className="absolute inset-x-0 bottom-0 top-1/2 flex items-end justify-around opacity-[0.10] pointer-events-none">
+              <div className="absolute inset-x-0 bottom-0 top-1/3 flex items-end justify-around opacity-[0.18] pointer-events-none">
                 {Array.from({ length: 18 }).map((_, i) => (
                   <div key={i} className="eq-bar w-1.5 bg-chestnut rounded-t" style={eqBarStyle(i, 7)} />
                 ))}
               </div>
               <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-chestnut opacity-25 blur-2xl pointer-events-none" />
               <div className="absolute -bottom-14 -left-10 w-36 h-36 rounded-full bg-teal opacity-15 blur-2xl pointer-events-none" />
-              <div className="relative z-10 p-5 flex items-center gap-4">
+              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3/4 h-16 bg-chestnut opacity-[0.18] blur-2xl pointer-events-none" />
+              <div className="relative z-10 p-6 flex items-center gap-4">
                 {profile.avatar
-                  ? <img src={profile.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover shrink-0 shadow-inner border border-chestnut/30" />
-                  : <div className="w-14 h-14 rounded-2xl bg-chestnut/20 border border-chestnut/30 flex items-center justify-center shrink-0 shadow-inner text-chestnut"><svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg></div>}
+                  ? <img src={profile.avatar} alt="" className="w-16 h-16 rounded-2xl object-cover shrink-0 shadow-inner border-2 border-chestnut/40" />
+                  : <div className="w-16 h-16 rounded-2xl bg-chestnut/20 border-2 border-chestnut/40 flex items-center justify-center shrink-0 shadow-inner text-chestnut"><svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg></div>}
                 <div className="flex-1 min-w-0">
-                  <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">For Restaurants</p>
-                  <p className="text-snow font-black text-lg leading-tight truncate">{profile.name}</p>
-                  <p className="text-snow/50 text-xs truncate mt-0.5">{profile.type} · {profile.address}</p>
+                  <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-1">Venue</p>
+                  <p className="text-snow font-black text-xl leading-tight truncate">{profile.name}</p>
+                  <p className="text-snow/55 text-xs truncate mt-1">{profile.type} · {profile.address}</p>
                 </div>
                 <button
                   onClick={() => setPostSlotOpen(true)}
-                  className="bg-chestnut text-snow px-4 py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity shrink-0 shadow-lg"
+                  className="bg-chestnut text-snow px-5 py-3 rounded-xl text-sm font-black hover:opacity-90 transition-opacity shrink-0 shadow-lg"
                 >
                   + Post Slot
                 </button>
@@ -1083,8 +1084,8 @@ export default function RestaurantDashboard() {
                     const [, datePart] = slot.date.split(', ')
                     const [mon, day] = (datePart || '').split(' ')
                     return (
-                      <div key={slot.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3">
-                        <div className="bg-chestnut/10 rounded-xl px-3 py-2.5 text-center shrink-0 min-w-[52px]">
+                      <div key={slot.id} className="bg-white rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow flex items-center gap-3">
+                        <div className="bg-chestnut/15 rounded-xl px-3 py-2.5 text-center shrink-0 min-w-[52px]">
                           <p className="text-chestnut text-[10px] font-black uppercase tracking-wide">{mon}</p>
                           <p className="text-chestnut text-2xl font-black leading-tight">{day}</p>
                         </div>
@@ -1092,11 +1093,11 @@ export default function RestaurantDashboard() {
                           <p className="text-graphite font-bold text-sm truncate">{slot.bookedMusician}</p>
                           <p className="text-charcoal text-xs mt-0.5">{slot.time}</p>
                           <div className="flex gap-1 mt-1.5 flex-wrap">
-                            {slot.genres.map(g => <span key={g} className="text-[10px] bg-snow text-charcoal px-2 py-0.5 rounded-full font-medium">{g}</span>)}
+                            {slot.genres.map(g => <span key={g} className="text-[10px] bg-charcoal/10 text-charcoal px-2.5 py-0.5 rounded-full font-semibold">{g}</span>)}
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="text-graphite font-black">${slot.budget}</p>
+                          <p className="text-chestnut text-lg font-black">${slot.budget}</p>
                           <div className="flex items-center gap-1 justify-end mt-1">
                             <div className="w-1.5 h-1.5 rounded-full bg-teal" />
                             <span className="text-teal text-[10px] font-bold">Confirmed</span>
@@ -1877,20 +1878,31 @@ export default function RestaurantDashboard() {
                 </div>
               )}
               <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Date</label>
-              <input
-                type="date"
+              <StyledSelect
                 value={editDraft.date}
-                onChange={e => setEditDraft(p => ({ ...p, date: e.target.value }))}
-                className="w-full bg-white rounded-xl px-4 py-2.5 mb-5 shadow-sm focus:outline-none text-sm border border-charcoal/10"
+                onChange={v => setEditDraft(p => ({ ...p, date: v }))}
+                options={getDateOptions(editDraft.date)}
+                placeholder="Pick a date"
+                className="mb-5"
               />
               <div className="grid grid-cols-2 gap-3 mb-5">
                 <div>
                   <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Start Time</label>
-                  <input type="time" value={editDraft.startTime} onChange={e => setEditDraft(p => ({ ...p, startTime: e.target.value }))} className="w-full bg-white rounded-xl px-4 py-2.5 shadow-sm focus:outline-none text-sm border border-charcoal/10" />
+                  <StyledSelect
+                    value={editDraft.startTime}
+                    onChange={v => setEditDraft(p => ({ ...p, startTime: v }))}
+                    options={TIME_OPTIONS}
+                    placeholder="Start"
+                  />
                 </div>
                 <div>
                   <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">End Time</label>
-                  <input type="time" value={editDraft.endTime} onChange={e => setEditDraft(p => ({ ...p, endTime: e.target.value }))} className="w-full bg-white rounded-xl px-4 py-2.5 shadow-sm focus:outline-none text-sm border border-charcoal/10" />
+                  <StyledSelect
+                    value={editDraft.endTime}
+                    onChange={v => setEditDraft(p => ({ ...p, endTime: v }))}
+                    options={TIME_OPTIONS}
+                    placeholder="End"
+                  />
                 </div>
               </div>
               <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Pay Offered</label>
@@ -2008,20 +2020,31 @@ export default function RestaurantDashboard() {
             </div>
             <div className="p-6">
               <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Date</label>
-              <input
-                type="date"
+              <StyledSelect
                 value={newSlot.date}
-                onChange={e => setNewSlot(p => ({ ...p, date: e.target.value }))}
-                className="w-full bg-white rounded-xl px-4 py-2.5 mb-5 shadow-sm focus:outline-none text-sm border border-charcoal/10"
+                onChange={v => setNewSlot(p => ({ ...p, date: v }))}
+                options={getDateOptions()}
+                placeholder="Pick a date"
+                className="mb-5"
               />
               <div className="grid grid-cols-2 gap-3 mb-5">
                 <div>
                   <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Start Time</label>
-                  <input type="time" value={newSlot.startTime} onChange={e => setNewSlot(p => ({ ...p, startTime: e.target.value }))} className="w-full bg-white rounded-xl px-4 py-2.5 shadow-sm focus:outline-none text-sm border border-charcoal/10" />
+                  <StyledSelect
+                    value={newSlot.startTime}
+                    onChange={v => setNewSlot(p => ({ ...p, startTime: v }))}
+                    options={TIME_OPTIONS}
+                    placeholder="Start"
+                  />
                 </div>
                 <div>
                   <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">End Time</label>
-                  <input type="time" value={newSlot.endTime} onChange={e => setNewSlot(p => ({ ...p, endTime: e.target.value }))} className="w-full bg-white rounded-xl px-4 py-2.5 shadow-sm focus:outline-none text-sm border border-charcoal/10" />
+                  <StyledSelect
+                    value={newSlot.endTime}
+                    onChange={v => setNewSlot(p => ({ ...p, endTime: v }))}
+                    options={TIME_OPTIONS}
+                    placeholder="End"
+                  />
                 </div>
               </div>
               <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Pay Offered</label>
@@ -2132,9 +2155,9 @@ export default function RestaurantDashboard() {
 
 function SectionHeader({ title, eyebrow, accent }: { title: string; eyebrow?: string; accent?: string }) {
   return (
-    <div className="mb-4 mt-2">
-      {eyebrow && <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">{eyebrow}</p>}
-      <h3 className="text-graphite text-2xl font-black tracking-tight leading-none">
+    <div className="mb-5 mt-3">
+      {eyebrow && <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-1">{eyebrow}</p>}
+      <h3 className="text-graphite text-[1.65rem] font-black tracking-tight leading-none">
         {title}
         {accent && <span className="text-chestnut italic"> {accent}</span>}
       </h3>
@@ -2173,17 +2196,17 @@ function EmptyState({ icon, title, body, action }: {
 function StatCard({ value, label, color, icon, highlight }: { value: number | string; label: string; color: string; icon: React.ReactNode; highlight?: boolean }) {
   if (highlight) {
     return (
-      <div className="relative bg-chestnut rounded-2xl p-3 shadow-md overflow-hidden">
+      <div className="relative bg-chestnut rounded-2xl p-4 shadow-md overflow-hidden">
         <span className="absolute top-2 right-2 text-snow/20 pointer-events-none">{icon}</span>
-        <p className="text-snow text-2xl font-black tracking-tight leading-none">{value}</p>
+        <p className="text-snow text-3xl font-black tracking-tight leading-none">{value}</p>
         <p className="text-snow/70 text-[9px] font-bold uppercase tracking-[0.2em] mt-2">{label}</p>
       </div>
     )
   }
   return (
-    <div className="relative bg-white rounded-2xl p-3 shadow-sm overflow-hidden">
+    <div className="relative bg-white rounded-2xl p-4 shadow-sm overflow-hidden">
       <span className="absolute top-2 right-2 text-charcoal/10 pointer-events-none">{icon}</span>
-      <p className={`text-2xl font-black tracking-tight leading-none ${color}`}>{value}</p>
+      <p className={`text-3xl font-black tracking-tight leading-none ${color}`}>{value}</p>
       <p className="text-charcoal text-[9px] font-bold uppercase tracking-[0.2em] mt-2">{label}</p>
     </div>
   )
@@ -2414,6 +2437,65 @@ function SlotCalendar({ slots, calendarMonth, setCalendarMonth, calendarSelected
         </div>
       )}
     </>
+  )
+}
+
+const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
+  const h = Math.floor(i / 2)
+  const m = (i % 2) * 30
+  const period = h < 12 ? 'AM' : 'PM'
+  const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+  return {
+    label: `${hour12}:${m.toString().padStart(2, '0')} ${period}`,
+    value: `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`,
+  }
+})
+
+function getDateOptions(currentValue?: string) {
+  const options: { value: string; label: string }[] = []
+  const today = new Date()
+  for (let i = 0; i < 90; i++) {
+    const d = new Date(today)
+    d.setDate(today.getDate() + i)
+    const value = d.toISOString().split('T')[0]
+    const prefix = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'long' })
+    options.push({ value, label: `${prefix} · ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` })
+  }
+  if (currentValue && !options.some(o => o.value === currentValue)) {
+    const d = new Date(currentValue + 'T00:00:00')
+    options.unshift({
+      value: currentValue,
+      label: d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
+    })
+  }
+  return options
+}
+
+function StyledSelect({ value, onChange, options, placeholder, className = '' }: {
+  value: string
+  onChange: (v: string) => void
+  options: { value: string; label: string }[]
+  placeholder?: string
+  className?: string
+}) {
+  return (
+    <div className={`relative ${className}`}>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className={`w-full appearance-none bg-white rounded-xl px-4 py-3 pr-10 shadow-sm border border-charcoal/10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-chestnut/20 cursor-pointer ${value ? 'text-graphite' : 'text-charcoal/40'}`}
+      >
+        {placeholder && <option value="" disabled>{placeholder}</option>}
+        {options.map(opt => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+      <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-charcoal/40">
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </div>
+    </div>
   )
 }
 
