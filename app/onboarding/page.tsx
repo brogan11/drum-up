@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { generateUsername } from '@/lib/generate-username'
 import { useRouter } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
+import { GenreSelector } from '@/components/GenreSelector'
 
 type UserType = 'restaurant' | 'musician' | 'fan'
 
@@ -16,10 +17,6 @@ const PANEL_BG = `
   #E8E4E0
 `
 
-const GENRES = [
-  'Rock', 'Jazz', 'Folk', 'Pop', 'Country', 'Blues', 'Hip Hop',
-  'R&B', 'Acoustic', 'Indie', 'Classical', 'Electronic', 'Latin', 'Reggae',
-]
 const NIGHTS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const SOLO_BAND = ['Solo', 'Duo', 'Band']
 
@@ -809,23 +806,12 @@ export default function OnboardingPage() {
 
                 {userType === 'musician' && (
                   <>
-                    <label className="block text-charcoal font-semibold text-sm mb-2">Genres</label>
-                    <div className="flex flex-wrap gap-2 mb-5">
-                      {GENRES.map(g => {
-                        const active = role.genres.includes(g)
-                        return (
-                          <button
-                            key={g}
-                            type="button"
-                            onClick={() => setRole(prev => ({ ...prev, genres: toggleArrayItem(prev.genres, g) }))}
-                            className={`px-3.5 py-2 rounded-xl font-bold text-sm shadow-sm transition-all ${
-                              active ? 'bg-chestnut text-snow shadow-md' : 'bg-snow text-charcoal hover:shadow-md'
-                            }`}
-                          >
-                            {g}
-                          </button>
-                        )
-                      })}
+                    <label className="block text-charcoal font-semibold text-sm mb-3">Genres</label>
+                    <div className="mb-5">
+                      <GenreSelector
+                        selected={role.genres}
+                        onToggle={g => setRole(prev => ({ ...prev, genres: toggleArrayItem(prev.genres, g) }))}
+                      />
                     </div>
 
                     <label className="block text-charcoal font-semibold text-sm mb-2">Instruments</label>
@@ -850,24 +836,11 @@ export default function OnboardingPage() {
 
                 {userType === 'fan' && (
                   <>
-                    <label className="block text-charcoal font-semibold text-sm mb-2">Pick a few favorite genres</label>
-                    <div className="flex flex-wrap gap-2">
-                      {GENRES.map(g => {
-                        const active = role.favoriteGenres.includes(g)
-                        return (
-                          <button
-                            key={g}
-                            type="button"
-                            onClick={() => setRole(prev => ({ ...prev, favoriteGenres: toggleArrayItem(prev.favoriteGenres, g) }))}
-                            className={`px-3.5 py-2 rounded-xl font-bold text-sm shadow-sm transition-all ${
-                              active ? 'bg-chestnut text-snow shadow-md' : 'bg-snow text-charcoal hover:shadow-md'
-                            }`}
-                          >
-                            {g}
-                          </button>
-                        )
-                      })}
-                    </div>
+                    <label className="block text-charcoal font-semibold text-sm mb-3">Pick a few favorite genres</label>
+                    <GenreSelector
+                      selected={role.favoriteGenres}
+                      onToggle={g => setRole(prev => ({ ...prev, favoriteGenres: toggleArrayItem(prev.favoriteGenres, g) }))}
+                    />
                   </>
                 )}
               </div>

@@ -153,3 +153,7 @@ function fmtTime(t: string): string {
   const period = h >= 12 ? 'PM' : 'AM'
   return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${period}`
 }
+
+export async function GET(request: Request) {
+  return POST(request)
+}

@@ -12,6 +12,8 @@ import { SkeletonStatCard, SkeletonBookingCard, SkeletonMusicianCard } from '@/c
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { stripePromise } from '@/lib/stripe-client'
 import { buildSocialUrl } from '@/lib/social-urls'
+import { ALL_GENRES } from '@/lib/genres'
+import { GenreSelector } from '@/components/GenreSelector'
 
 // ---- Types ----
 
@@ -87,7 +89,7 @@ interface VenueProfile {
 
 // ---- Constants ----
 
-const GENRES = ['Jazz', 'Blues', 'Acoustic', 'Folk', 'R&B', 'Soul', 'Rock', 'Country', 'Pop', 'Classical']
+const GENRES = ALL_GENRES
 
 const INITIAL_PROFILE: VenueProfile = {
   name: 'Your Venue',
@@ -654,6 +656,10 @@ export default function RestaurantDashboard() {
   const [cancelSlotId, setCancelSlotId] = useState<string | null>(null)
   const [cancellingSlot, setCancellingSlot] = useState(false)
 
+  // Cancel confirmed booking (refund flow)
+  const [cancelBookingId, setCancelBookingId] = useState<string | null>(null)
+  const [cancellingBooking, setCancellingBooking] = useState(false)
+
   // Payment modal
   const [paymentModalData, setPaymentModalData] = useState<PaymentModalData | null>(null)
 
@@ -811,6 +817,57 @@ export default function RestaurantDashboard() {
       toast.error('Could not cancel slot. Please try again.')
     } finally {
       setCancellingSlot(false)
+    }
+  }
+
+  const handleCancelBooking = async () => {
+    if (!cancelBookingId || !userId) return
+    setCancellingBooking(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { toast.error('Please log in again.'); return }
+
+      const res = await fetch('/api/bookings/cancel', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ bookingId: cancelBookingId, cancelledBy: 'restaurant' }),
+      })
+      const data = await res.json() as { success?: boolean; error?: string }
+      if (!res.ok) throw new Error(data.error ?? 'Cancellation failed')
+
+      // Update the slot back to open and remove confirmed app
+      setSlots(prev => prev.map(s => {
+        const hasThisBooking = s.applications.some(a => a.id === cancelBookingId && a.status === 'confirmed')
+        if (!hasThisBooking) return s
+        return {
+          ...s,
+          status: 'open' as SlotStatus,
+          bookedMusician: undefined,
+          applications: s.applications.map(a =>
+            a.id === cancelBookingId ? { ...a, status: 'cancelled' as AppStatus } : a
+          ),
+        }
+      }))
+      setCancelBookingId(null)
+      toast.info('Booking cancelled. The 8% platform fee has been retained.')
+
+      // Fire-and-forget cancellation email
+      void fetch('/api/notifications/cancellation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ booking_id: cancelBookingId, cancelled_by: 'restaurant' }),
+      }).catch(err => console.error('[Email] cancellation notification failed:', err))
+    } catch (err) {
+      console.error('Cancel booking failed:', err)
+      toast.error(err instanceof Error ? err.message : 'Could not cancel booking. Please try again.')
+    } finally {
+      setCancellingBooking(false)
     }
   }
 
@@ -1265,6 +1322,16 @@ export default function RestaurantDashboard() {
                                   </button>
                                 </div>
                               </div>
+                              {confirmedApp?.paymentStatus === 'authorized' && (
+                                <div className="flex justify-end mt-2 pt-2 border-t border-charcoal/[0.06]">
+                                  <button
+                                    onClick={() => confirmedApp && setCancelBookingId(confirmedApp.id)}
+                                    className="text-red-400 text-xs font-semibold hover:text-red-600 transition-colors"
+                                  >
+                                    Cancel Booking
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           )
                         })}
@@ -1884,6 +1951,49 @@ export default function RestaurantDashboard() {
         </div>
       )}
 
+      {/* ---- CANCEL BOOKING MODAL (refund flow) ---- */}
+      {cancelBookingId && (
+        <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl overflow-hidden">
+            <div className="bg-graphite px-6 py-5">
+              <h3 className="text-snow font-black text-xl tracking-tight">Cancel Booking?</h3>
+              <p className="text-snow/60 text-sm mt-1">
+                {(() => {
+                  const slot = slots.find(s => s.applications.some(a => a.id === cancelBookingId))
+                  const app = slot?.applications.find(a => a.id === cancelBookingId)
+                  return `${app?.musicianName ?? 'Musician'} · ${slot?.date ?? ''}`
+                })()}
+              </p>
+            </div>
+            <div className="px-6 py-5">
+              <div className="bg-chestnut/10 border border-chestnut/30 rounded-xl px-4 py-3 mb-4">
+                <p className="text-chestnut font-bold text-sm mb-1">Non-refundable platform fee</p>
+                <p className="text-graphite text-xs leading-relaxed">
+                  The 8% platform fee is non-refundable on restaurant cancellations.
+                  The remaining 92% will be returned to your card within 5–10 business days.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setCancelBookingId(null)}
+                  disabled={cancellingBooking}
+                  className="flex-1 bg-snow text-charcoal py-3 rounded-xl text-sm font-semibold border border-charcoal/10 hover:bg-[#E8E4E0] transition-colors disabled:opacity-50"
+                >
+                  Keep Booking
+                </button>
+                <button
+                  onClick={handleCancelBooking}
+                  disabled={cancellingBooking}
+                  className="flex-1 bg-red-500 text-white py-3 rounded-xl text-sm font-bold hover:bg-red-600 transition-colors disabled:opacity-50"
+                >
+                  {cancellingBooking ? 'Cancelling…' : 'Yes, Cancel'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ---- POST SLOT MODAL ---- */}
       {postSlotOpen && (
         <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
@@ -1937,17 +2047,12 @@ export default function RestaurantDashboard() {
                 rows={3}
                 className="w-full bg-white rounded-xl px-4 py-2.5 mb-5 shadow-sm focus:outline-none text-sm resize-none border border-charcoal/10"
               />
-              <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-2">Genre Preferences</label>
-              <div className="flex flex-wrap gap-2 mb-5">
-                {GENRES.map(g => (
-                  <button
-                    key={g}
-                    onClick={() => setNewSlot(p => ({ ...p, genres: p.genres.includes(g) ? p.genres.filter(x => x !== g) : [...p.genres, g] }))}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${newSlot.genres.includes(g) ? 'bg-chestnut text-snow' : 'bg-white text-charcoal hover:bg-[#E8E4E0] border border-charcoal/10'}`}
-                  >
-                    {g}
-                  </button>
-                ))}
+              <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-3">Genre Preferences</label>
+              <div className="mb-5">
+                <GenreSelector
+                  selected={newSlot.genres}
+                  onToggle={g => setNewSlot(p => ({ ...p, genres: p.genres.includes(g) ? p.genres.filter(x => x !== g) : [...p.genres, g] }))}
+                />
               </div>
 
               {/* Preview */}

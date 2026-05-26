@@ -32,7 +32,7 @@ export default function DashboardPage() {
 
         const { data: profile, error: profileErr } = await supabase
           .from('profiles')
-          .select('id, user_type')
+          .select('id, user_type, is_banned')
           .eq('id', user.id)
           .maybeSingle()
 
@@ -40,6 +40,12 @@ export default function DashboardPage() {
 
         if (!profile) {
           router.push('/onboarding')
+          return
+        }
+
+        if (profile.is_banned) {
+          await supabase.auth.signOut()
+          router.replace('/auth/login?banned=1')
           return
         }
 

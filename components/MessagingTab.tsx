@@ -332,6 +332,29 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
       id: m.id, from: m.sender_id === uid ? 'me' : 'them',
       text: m.content, isoTime: m.created_at, reactions: [],
     }))
+
+    if (mapped.length > 0) {
+      try {
+        const { data: rxns } = await supabase
+          .from('message_reactions').select('message_id, emoji, user_id')
+          .in('message_id', mapped.map(m => m.id))
+        if (rxns?.length) {
+          const rxnMap = new Map<string, { emoji: string; users: string[] }[]>()
+          rxns.forEach(r => {
+            if (!rxnMap.has(r.message_id)) rxnMap.set(r.message_id, [])
+            const ex = rxnMap.get(r.message_id)!.find(x => x.emoji === r.emoji)
+            if (ex) ex.users.push(r.user_id)
+            else rxnMap.get(r.message_id)!.push({ emoji: r.emoji, users: [r.user_id] })
+          })
+          mapped.forEach(m => {
+            m.reactions = (rxnMap.get(m.id) ?? []).map(g => ({
+              emoji: g.emoji, count: g.users.length, userReacted: g.users.includes(uid),
+            }))
+          })
+        }
+      } catch { /* message_reactions table may not exist yet */ }
+    }
+
     setMessagesByConv(prev => { const map = new Map(prev); map.set(convId, mapped); return map })
 
     const { data: prof } = await supabase

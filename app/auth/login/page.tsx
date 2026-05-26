@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { eqBarStyle } from '@/lib/eq'
 import { WaveDivider } from '@/components/WaveDivider'
@@ -25,15 +25,39 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [confirmedBanner, setConfirmedBanner] = useState(false)
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('banned') === '1') {
+      setError('Your account has been suspended. Contact support if you think this is an error.')
+    }
+    if (params.get('confirmed') === '1') {
+      setConfirmedBanner(true)
+    }
+  }, [])
 
   const handleLogin = async () => {
     setLoading(true)
     setError('')
     try {
-      const { error: authErr } = await supabase.auth.signInWithPassword({ email, password })
+      const { data, error: authErr } = await supabase.auth.signInWithPassword({ email, password })
       if (authErr) throw authErr
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_banned')
+        .eq('id', data.user.id)
+        .maybeSingle()
+
+      if (profile?.is_banned) {
+        await supabase.auth.signOut()
+        setError('Your account has been suspended. Contact support if you think this is an error.')
+        return
+      }
+
       router.push('/dashboard')
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Login failed. Please try again.'
@@ -140,6 +164,13 @@ export default function LoginPage() {
             Welcome <span className="text-chestnut italic">Back.</span>
           </h2>
           <p className="text-charcoal mb-8 text-lg">Log in to your Drum Up account</p>
+
+          {confirmedBanner && (
+            <div className="bg-teal/10 border border-teal/30 rounded-xl px-4 py-3 mb-4 flex items-center gap-3">
+              <svg className="w-4 h-4 text-teal shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <p className="text-teal text-sm font-semibold">Email confirmed! Sign in to continue.</p>
+            </div>
+          )}
 
           {error && (
             <p className="bg-red-100 text-red-600 p-3 rounded-xl mb-4 text-sm">{error}</p>

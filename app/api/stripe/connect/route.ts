@@ -16,10 +16,6 @@ export async function POST(request: Request) {
     const { data: { user }, error: authErr } = await supabaseAdmin.auth.getUser(token)
     if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    // NOTE: legal_name is intentionally read here — this is a server-side Stripe Connect route
-    // fetching the authenticated user's OWN profile. This is one of the only two places
-    // (along with the user's settings page) where legal_name may be accessed. Never expose
-    // legal_name in client-facing profile queries.
     const { data: profile } = await supabaseAdmin
       .from('profiles')
       .select('stripe_account_id, full_name, legal_name, performer_type')
@@ -28,8 +24,25 @@ export async function POST(request: Request) {
 
     let accountId = profile?.stripe_account_id as string | null
 
+    // Verify the saved account actually exists on this Stripe platform
+    if (accountId) {
+      try {
+        await stripe.accounts.retrieve(accountId)
+      } catch (e: any) {
+        if (e?.code === 'account_invalid' || e?.statusCode === 404) {
+          console.warn('[Stripe Connect] Stored account ID is invalid, clearing:', accountId)
+          accountId = null
+          await supabaseAdmin
+            .from('profiles')
+            .update({ stripe_account_id: null })
+            .eq('id', user.id)
+        } else {
+          throw e
+        }
+      }
+    }
+
     if (!accountId) {
-      // Use legal_name for Stripe — fall back to full_name if not set
       const nameForStripe = (profile?.legal_name?.trim() || profile?.full_name?.trim()) ?? ''
       const nameParts = nameForStripe.split(' ').filter((p: string) => p.length > 0)
       const firstName = nameParts[0] ?? ''
@@ -57,7 +70,7 @@ export async function POST(request: Request) {
           transfers: { requested: true },
         },
         business_profile: {
-          mcc: '7929', // bands, orchestras, and entertainers
+          mcc: '7929',
           url: 'https://drum-up.app',
           product_description: 'Live music performance services',
         },

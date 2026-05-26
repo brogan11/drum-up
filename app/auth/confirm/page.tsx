@@ -1,10 +1,10 @@
 'use client'
 
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { eqBarStyle } from '@/lib/eq'
 import { WaveDivider } from '@/components/WaveDivider'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 const EQ_BARS = 28
 
@@ -23,12 +23,68 @@ const LIGHT_PANEL_BG = `
 const COOLDOWN_SECONDS = 60
 
 function ConfirmContent() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const email = searchParams.get('email') ?? ''
 
   const [cooldown, setCooldown] = useState(0)
   const [sent, setSent] = useState(false)
   const [resendError, setResendError] = useState('')
+  const [autoConfirmed, setAutoConfirmed] = useState(false)
+
+  // Read pending user ID written by the signup page
+  const [pendingUid] = useState<string | null>(() =>
+    typeof window !== 'undefined' ? sessionStorage.getItem('drumup_pending_uid') : null,
+  )
+
+  // Prevent double-redirect if both listeners fire at once
+  const redirectedRef = useRef(false)
+
+  // ---- Same-device confirmation: check existing session on mount ----
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session && !redirectedRef.current) {
+        redirectedRef.current = true
+        sessionStorage.removeItem('drumup_pending_uid')
+        setAutoConfirmed(true)
+        setTimeout(() => router.replace('/onboarding'), 1200)
+      }
+    })
+  }, [router])
+
+  // ---- Same-device confirmation: listen for auth state change ----
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session && !redirectedRef.current) {
+        redirectedRef.current = true
+        sessionStorage.removeItem('drumup_pending_uid')
+        setAutoConfirmed(true)
+        setTimeout(() => router.replace('/onboarding'), 1200)
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [router])
+
+  // ---- Cross-device confirmation: poll the server every 4 seconds ----
+  useEffect(() => {
+    if (!pendingUid) return
+    const interval = setInterval(async () => {
+      if (redirectedRef.current) return
+      try {
+        const res = await fetch(`/api/auth/check-email-confirmed?userId=${pendingUid}`)
+        if (!res.ok) return
+        const { confirmed } = await res.json() as { confirmed: boolean }
+        if (confirmed && !redirectedRef.current) {
+          redirectedRef.current = true
+          sessionStorage.removeItem('drumup_pending_uid')
+          setAutoConfirmed(true)
+          // Session is on the other device — send user to login with a confirmed banner
+          setTimeout(() => router.replace('/auth/login?confirmed=1'), 1200)
+        }
+      } catch { /* network blip — retry next tick */ }
+    }, 4000)
+    return () => clearInterval(interval)
+  }, [pendingUid, router])
 
   useEffect(() => {
     if (cooldown <= 0) return
@@ -103,42 +159,67 @@ function ConfirmContent() {
           </div>
         </div>
 
+        {/* Auto-confirmed state */}
+        {autoConfirmed && (
+          <div className="bg-teal/10 border border-teal/30 rounded-xl px-4 py-3 mb-4 flex items-center gap-3">
+            <svg className="w-5 h-5 text-teal shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            <p className="text-teal text-sm font-semibold">Email confirmed! Redirecting you now…</p>
+          </div>
+        )}
+
         {/* Resend button */}
-        {resendError && (
+        {!autoConfirmed && resendError && (
           <p className="bg-red-100 text-red-600 p-3 rounded-xl mb-3 text-sm">{resendError}</p>
         )}
 
-        <button
-          onClick={handleResend}
-          disabled={cooldown > 0 || !email}
-          className={`w-full py-3.5 rounded-xl font-bold transition-all mb-2 flex items-center justify-center gap-2 ${
-            sent
-              ? 'bg-teal text-snow shadow-md'
-              : cooldown > 0
-              ? 'border-2 border-charcoal/20 text-charcoal/40 cursor-not-allowed'
-              : 'border-2 border-chestnut text-chestnut hover:bg-chestnut hover:text-snow'
-          }`}
-        >
-          {sent ? (
-            <>
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-              Sent!
-            </>
-          ) : cooldown > 0 ? (
-            <span className="font-mono">Resend in {cooldown}s…</span>
-          ) : (
-            'Resend confirmation email'
-          )}
-        </button>
+        {!autoConfirmed && (
+          <button
+            onClick={handleResend}
+            disabled={cooldown > 0 || !email}
+            className={`w-full py-3.5 rounded-xl font-bold transition-all mb-2 flex items-center justify-center gap-2 ${
+              sent
+                ? 'bg-teal text-snow shadow-md'
+                : cooldown > 0
+                ? 'border-2 border-charcoal/20 text-charcoal/40 cursor-not-allowed'
+                : 'border-2 border-chestnut text-chestnut hover:bg-chestnut hover:text-snow'
+            }`}
+          >
+            {sent ? (
+              <>
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Sent!
+              </>
+            ) : cooldown > 0 ? (
+              <span className="font-mono">Resend in {cooldown}s…</span>
+            ) : (
+              'Resend confirmation email'
+            )}
+          </button>
+        )}
 
-        <p className="text-center text-charcoal/60 text-sm mt-4">
-          Wrong email?{' '}
-          <a href="/auth/signup" className="text-chestnut font-bold hover:underline">
-            Sign up again
-          </a>
-        </p>
+        {/* Cross-device watching indicator */}
+        {pendingUid && !autoConfirmed && (
+          <div className="flex items-center gap-2 mt-3">
+            <span className="relative flex h-2 w-2 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-teal" />
+            </span>
+            <p className="text-charcoal/50 text-xs">Watching for confirmation — this page will redirect automatically.</p>
+          </div>
+        )}
+
+        {!autoConfirmed && (
+          <p className="text-center text-charcoal/60 text-sm mt-4">
+            Wrong email?{' '}
+            <a href="/auth/signup" className="text-chestnut font-bold hover:underline">
+              Sign up again
+            </a>
+          </p>
+        )}
       </div>
     </div>
   )

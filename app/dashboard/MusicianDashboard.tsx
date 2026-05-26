@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { eqBarStyle } from '@/lib/eq'
 import { milesBetween } from '@/lib/distance'
+import { ALL_GENRES } from '@/lib/genres'
 import { Avatar } from '@/components/Avatar'
 import MessagingTab, { MessagingTabRef } from '@/components/MessagingTab'
 import { useToast } from '@/components/Toast'
@@ -64,7 +65,7 @@ interface MusicianProfile {
 
 // ---- Constants ----
 
-const GENRES = ['Jazz', 'Blues', 'Acoustic', 'Folk', 'R&B', 'Soul', 'Rock', 'Country', 'Pop', 'Classical']
+const GENRES = ALL_GENRES
 
 const INITIAL_PROFILE: MusicianProfile = {
   name: 'Your Name',
@@ -156,6 +157,10 @@ export default function MusicianDashboard() {
   const [bookingFilter, setBookingFilter] = useState<BookingFilter>('pending')
   const [bookingsDisplayCount, setBookingsDisplayCount] = useState(10)
   const [bookingArchiveOpen, setBookingArchiveOpen] = useState(false)
+
+  // Cancellation
+  const [cancelBookingId, setCancelBookingId] = useState<string | null>(null)
+  const [cancellingBooking, setCancellingBooking] = useState(false)
 
   // Stripe Connect
   const [stripeOnboarded, setStripeOnboarded] = useState<boolean | null>(null)
@@ -639,6 +644,55 @@ export default function MusicianDashboard() {
     } catch (err) {
       console.error('Failed to cancel application:', err)
       toast.error('Could not cancel application. Please try again.')
+    }
+  }
+
+  const handleCancelBooking = async () => {
+    if (!cancelBookingId || !userId) return
+    setCancellingBooking(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { toast.error('Please log in again.'); return }
+
+      const res = await fetch('/api/bookings/cancel', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ bookingId: cancelBookingId, cancelledBy: 'musician' }),
+      })
+      const data = await res.json() as { success?: boolean; banned?: boolean; error?: string }
+      if (!res.ok) throw new Error(data.error ?? 'Cancellation failed')
+
+      setBookings(prev => prev.map(b => b.id === cancelBookingId ? { ...b, status: 'cancelled' } : b))
+      setCancelBookingId(null)
+
+      if (data.banned) {
+        toast.error('Your booking was cancelled within 48 hours. Your account has been suspended per our policy.')
+        setTimeout(async () => {
+          await supabase.auth.signOut()
+          router.replace('/auth/login?banned=1')
+        }, 3000)
+        return
+      }
+
+      toast.success('Booking cancelled. The restaurant has been notified.')
+
+      // Fire-and-forget cancellation email
+      void fetch('/api/notifications/cancellation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ booking_id: cancelBookingId, cancelled_by: 'musician' }),
+      }).catch(err => console.error('[Email] cancellation notification failed:', err))
+    } catch (err) {
+      console.error('Cancel booking failed:', err)
+      toast.error(err instanceof Error ? err.message : 'Could not cancel booking. Please try again.')
+    } finally {
+      setCancellingBooking(false)
     }
   }
 
@@ -1194,6 +1248,7 @@ export default function MusicianDashboard() {
                         )
                       }
                       if (b.status === 'confirmed') {
+                        const isFutureGig = new Date(b.gig.rawDate + 'T23:59:59') >= tabNow
                         return (
                           <div key={b.id} className="bg-white rounded-2xl p-4 shadow-sm border-l-4 border-l-[#6C9A8B]">
                             <div className="flex items-center gap-3">
@@ -1219,6 +1274,16 @@ export default function MusicianDashboard() {
                                 <button onClick={() => openConversationWithVenue(b.gig)} className="inline-flex items-center gap-1 text-charcoal/60 text-[10px] font-medium hover:text-chestnut transition-colors mt-1"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Message</button>
                               </div>
                             </div>
+                            {isFutureGig && (
+                              <div className="flex justify-end mt-2 pt-2 border-t border-charcoal/[0.06]">
+                                <button
+                                  onClick={() => setCancelBookingId(b.id)}
+                                  className="text-red-400 text-xs font-semibold hover:text-red-600 transition-colors"
+                                >
+                                  Cancel Booking
+                                </button>
+                              </div>
+                            )}
                           </div>
                         )
                       }
@@ -1618,6 +1683,56 @@ export default function MusicianDashboard() {
           </div>
         </div>
       )}
+
+      {/* ---- Cancel Booking Modal ---- */}
+      {cancelBookingId && (() => {
+        const booking = bookings.find(b => b.id === cancelBookingId)
+        const gigMs = booking ? new Date(booking.gig.rawDate + 'T00:00:00').getTime() : Infinity
+        const within48h = (gigMs - Date.now()) / 3600000 <= 48
+        return (
+          <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl overflow-hidden">
+              <div className="bg-graphite px-6 py-5">
+                <h3 className="text-snow font-black text-xl tracking-tight">Cancel Booking?</h3>
+                <p className="text-snow/60 text-sm mt-1">
+                  {booking?.gig.venue.name} · {booking?.gig.date}
+                </p>
+              </div>
+              <div className="px-6 py-5">
+                {within48h ? (
+                  <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4">
+                    <p className="text-red-600 font-bold text-sm mb-1">Account suspension warning</p>
+                    <p className="text-red-500 text-xs leading-relaxed">
+                      You are cancelling within 48 hours of your gig. Per our policy, your account will be
+                      immediately suspended. Only proceed if absolutely necessary.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-charcoal text-sm leading-relaxed mb-4">
+                    The restaurant will receive a full refund. This action cannot be undone.
+                  </p>
+                )}
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setCancelBookingId(null)}
+                    disabled={cancellingBooking}
+                    className="flex-1 bg-snow text-charcoal py-3 rounded-xl text-sm font-semibold border border-charcoal/10 hover:bg-[#E8E4E0] transition-colors disabled:opacity-50"
+                  >
+                    Keep Booking
+                  </button>
+                  <button
+                    onClick={handleCancelBooking}
+                    disabled={cancellingBooking}
+                    className="flex-1 bg-red-500 text-white py-3 rounded-xl text-sm font-bold hover:bg-red-600 transition-colors disabled:opacity-50"
+                  >
+                    {cancellingBooking ? 'Cancelling…' : within48h ? 'Cancel Anyway' : 'Yes, Cancel'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ---- Stripe Refresh Modal (incomplete onboarding) ---- */}
       {showStripeRefreshModal && (

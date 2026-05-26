@@ -1,14 +1,20 @@
-// Smooth wave divider for the auth pages.
-// Period = 300 viewBox units = one animation cycle (0→300), so the loop is seamless.
-// Center x=60, amplitude ±45 (range 15–105) in a 120px-wide container.
+// Two cubics per period (one right bump, one left bump) — mathematically symmetric.
+// Period = 300, half-period = 150.
+// Control points sit 50 units in from each segment endpoint (1/3 of 150).
+// Center x=60, CPs at x=90 (right) and x=30 (left) — gentle amplitude ±22.5.
 
 const WAVE =
   'M 60 -300 ' +
-  'C 105 -210, 15 -90, 60 0 ' +
-  'C 105 90,   15 210, 60 300 ' +
-  'C 105 390,  15 510, 60 600 ' +
-  'C 105 690,  15 810, 60 900 ' +
-  'C 105 990,  15 1110, 60 1200'
+  'C 90 -250, 90 -200, 60 -150 ' +
+  'C 30 -100, 30 -50, 60 0 ' +
+  'C 90 50, 90 100, 60 150 ' +
+  'C 30 200, 30 250, 60 300 ' +
+  'C 90 350, 90 400, 60 450 ' +
+  'C 30 500, 30 550, 60 600 ' +
+  'C 90 650, 90 700, 60 750 ' +
+  'C 30 800, 30 850, 60 900 ' +
+  'C 90 950, 90 1000, 60 1050 ' +
+  'C 30 1100, 30 1150, 60 1200'
 
 export function WaveDivider() {
   return (

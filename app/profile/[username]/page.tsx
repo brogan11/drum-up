@@ -421,6 +421,7 @@ export default function ProfilePage() {
     sessionStorage.setItem('drumup_open_msg', JSON.stringify({
       id: profile.id, name, avatar: profile.avatar_url ?? '',
     }))
+    sessionStorage.setItem('drumup_goto_messages', '1')
     router.push('/dashboard')
   }
 

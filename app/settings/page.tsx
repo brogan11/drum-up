@@ -3,6 +3,7 @@
 import React, { ChangeEvent, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { GenreSelector } from '@/components/GenreSelector'
 
 type UserType = 'restaurant' | 'musician' | 'fan'
 
@@ -12,10 +13,6 @@ const PANEL_BG = `
   #E8E4E0
 `
 
-const GENRES = [
-  'Rock', 'Jazz', 'Folk', 'Pop', 'Country', 'Blues', 'Hip Hop',
-  'R&B', 'Acoustic', 'Indie', 'Classical', 'Electronic', 'Latin', 'Reggae',
-]
 const NIGHTS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const SOLO_BAND = ['Solo', 'Duo', 'Band']
 
@@ -548,8 +545,7 @@ export default function SettingsPage() {
                   <p className="text-xs text-charcoal/60 mt-1.5">Stage or press photo (landscape works best), up to 10MB</p>
                 </Field>
                 <Field label="Genres">
-                  <ChipRow
-                    items={GENRES}
+                  <GenreSelector
                     selected={form.genres}
                     onToggle={g => update('genres', toggleArrayItem(form.genres, g))}
                   />
@@ -597,8 +593,7 @@ export default function SettingsPage() {
 
             {userType === 'fan' && (
               <Field label="Favorite genres">
-                <ChipRow
-                  items={GENRES}
+                <GenreSelector
                   selected={form.favoriteGenres}
                   onToggle={g => update('favoriteGenres', toggleArrayItem(form.favoriteGenres, g))}
                 />

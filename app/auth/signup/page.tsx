@@ -69,7 +69,10 @@ export default function SignupPage() {
         // Email confirmation is disabled — session returned immediately
         router.replace('/onboarding')
       } else {
-        // Email confirmation required — show confirm page
+        // Email confirmation required — store user ID so confirm page can poll
+        if (data.user?.id) {
+          sessionStorage.setItem('drumup_pending_uid', data.user.id)
+        }
         router.replace(`/auth/confirm?email=${encodeURIComponent(email)}`)
       }
     } catch (e) {
