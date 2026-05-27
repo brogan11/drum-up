@@ -12,7 +12,7 @@ import { SkeletonStatCard, SkeletonBookingCard, SkeletonMusicianCard } from '@/c
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { stripePromise } from '@/lib/stripe-client'
 import { buildSocialUrl } from '@/lib/social-urls'
-import { ALL_GENRES } from '@/lib/genres'
+import { GENRE_GROUPS } from '@/lib/genres'
 import { GenreSelector } from '@/components/GenreSelector'
 
 // ---- Types ----
@@ -84,12 +84,13 @@ interface VenueProfile {
   address: string
   description: string
   website: string
+  instagram: string
+  youtube: string
+  tiktok: string
   avatar: string
 }
 
 // ---- Constants ----
-
-const GENRES = ALL_GENRES
 
 const INITIAL_PROFILE: VenueProfile = {
   name: 'Your Venue',
@@ -97,6 +98,9 @@ const INITIAL_PROFILE: VenueProfile = {
   address: '123 Main St, City, State',
   description: 'A warm and welcoming dining experience with a passion for live music.',
   website: '',
+  instagram: '',
+  youtube: '',
+  tiktok: '',
   avatar: '',
 }
 
@@ -283,7 +287,10 @@ export default function RestaurantDashboard() {
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null)
 
   const [search, setSearch] = useState('')
-  const [genreFilter, setGenreFilter] = useState<string | null>(null)
+  const [genreFilters, setGenreFilters] = useState<string[]>([])
+  const [musicianSortBy, setMusicianSortBy] = useState<'distance' | 'name-az' | 'name-za'>('distance')
+  const [typeFilter, setTypeFilter] = useState<'all' | 'solo' | 'band'>('all')
+  const [genrePanelOpen, setGenrePanelOpen] = useState(false)
   const [selectedLiveMusician, setSelectedLiveMusician] = useState<LiveMusician | null>(null)
 
   // Messaging
@@ -479,7 +486,7 @@ export default function RestaurantDashboard() {
       // or in server-side Stripe routes. legal_name is private.
       const { data, error: profileErr } = await supabase
         .from('profiles')
-        .select('full_name, bio, avatar_url, location_text, latitude, longitude, website, role_metadata, discovery_radius_miles')
+        .select('full_name, bio, avatar_url, location_text, latitude, longitude, website, instagram_url, youtube_url, tiktok_url, role_metadata, discovery_radius_miles')
         .eq('id', user.id).maybeSingle()
       if (profileErr) throw profileErr
       if (!data) return
@@ -490,6 +497,9 @@ export default function RestaurantDashboard() {
         address: data.location_text ?? '',
         description: data.bio ?? '',
         website: data.website ?? '',
+        instagram: (data as Record<string, unknown>).instagram_url as string ?? '',
+        youtube: (data as Record<string, unknown>).youtube_url as string ?? '',
+        tiktok: (data as Record<string, unknown>).tiktok_url as string ?? '',
         avatar: data.avatar_url ?? '',
       })
       const lat = data.latitude ?? null
@@ -561,6 +571,9 @@ export default function RestaurantDashboard() {
         bio: profileDraft.description || null,
         location_text: profileDraft.address || null,
         website: profileDraft.website || null,
+        instagram_url: profileDraft.instagram || null,
+        youtube_url: profileDraft.youtube || null,
+        tiktok_url: profileDraft.tiktok || null,
         role_metadata: meta,
       }).eq('id', userId)
       if (upErr) throw upErr
@@ -955,12 +968,19 @@ export default function RestaurantDashboard() {
       case 'cancelled': return slots.filter(s => s.status === 'cancelled').sort((a, b) => b.rawDate.localeCompare(a.rawDate))
     }
   })()
-  const filteredMusicians = liveMusicians.filter(m => {
-    const q = search.toLowerCase()
-    const matchSearch = !q || m.name.toLowerCase().includes(q) || m.genres.some(g => g.toLowerCase().includes(q))
-    const matchGenre = !genreFilter || m.genres.includes(genreFilter)
-    return matchSearch && matchGenre
-  })
+  const filteredMusicians = liveMusicians
+    .filter(m => {
+      const q = search.toLowerCase()
+      const matchSearch = !q || m.name.toLowerCase().includes(q) || m.genres.some(g => g.toLowerCase().includes(q))
+      const matchGenre = genreFilters.length === 0 || genreFilters.some(f => m.genres.includes(f))
+      const matchType = typeFilter === 'all' || m.performerType === typeFilter
+      return matchSearch && matchGenre && matchType
+    })
+    .sort((a, b) => {
+      if (musicianSortBy === 'name-az') return a.name.localeCompare(b.name)
+      if (musicianSortBy === 'name-za') return b.name.localeCompare(a.name)
+      return a.distance - b.distance
+    })
   return (
     <div className="min-h-screen pb-24" style={{ background: 'radial-gradient(ellipse 50% 40% at 12% 8%, rgba(108,154,139,0.10), transparent 70%), radial-gradient(ellipse 50% 40% at 88% 92%, rgba(220,127,65,0.12), transparent 70%), #E8E4E0' }}>
 
@@ -1553,23 +1573,94 @@ export default function RestaurantDashboard() {
             </div>
 
             {/* Search */}
-            <div className="relative mb-4">
+            <div className="relative mb-3">
               <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-charcoal/40 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
               <input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Search by name or genre..."
+                placeholder="Search by musician name..."
                 className="w-full bg-white rounded-xl pl-10 pr-4 py-3 shadow-sm focus:outline-none focus:shadow-md transition-shadow text-sm"
               />
             </div>
 
-            {/* Genre filter chips */}
-            <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
-              <button onClick={() => setGenreFilter(null)} className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${!genreFilter ? 'bg-graphite text-snow' : 'bg-white text-charcoal hover:bg-[#E8E4E0]'}`}>All</button>
-              {GENRES.map(g => (
-                <button key={g} onClick={() => setGenreFilter(genreFilter === g ? null : g)} className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${genreFilter === g ? 'bg-graphite text-snow' : 'bg-white text-charcoal hover:bg-[#E8E4E0]'}`}>{g}</button>
-              ))}
+            {/* Sort + Type + Genres row */}
+            <div className="flex items-center gap-2 mb-3">
+              <div className="flex gap-1.5 flex-1 overflow-x-auto pb-0.5 no-scrollbar">
+                {([
+                  { key: 'distance' as const, label: 'Nearest' },
+                  { key: 'name-az' as const, label: 'A → Z' },
+                  { key: 'name-za' as const, label: 'Z → A' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.key}
+                    onClick={() => setMusicianSortBy(opt.key)}
+                    className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${musicianSortBy === opt.key ? 'bg-chestnut text-snow shadow-sm' : 'bg-white text-charcoal hover:bg-[#E8E4E0]'}`}
+                  >{opt.label}</button>
+                ))}
+                <div className="w-px bg-charcoal/15 self-stretch mx-0.5 shrink-0" />
+                {([
+                  { key: 'all' as const, label: 'All' },
+                  { key: 'solo' as const, label: 'Solo' },
+                  { key: 'band' as const, label: 'Band' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.key}
+                    onClick={() => setTypeFilter(opt.key)}
+                    className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${typeFilter === opt.key ? 'bg-teal text-snow shadow-sm' : 'bg-white text-charcoal hover:bg-[#E8E4E0]'}`}
+                  >{opt.label}</button>
+                ))}
+              </div>
+              <button
+                onClick={() => setGenrePanelOpen(o => !o)}
+                className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${genrePanelOpen || genreFilters.length > 0 ? 'bg-graphite text-snow' : 'bg-white text-charcoal hover:bg-[#E8E4E0]'}`}
+              >
+                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="6" y2="6"/><line x1="8" x2="16" y1="12" y2="12"/><line x1="11" x2="13" y1="18" y2="18"/></svg>
+                Genres{genreFilters.length > 0 ? ` (${genreFilters.length})` : ''}
+              </button>
             </div>
+
+            {/* Active genre tags */}
+            {genreFilters.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {genreFilters.map(g => (
+                  <span key={g} className="inline-flex items-center gap-1 bg-graphite text-snow px-2.5 py-1 rounded-full text-xs font-semibold">
+                    {g}
+                    <button onClick={() => setGenreFilters(prev => prev.filter(x => x !== g))} className="hover:opacity-70 transition-opacity leading-none">
+                      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </button>
+                  </span>
+                ))}
+                <button
+                  onClick={() => setGenreFilters([])}
+                  className="text-charcoal/50 text-xs font-medium hover:text-chestnut transition-colors px-1 self-center"
+                >Clear all</button>
+              </div>
+            )}
+
+            {/* Genre picker panel */}
+            {genrePanelOpen && (
+              <div className="bg-white rounded-2xl p-4 mb-4 shadow-sm border border-charcoal/[0.06]">
+                <div className="space-y-3.5">
+                  {GENRE_GROUPS.map(group => (
+                    <div key={group.label}>
+                      <p className="text-charcoal/40 text-[10px] font-bold uppercase tracking-widest mb-2">{group.label}</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {group.genres.map(g => {
+                          const selected = genreFilters.includes(g)
+                          return (
+                            <button
+                              key={g}
+                              onClick={() => setGenreFilters(prev => selected ? prev.filter(x => x !== g) : [...prev, g])}
+                              className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${selected ? 'bg-chestnut text-snow shadow-sm' : 'bg-snow text-charcoal hover:bg-[#E8E4E0]'}`}
+                            >{g}</button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Loading skeleton */}
             {browseLoading && (
@@ -1725,21 +1816,57 @@ export default function RestaurantDashboard() {
         {activeTab === 'profile' && (
           <>
             {/* Header */}
-            <div className="mb-6">
+            <div className="mb-5">
               <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-1">· The Room</p>
               <h2 className="text-graphite text-3xl font-black tracking-tight leading-none">
-                Your <span className="text-chestnut italic">Analytics.</span>
+                Your <span className="text-chestnut italic">Venue.</span>
               </h2>
             </div>
 
+            {/* Hero venue card */}
+            <div className="relative bg-graphite rounded-3xl overflow-hidden mb-4 shadow-xl">
+              <div className="absolute -top-10 -right-10 w-44 h-44 rounded-full bg-chestnut opacity-20 blur-2xl pointer-events-none" />
+              <div className="absolute -bottom-14 -left-10 w-40 h-40 rounded-full bg-teal opacity-15 blur-2xl pointer-events-none" />
+              <div className="absolute inset-x-0 bottom-0 top-1/2 flex items-end justify-around opacity-[0.07] pointer-events-none">
+                {Array.from({ length: 18 }).map((_, i) => (
+                  <div key={i} className="eq-bar w-1.5 bg-chestnut rounded-t" style={eqBarStyle(i, 13)} />
+                ))}
+              </div>
+              <div className="relative z-10 p-6">
+                <div className="flex items-start gap-4 mb-4">
+                  {profile.avatar
+                    ? <img src={profile.avatar} alt="" className="w-20 h-20 rounded-2xl object-cover shrink-0 shadow-inner border-2 border-chestnut/40" />
+                    : <div className="w-20 h-20 rounded-2xl bg-chestnut/20 border-2 border-chestnut/40 flex items-center justify-center shrink-0 shadow-inner text-chestnut">
+                        <svg className="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>
+                      </div>}
+                  <div className="flex-1 min-w-0">
+                    {profile.type && (
+                      <span className="inline-block text-[10px] font-bold px-2.5 py-1 rounded-full bg-chestnut/30 text-chestnut mb-1.5">{profile.type}</span>
+                    )}
+                    <p className="text-snow font-black text-2xl leading-tight tracking-tight">{profile.name || 'Your Venue'}</p>
+                    {profile.address && (
+                      <p className="text-snow/50 text-xs mt-1.5 flex items-center gap-1">
+                        <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                        {profile.address}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {profile.description && (
+                  <p className="text-snow/70 text-sm leading-relaxed">{profile.description}</p>
+                )}
+              </div>
+            </div>
+
             {/* Action buttons */}
-            <div className="grid grid-cols-2 gap-3 mb-6">
+            <div className="grid grid-cols-2 gap-3 mb-4">
               <button
                 onClick={() => router.push('/profile/' + userId)}
-                className="flex items-center justify-center gap-2 bg-graphite text-snow py-3.5 rounded-2xl font-bold text-sm hover:opacity-90 transition-opacity shadow-sm"
+                className="flex items-center justify-center gap-2 bg-chestnut text-snow py-3.5 rounded-2xl font-bold text-sm hover:opacity-90 transition-opacity shadow-sm"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
                 View Profile
               </button>
@@ -1748,21 +1875,116 @@ export default function RestaurantDashboard() {
                 className="flex items-center justify-center gap-2 bg-white text-graphite py-3.5 rounded-2xl font-bold text-sm hover:shadow-md transition-shadow shadow-sm border border-charcoal/[0.07]"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" />
                 </svg>
                 Edit Profile
               </button>
             </div>
 
-            {/* Profile Views card */}
+            {/* Links */}
+            {(profile.website || profile.instagram || profile.youtube || profile.tiktok) && (
+              <div className="bg-white rounded-2xl shadow-sm mb-4 overflow-hidden">
+                <div className="px-5 pt-4 pb-1">
+                  <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em]">Links</p>
+                </div>
+                <div className="divide-y divide-charcoal/[0.06]">
+                  {profile.website && (
+                    <a
+                      href={buildSocialUrl('website', profile.website)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 px-5 py-3.5 hover:bg-snow transition-colors group"
+                    >
+                      <div className="w-9 h-9 rounded-xl bg-graphite flex items-center justify-center shrink-0 shadow-sm">
+                        <svg className="w-4 h-4 text-snow" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-graphite font-bold text-sm">Website</p>
+                        <p className="text-charcoal/50 text-xs truncate">{profile.website.replace(/^https?:\/\/(www\.)?/, '')}</p>
+                      </div>
+                      <svg className="w-4 h-4 text-charcoal/30 group-hover:text-chestnut transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                    </a>
+                  )}
+                  {profile.instagram && (
+                    <a
+                      href={buildSocialUrl('instagram', profile.instagram)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 px-5 py-3.5 hover:bg-snow transition-colors group"
+                    >
+                      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 flex items-center justify-center shrink-0 shadow-sm">
+                        <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-graphite font-bold text-sm">Instagram</p>
+                        <p className="text-charcoal/50 text-xs truncate">@{profile.instagram.replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\/?/, '')}</p>
+                      </div>
+                      <svg className="w-4 h-4 text-charcoal/30 group-hover:text-chestnut transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                    </a>
+                  )}
+                  {profile.youtube && (
+                    <a
+                      href={buildSocialUrl('youtube', profile.youtube)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 px-5 py-3.5 hover:bg-snow transition-colors group"
+                    >
+                      <div className="w-9 h-9 rounded-xl bg-red-600 flex items-center justify-center shrink-0 shadow-sm">
+                        <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-graphite font-bold text-sm">YouTube</p>
+                        <p className="text-charcoal/50 text-xs truncate">@{profile.youtube.replace(/^@/, '').replace(/^https?:\/\/(www\.)?youtube\.com\/@?/, '')}</p>
+                      </div>
+                      <svg className="w-4 h-4 text-charcoal/30 group-hover:text-chestnut transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                    </a>
+                  )}
+                  {profile.tiktok && (
+                    <a
+                      href={buildSocialUrl('tiktok', profile.tiktok)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 px-5 py-3.5 hover:bg-snow transition-colors group"
+                    >
+                      <div className="w-9 h-9 rounded-xl bg-black flex items-center justify-center shrink-0 shadow-sm">
+                        <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.27 8.27 0 0 0 4.84 1.56V6.79a4.85 4.85 0 0 1-1.07-.1z"/></svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-graphite font-bold text-sm">TikTok</p>
+                        <p className="text-charcoal/50 text-xs truncate">@{profile.tiktok.replace(/^@/, '').replace(/^https?:\/\/(www\.)?tiktok\.com\/@?/, '')}</p>
+                      </div>
+                      <svg className="w-4 h-4 text-charcoal/30 group-hover:text-chestnut transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Prompt to add links if none */}
+            {!profile.website && !profile.instagram && !profile.youtube && !profile.tiktok && (
+              <button
+                onClick={() => router.push('/settings')}
+                className="w-full bg-white rounded-2xl shadow-sm mb-4 px-5 py-4 flex items-center gap-3 hover:shadow-md transition-shadow border border-dashed border-charcoal/20 text-left"
+              >
+                <div className="w-10 h-10 rounded-xl bg-chestnut/10 flex items-center justify-center shrink-0 text-chestnut">
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                </div>
+                <div className="flex-1">
+                  <p className="text-graphite font-bold text-sm">Add your links</p>
+                  <p className="text-charcoal/50 text-xs mt-0.5">Website, Instagram — help musicians discover your venue</p>
+                </div>
+                <svg className="w-4 h-4 text-charcoal/30 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+              </button>
+            )}
+
+            {/* Analytics — visibility */}
             <div className="bg-graphite rounded-2xl p-5 shadow-sm mb-4 relative overflow-hidden">
               <div className="absolute inset-x-0 bottom-0 top-1/3 flex items-end justify-around opacity-[0.08] pointer-events-none">
                 {Array.from({ length: 14 }).map((_, i) => (
                   <div key={i} className="eq-bar w-1.5 bg-chestnut rounded-t" style={eqBarStyle(i, 31)} />
                 ))}
               </div>
-              <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">Profile Views</p>
+              <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">Visibility</p>
               {analyticsLoading ? (
                 <div className="flex gap-6">
                   {[0, 1, 2].map(i => <div key={i} className="h-10 w-16 bg-white/10 rounded-xl animate-pulse" />)}
@@ -1771,11 +1993,11 @@ export default function RestaurantDashboard() {
                 <div className="grid grid-cols-3 divide-x divide-white/10">
                   <div className="pr-4">
                     <p className="text-snow text-3xl font-black">{analyticsViews7d ?? '—'}</p>
-                    <p className="text-snow/40 text-xs font-semibold uppercase tracking-wider mt-0.5">Last 7 days</p>
+                    <p className="text-snow/40 text-xs font-semibold uppercase tracking-wider mt-0.5">7 days</p>
                   </div>
                   <div className="px-4">
                     <p className="text-snow text-3xl font-black">{analyticsViews30d ?? '—'}</p>
-                    <p className="text-snow/40 text-xs font-semibold uppercase tracking-wider mt-0.5">Last 30 days</p>
+                    <p className="text-snow/40 text-xs font-semibold uppercase tracking-wider mt-0.5">30 days</p>
                   </div>
                   <div className="pl-4">
                     <p className="text-chestnut text-3xl font-black">{analyticsFollowers ?? '—'}</p>
@@ -1806,27 +2028,6 @@ export default function RestaurantDashboard() {
               </div>
             </div>
 
-            {/* Venue preview card */}
-            <div className="bg-white rounded-2xl p-5 shadow-sm mb-4">
-              <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">Your Venue</p>
-              <button
-                onClick={() => router.push('/profile/' + userId)}
-                className="w-full flex items-center gap-4 hover:opacity-80 transition-opacity"
-              >
-                {profile.avatar
-                  ? <img src={profile.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover shadow-sm border border-charcoal/[0.07]" />
-                  : <div className="w-14 h-14 bg-chestnut/10 rounded-2xl flex items-center justify-center text-chestnut"><svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg></div>}
-                <div className="flex-1 min-w-0 text-left">
-                  <p className="text-graphite font-black text-base truncate">{profile.name || 'Your Venue'}</p>
-                  {profile.type && <p className="text-charcoal/60 text-sm mt-0.5">{profile.type}</p>}
-                  <p className="text-chestnut text-xs font-semibold mt-1">View Public Profile →</p>
-                </div>
-                <svg className="w-4 h-4 text-charcoal/30 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-            </div>
-
             {/* Account */}
             <div className="bg-white rounded-2xl p-5 shadow-sm">
               <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">Account</p>
@@ -1851,11 +2052,11 @@ export default function RestaurantDashboard() {
       {/* ---- BOTTOM TAB BAR ---- */}
       <nav className="fixed bottom-0 left-0 right-0 bg-graphite/95 backdrop-blur-md border-t border-charcoal/30 z-40">
         <div className="max-w-2xl mx-auto grid grid-cols-5 px-2 py-2">
-          <TabButton icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>} label="Home" active={activeTab === 'home'} onClick={() => setActiveTab('home')} />
-          <TabButton icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>} label="Bookings" active={activeTab === 'slots'} onClick={() => setActiveTab('slots')} badge={pendingApps > 0 ? pendingApps : undefined} />
-          <TabButton icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>} label="Browse" active={activeTab === 'browse'} onClick={() => setActiveTab('browse')} />
-          <TabButton icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>} label="Messages" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} badge={msgUnread} />
-          <TabButton icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>} label="Profile" active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
+          <TabButton animation="bounce" icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>} label="Home" active={activeTab === 'home'} onClick={() => setActiveTab('home')} />
+          <TabButton animation="toss"   icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>} label="Bookings" active={activeTab === 'slots'} onClick={() => setActiveTab('slots')} badge={pendingApps > 0 ? pendingApps : undefined} />
+          <TabButton animation="spin"   icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>} label="Browse" active={activeTab === 'browse'} onClick={() => setActiveTab('browse')} />
+          <TabButton animation="pop"    icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>} label="Messages" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} badge={msgUnread} />
+          <TabButton animation="pulse"  icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>} label="Profile" active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
         </div>
       </nav>
 
@@ -2212,11 +2413,11 @@ function StatCard({ value, label, color, icon, highlight }: { value: number | st
   )
 }
 
-function TabButton({ icon, label, active, onClick, badge }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void; badge?: number }) {
+function TabButton({ icon, label, active, onClick, badge, animation = 'bounce' }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void; badge?: number; animation?: string }) {
   return (
-    <button onClick={onClick} className="py-1 flex flex-col items-center gap-1 transition-colors relative">
+    <button onClick={onClick} className={`py-1 flex flex-col items-center gap-1 transition-colors relative tab-hover-${animation}`}>
       <div className={`relative w-11 h-9 rounded-xl flex items-center justify-center transition-all ${active ? 'bg-chestnut shadow-md' : ''}`}>
-        <span className={`flex items-center justify-center ${active ? 'text-snow' : 'text-charcoal/60'}`}>{icon}</span>
+        <span className={`tab-icon flex items-center justify-center ${active ? 'text-snow' : 'text-charcoal/60'}`}>{icon}</span>
         {badge != null && badge > 0 && (
           <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-chestnut border-2 border-graphite rounded-full text-[9px] text-snow font-bold flex items-center justify-center">{badge}</span>
         )}

@@ -586,46 +586,77 @@ export default function ProfilePage() {
                 ))}
               </div>
             )}
-            {/* Socials left · Actions right */}
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-4">
-                {profile.instagram_url && <a href={buildSocialUrl('instagram', profile.instagram_url)} target="_blank" rel="noopener noreferrer" className="text-snow/40 hover:text-chestnut transition-colors"><SocialIcon type="instagram" /></a>}
-                {profile.tiktok_url && <a href={buildSocialUrl('tiktok', profile.tiktok_url)} target="_blank" rel="noopener noreferrer" className="text-snow/40 hover:text-chestnut transition-colors"><SocialIcon type="tiktok" /></a>}
-                {profile.spotify_url && <a href={buildSocialUrl('spotify', profile.spotify_url)} target="_blank" rel="noopener noreferrer" className="text-snow/40 hover:text-chestnut transition-colors"><SocialIcon type="spotify" /></a>}
-                {profile.youtube_url && <a href={buildSocialUrl('youtube', profile.youtube_url)} target="_blank" rel="noopener noreferrer" className="text-snow/40 hover:text-chestnut transition-colors"><SocialIcon type="youtube" /></a>}
-                {profile.website && <a href={buildSocialUrl('website', profile.website)} target="_blank" rel="noopener noreferrer" className="text-snow/40 hover:text-chestnut transition-colors"><SocialIcon type="website" /></a>}
-              </div>
-              <div className="flex gap-2 flex-wrap justify-end">
-                {isOwnProfile ? (
-                  <button onClick={() => router.push('/settings')}
-                    className="px-5 py-2.5 rounded-xl font-bold text-sm"
-                    style={{ background: 'rgba(255,255,255,0.12)', color: '#FCFAF9', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.2)' }}>
-                    Edit Profile
+            {/* Action buttons */}
+            <div className="flex gap-2 flex-wrap mb-4">
+              {isOwnProfile ? (
+                <button onClick={() => router.push('/settings')}
+                  className="px-5 py-2.5 rounded-xl font-bold text-sm"
+                  style={{ background: 'rgba(255,255,255,0.12)', color: '#FCFAF9', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.2)' }}>
+                  Edit Profile
+                </button>
+              ) : (
+                <>
+                  {viewer?.user_type === 'restaurant' && (
+                    <button onClick={() => router.push('/dashboard')}
+                      className="bg-chestnut text-snow px-5 py-2.5 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity">
+                      Apply to Book
+                    </button>
+                  )}
+                  <button onClick={handleToggleFollow} disabled={followLoading}
+                    className="px-5 py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
+                    style={isFollowing
+                      ? { background: 'rgba(108,154,139,0.2)', color: '#6C9A8B', border: '1px solid rgba(108,154,139,0.35)' }
+                      : { background: '#DC7F41', color: '#FCFAF9' }}>
+                    {followLoading ? '…' : isFollowing ? '✓ Following' : '+ Follow'}
                   </button>
-                ) : (
-                  <>
-                    {viewer?.user_type === 'restaurant' && (
-                      <button onClick={() => router.push('/dashboard')}
-                        className="bg-chestnut text-snow px-5 py-2.5 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity">
-                        Apply to Book
-                      </button>
-                    )}
-                    <button onClick={handleToggleFollow} disabled={followLoading}
-                      className="px-5 py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
-                      style={isFollowing
-                        ? { background: 'rgba(108,154,139,0.2)', color: '#6C9A8B', border: '1px solid rgba(108,154,139,0.35)' }
-                        : { background: '#DC7F41', color: '#FCFAF9' }}>
-                      {followLoading ? '…' : isFollowing ? '✓ Following' : '+ Follow'}
-                    </button>
-                    <button onClick={handleMessage}
-                      className="px-5 py-2.5 rounded-xl font-bold text-sm"
-                      style={{ background: 'rgba(255,255,255,0.10)', color: '#FCFAF9', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)' }}>
-                      Message
-                    </button>
-                  </>
+                  <button onClick={handleMessage}
+                    className="px-5 py-2.5 rounded-xl font-bold text-sm"
+                    style={{ background: 'rgba(255,255,255,0.10)', color: '#FCFAF9', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)' }}>
+                    Message
+                  </button>
+                </>
+              )}
+            </div>
+            {/* Platform pill links — scrollable branded row */}
+            {(profile.instagram_url || profile.tiktok_url || profile.spotify_url || profile.youtube_url || profile.website) && (
+              <div className="flex gap-2 overflow-x-auto pb-0.5 no-scrollbar">
+                {profile.instagram_url && (
+                  <a href={buildSocialUrl('instagram', profile.instagram_url)} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 hover:opacity-80 transition-opacity"
+                    style={{ background: 'rgba(193,53,232,0.22)', color: '#f0abfc', border: '1px solid rgba(193,53,232,0.40)' }}>
+                    <SocialIcon type="instagram" />Instagram
+                  </a>
+                )}
+                {profile.tiktok_url && (
+                  <a href={buildSocialUrl('tiktok', profile.tiktok_url)} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 hover:opacity-80 transition-opacity"
+                    style={{ background: 'rgba(255,255,255,0.12)', color: '#FCFAF9', border: '1px solid rgba(255,255,255,0.22)' }}>
+                    <SocialIcon type="tiktok" />TikTok
+                  </a>
+                )}
+                {profile.spotify_url && (
+                  <a href={buildSocialUrl('spotify', profile.spotify_url)} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 hover:opacity-80 transition-opacity"
+                    style={{ background: 'rgba(29,185,84,0.22)', color: '#4ade80', border: '1px solid rgba(29,185,84,0.38)' }}>
+                    <SocialIcon type="spotify" />Spotify
+                  </a>
+                )}
+                {profile.youtube_url && (
+                  <a href={buildSocialUrl('youtube', profile.youtube_url)} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 hover:opacity-80 transition-opacity"
+                    style={{ background: 'rgba(255,0,0,0.18)', color: '#f87171', border: '1px solid rgba(255,0,0,0.32)' }}>
+                    <SocialIcon type="youtube" />YouTube
+                  </a>
+                )}
+                {profile.website && (
+                  <a href={buildSocialUrl('website', profile.website)} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 hover:opacity-80 transition-opacity"
+                    style={{ background: 'rgba(255,255,255,0.10)', color: '#FCFAF9', border: '1px solid rgba(255,255,255,0.16)' }}>
+                    <SocialIcon type="website" />Website
+                  </a>
                 )}
               </div>
-            </div>
+            )}
           </div>
         </section>
 
@@ -675,27 +706,70 @@ export default function ProfilePage() {
 
           <section className="py-8 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
             <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-5">· Watch & Listen</p>
-            {embedUrl ? (
-              <div className="rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: '16/9', border: '1px solid rgba(255,255,255,0.08)' }}>
+
+            {/* YouTube embed */}
+            {embedUrl && (
+              <div className="rounded-2xl overflow-hidden shadow-2xl mb-4" style={{ aspectRatio: '16/9', border: '1px solid rgba(255,255,255,0.08)' }}>
                 <iframe src={embedUrl} className="w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title="Performance video" />
               </div>
-            ) : profile.youtube_url ? (
+            )}
+
+            {/* YouTube link card (non-embeddable URL) */}
+            {!embedUrl && profile.youtube_url && (
               <a href={toAbsoluteUrl(profile.youtube_url)} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-4 p-4 rounded-2xl group"
+                className="flex items-center gap-4 p-4 rounded-2xl group mb-4"
                 style={{ background: '#3D3D3D', border: '1px solid rgba(255,255,255,0.06)' }}>
                 <div className="w-12 h-12 bg-red-600 rounded-xl flex items-center justify-center shrink-0 text-snow">
                   <SocialIcon type="youtube" />
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="text-snow font-bold text-sm group-hover:text-chestnut transition-colors">Watch on YouTube</p>
                   <p className="text-snow/40 text-xs truncate max-w-xs mt-0.5">{profile.youtube_url}</p>
                 </div>
+                <svg className="w-4 h-4 text-snow/20 group-hover:text-chestnut transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
               </a>
-            ) : (
+            )}
+
+            {/* Streaming platform cards — Spotify & TikTok */}
+            {(profile.spotify_url || profile.tiktok_url) && (
+              <div className={`grid gap-3 ${profile.spotify_url && profile.tiktok_url ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                {profile.spotify_url && (
+                  <a href={buildSocialUrl('spotify', profile.spotify_url)} target="_blank" rel="noopener noreferrer"
+                    className="flex flex-col items-center gap-3 p-5 rounded-2xl group hover:opacity-90 transition-opacity"
+                    style={{ background: 'rgba(29,185,84,0.14)', border: '1px solid rgba(29,185,84,0.28)' }}>
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 text-snow shadow-sm" style={{ background: '#1DB954' }}>
+                      <SocialIcon type="spotify" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-snow font-bold text-sm">Listen on Spotify</p>
+                      <p className="text-snow/40 text-[11px] mt-0.5">Stream music</p>
+                    </div>
+                  </a>
+                )}
+                {profile.tiktok_url && (
+                  <a href={buildSocialUrl('tiktok', profile.tiktok_url)} target="_blank" rel="noopener noreferrer"
+                    className="flex flex-col items-center gap-3 p-5 rounded-2xl group hover:opacity-90 transition-opacity"
+                    style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.14)' }}>
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 text-snow shadow-sm bg-black">
+                      <SocialIcon type="tiktok" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-snow font-bold text-sm">Watch on TikTok</p>
+                      <p className="text-snow/40 text-[11px] mt-0.5">Short-form videos</p>
+                    </div>
+                  </a>
+                )}
+              </div>
+            )}
+
+            {/* Empty state — only when no platforms at all */}
+            {!embedUrl && !profile.youtube_url && !profile.spotify_url && !profile.tiktok_url && (
               <div className="p-8 rounded-2xl text-center" style={{ background: '#3D3D3D', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <p className="text-2xl mb-2">🎬</p>
-                <p className="text-snow/60 font-bold text-sm mb-1">No video yet</p>
-                <p className="text-snow/30 text-xs">Add a YouTube link in settings.</p>
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-3" style={{ background: 'rgba(220,127,65,0.15)', color: '#DC7F41' }}>
+                  <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                </div>
+                <p className="text-snow/60 font-bold text-sm mb-1">No media yet</p>
+                <p className="text-snow/30 text-xs">Add YouTube, Spotify, or TikTok in settings.</p>
               </div>
             )}
           </section>
@@ -786,7 +860,8 @@ export default function ProfilePage() {
   // ==============================
 
   if (profile.user_type === 'restaurant') {
-    const tonight = upcomingShows.some(s => s.date === new Date().toISOString().slice(0, 10))
+    const tonightShows = upcomingShows.filter(s => s.date === new Date().toISOString().slice(0, 10))
+    const tonight = tonightShows.length > 0
     const restaurantBg = 'radial-gradient(ellipse 50% 40% at 12% 8%, rgba(220,127,65,0.10), transparent 70%), radial-gradient(ellipse 50% 40% at 88% 92%, rgba(108,154,139,0.08), transparent 70%), #E8E4E0'
 
     return (
@@ -952,6 +1027,43 @@ export default function ProfilePage() {
 
         <main className="max-w-2xl mx-auto px-5 pb-20 space-y-0">
 
+          {/* Live Tonight spotlight */}
+          {tonight && (
+            <section className="py-6 border-b border-charcoal/[0.08]">
+              <div className="rounded-2xl p-5 overflow-hidden relative" style={{ background: 'linear-gradient(135deg, rgba(220,127,65,0.16) 0%, rgba(220,127,65,0.06) 100%)', border: '1.5px solid rgba(220,127,65,0.32)' }}>
+                <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 75% 65% at 95% 50%, rgba(220,127,65,0.14), transparent 70%)' }} />
+                <div className="relative">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="w-2 h-2 rounded-full bg-chestnut animate-pulse inline-block" />
+                    <p className="text-chestnut text-[10px] font-black uppercase tracking-[0.3em]">Live Tonight</p>
+                  </div>
+                  <div className="space-y-3">
+                    {tonightShows.map(show => (
+                      <div key={show.bookingId} className="flex items-center gap-3">
+                        <Avatar src={show.musicianAvatar ?? ''} className="w-12 h-12 rounded-2xl shrink-0" textSize="text-xl" bg="bg-chestnut/20" />
+                        <div className="flex-1 min-w-0">
+                          <button
+                            onClick={() => router.push('/profile/' + show.musicianId)}
+                            className="text-graphite font-black text-base leading-tight hover:text-chestnut transition-colors text-left block w-full truncate"
+                          >
+                            {show.musicianName}
+                          </button>
+                          <p className="text-charcoal/60 text-sm mt-0.5">{show.time}</p>
+                        </div>
+                        <button
+                          onClick={() => router.push('/profile/' + show.musicianId)}
+                          className="bg-chestnut text-snow px-4 py-2 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity shrink-0 shadow-sm"
+                        >
+                          View Artist
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
           {/* Bio */}
           {profile.bio && (
             <section className="py-6 border-b border-charcoal/[0.08]">
@@ -964,40 +1076,71 @@ export default function ProfilePage() {
           {(profile.instagram_url || profile.website || profile.tiktok_url || profile.youtube_url || profile.spotify_url) && (
             <section className="py-6 border-b border-charcoal/[0.08]">
               <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">· Connect</p>
-              <div className="flex flex-wrap gap-3">
+              <div className="bg-white rounded-2xl shadow-sm overflow-hidden divide-y divide-charcoal/[0.06]">
                 {profile.instagram_url && (
                   <a href={buildSocialUrl('instagram', profile.instagram_url)} target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 bg-white text-graphite text-sm font-semibold px-4 py-2 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-                    <SocialIcon type="instagram" />
-                    Instagram
+                    className="flex items-center gap-3 px-5 py-3.5 hover:bg-[#F5F2EF] transition-colors group">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-snow shadow-sm"
+                      style={{ background: 'linear-gradient(135deg, #405DE6 0%, #833AB4 35%, #C13584 55%, #FD1D1D 80%, #FCAF45 100%)' }}>
+                      <SocialIcon type="instagram" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-graphite font-bold text-sm">Instagram</p>
+                      <p className="text-charcoal/50 text-xs truncate">@{profile.instagram_url.replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\/?/, '').replace(/\/$/, '')}</p>
+                    </div>
+                    <svg className="w-4 h-4 text-charcoal/25 group-hover:text-chestnut transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                   </a>
                 )}
                 {profile.tiktok_url && (
                   <a href={buildSocialUrl('tiktok', profile.tiktok_url)} target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 bg-white text-graphite text-sm font-semibold px-4 py-2 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-                    <SocialIcon type="tiktok" />
-                    TikTok
+                    className="flex items-center gap-3 px-5 py-3.5 hover:bg-[#F5F2EF] transition-colors group">
+                    <div className="w-9 h-9 rounded-xl bg-black flex items-center justify-center shrink-0 text-snow shadow-sm">
+                      <SocialIcon type="tiktok" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-graphite font-bold text-sm">TikTok</p>
+                      <p className="text-charcoal/50 text-xs truncate">@{profile.tiktok_url.replace(/^@/, '').replace(/^https?:\/\/(www\.)?tiktok\.com\/@?/, '').replace(/\/$/, '')}</p>
+                    </div>
+                    <svg className="w-4 h-4 text-charcoal/25 group-hover:text-chestnut transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                   </a>
                 )}
                 {profile.youtube_url && (
                   <a href={buildSocialUrl('youtube', profile.youtube_url)} target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 bg-white text-graphite text-sm font-semibold px-4 py-2 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-                    <SocialIcon type="youtube" />
-                    YouTube
+                    className="flex items-center gap-3 px-5 py-3.5 hover:bg-[#F5F2EF] transition-colors group">
+                    <div className="w-9 h-9 rounded-xl bg-red-600 flex items-center justify-center shrink-0 text-snow shadow-sm">
+                      <SocialIcon type="youtube" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-graphite font-bold text-sm">YouTube</p>
+                      <p className="text-charcoal/50 text-xs truncate">{profile.youtube_url.replace(/^https?:\/\/(www\.)?youtube\.com\/@?/, '').replace(/^https?:\/\/youtu\.be\//, '').replace(/\/$/, '')}</p>
+                    </div>
+                    <svg className="w-4 h-4 text-charcoal/25 group-hover:text-chestnut transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                   </a>
                 )}
                 {profile.spotify_url && (
                   <a href={buildSocialUrl('spotify', profile.spotify_url)} target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 bg-white text-graphite text-sm font-semibold px-4 py-2 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-                    <SocialIcon type="spotify" />
-                    Spotify
+                    className="flex items-center gap-3 px-5 py-3.5 hover:bg-[#F5F2EF] transition-colors group">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-snow shadow-sm" style={{ background: '#1DB954' }}>
+                      <SocialIcon type="spotify" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-graphite font-bold text-sm">Spotify</p>
+                      <p className="text-charcoal/50 text-xs truncate">{profile.spotify_url.replace(/^https?:\/\/open\.spotify\.com\//, '').replace(/\/$/, '')}</p>
+                    </div>
+                    <svg className="w-4 h-4 text-charcoal/25 group-hover:text-chestnut transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                   </a>
                 )}
                 {profile.website && (
                   <a href={buildSocialUrl('website', profile.website)} target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 bg-white text-graphite text-sm font-semibold px-4 py-2 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-                    <SocialIcon type="website" />
-                    {profile.website.replace(/^https?:\/\//, '').split('/')[0]}
+                    className="flex items-center gap-3 px-5 py-3.5 hover:bg-[#F5F2EF] transition-colors group">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-snow shadow-sm" style={{ background: '#333333' }}>
+                      <SocialIcon type="website" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-graphite font-bold text-sm">Website</p>
+                      <p className="text-charcoal/50 text-xs truncate">{profile.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}</p>
+                    </div>
+                    <svg className="w-4 h-4 text-charcoal/25 group-hover:text-chestnut transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                   </a>
                 )}
               </div>

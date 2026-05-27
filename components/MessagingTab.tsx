@@ -383,11 +383,8 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
     if (!messagesByConv.has(convId)) await loadMessages(convId)
     await supabase.from('messages').update({ read: true })
       .eq('conversation_id', convId).eq('receiver_id', userIdRef.current)
-    setConversations(prev => {
-      const updated = prev.map(c => c.id === convId ? { ...c, unread: false } : c)
-      onUnreadChange?.(updated.filter(c => c.unread).length)
-      return updated
-    })
+    setConversations(prev => prev.map(c => c.id === convId ? { ...c, unread: false } : c))
+    onUnreadChange?.(conversations.filter(c => c.unread && c.id !== convId).length)
   }
 
   // ---- Delete thread ----
@@ -399,11 +396,8 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
       await supabase.from('messages').delete()
         .eq('conversation_id', convId)
         .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)
-      setConversations(prev => {
-        const updated = prev.filter(c => c.id !== convId)
-        onUnreadChange?.(updated.filter(c => c.unread).length)
-        return updated
-      })
+      setConversations(prev => prev.filter(c => c.id !== convId))
+      onUnreadChange?.(conversations.filter(c => c.unread && c.id !== convId).length)
       setMessagesByConv(prev => { const map = new Map(prev); map.delete(convId); return map })
       if (selectedConvId === convId) setSelectedConvId(null)
       setDeleteConfirmConvId(null)

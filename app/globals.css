@@ -26,3 +26,122 @@
   }
   .spin-slow { animation: spin-slow 18s linear infinite; }
 }
+
+/* ------------------------------------------------------------------ */
+/* Tab bar hover animations                                             */
+/* Defined as plain CSS outside @layer so Tailwind JIT never purges    */
+/* them — class names are assembled dynamically via template literals.  */
+/* Button gets class tab-hover-{name}; icon span gets class tab-icon.  */
+/* ------------------------------------------------------------------ */
+
+/* bounce: jumps up like leaping onstage */
+@keyframes tab-bounce {
+  0%   { transform: translateY(0) scale(1); }
+  28%  { transform: translateY(-10px) scale(1.18); }
+  52%  { transform: translateY(-1px) scale(0.94); }
+  72%  { transform: translateY(-5px) scale(1.08); }
+  88%  { transform: translateY(-1px) scale(0.98); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+/* sway: swings like a note grooving to the beat */
+@keyframes tab-sway {
+  0%   { transform: rotate(0deg) scale(1); }
+  18%  { transform: rotate(-24deg) scale(1.12); }
+  40%  { transform: rotate(20deg) scale(1.1); }
+  58%  { transform: rotate(-13deg) scale(1.05); }
+  74%  { transform: rotate(8deg); }
+  88%  { transform: rotate(-3deg); }
+  100% { transform: rotate(0deg) scale(1); }
+}
+
+/* stamp: punches down like approving a booking */
+@keyframes tab-stamp {
+  0%   { transform: scale(1) translateY(0); }
+  28%  { transform: scale(1.5) translateY(-6px); }
+  52%  { transform: scale(0.80) translateY(5px); }
+  70%  { transform: scale(1.18) translateY(-1px); }
+  86%  { transform: scale(0.95); }
+  100% { transform: scale(1) translateY(0); }
+}
+
+/* spin: full 360 like a spotlight scanning the room */
+@keyframes tab-spin {
+  0%   { transform: rotate(0deg) scale(1); }
+  45%  { transform: rotate(210deg) scale(1.22); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+/* pop: chat bubble bursts into existence */
+@keyframes tab-pop {
+  0%   { transform: scale(1) translateY(0); }
+  20%  { transform: scale(1.45) translateY(-5px); }
+  42%  { transform: scale(0.82) translateY(4px); }
+  64%  { transform: scale(1.18) translateY(-2px); }
+  83%  { transform: scale(0.97); }
+  100% { transform: scale(1) translateY(0); }
+}
+
+/* float: drifts upward like stepping into a spotlight */
+@keyframes tab-float {
+  0%   { transform: translateY(0) scale(1); }
+  30%  { transform: translateY(-9px) scale(1.2); }
+  55%  { transform: translateY(-5px) scale(1.1); }
+  75%  { transform: translateY(-8px) scale(1.15); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+/* toss: flung up with a spin, like flipping a page in the booking ledger */
+@keyframes tab-toss {
+  0%   { transform: translateY(0) scale(1) rotate(0deg); }
+  28%  { transform: translateY(-11px) scale(1.28) rotate(-18deg); }
+  52%  { transform: translateY(3px) scale(0.88) rotate(10deg); }
+  72%  { transform: translateY(-4px) scale(1.06) rotate(-4deg); }
+  88%  { transform: translateY(1px) scale(0.98); }
+  100% { transform: translateY(0) scale(1) rotate(0deg); }
+}
+
+/* pulse: double-beat heartbeat — the venue's heartbeat */
+@keyframes tab-pulse {
+  0%   { transform: scale(1); }
+  18%  { transform: scale(1.38); }
+  36%  { transform: scale(0.88); }
+  54%  { transform: scale(1.24); }
+  72%  { transform: scale(0.94); }
+  86%  { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+/* shake: excited rattle, like something screaming to be discovered */
+@keyframes tab-shake {
+  0%   { transform: translateX(0) rotate(0deg); }
+  10%  { transform: translateX(-6px) rotate(-10deg); }
+  24%  { transform: translateX(6px) rotate(10deg); }
+  36%  { transform: translateX(-5px) rotate(-7deg); }
+  48%  { transform: translateX(5px) rotate(7deg); }
+  60%  { transform: translateX(-3px) rotate(-4deg); }
+  72%  { transform: translateX(3px) rotate(4deg); }
+  84%  { transform: translateX(-1px) rotate(-2deg); }
+  100% { transform: translateX(0) rotate(0deg); }
+}
+
+/* ping: heart swells big like a loud beat */
+@keyframes tab-ping {
+  0%   { transform: scale(1); }
+  22%  { transform: scale(1.60); }
+  46%  { transform: scale(0.78); }
+  66%  { transform: scale(1.28); }
+  82%  { transform: scale(0.93); }
+  100% { transform: scale(1); }
+}
+
+.tab-hover-bounce:hover .tab-icon { animation: tab-bounce 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.tab-hover-sway:hover   .tab-icon { animation: tab-sway   0.65s ease-in-out both; }
+.tab-hover-stamp:hover  .tab-icon { animation: tab-stamp  0.50s cubic-bezier(0.68, -0.55, 0.27, 1.55) both; }
+.tab-hover-spin:hover   .tab-icon { animation: tab-spin   0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.tab-hover-pop:hover    .tab-icon { animation: tab-pop    0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.tab-hover-float:hover  .tab-icon { animation: tab-float  0.65s ease-in-out both; }
+.tab-hover-toss:hover   .tab-icon { animation: tab-toss   0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.tab-hover-pulse:hover  .tab-icon { animation: tab-pulse  0.58s ease-in-out both; }
+.tab-hover-shake:hover  .tab-icon { animation: tab-shake  0.62s ease-in-out both; }
+.tab-hover-ping:hover   .tab-icon { animation: tab-ping   0.52s cubic-bezier(0.34, 1.56, 0.64, 1) both; }

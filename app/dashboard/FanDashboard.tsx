@@ -984,11 +984,11 @@ export default function FanDashboard() {
       {/* ---- BOTTOM TAB BAR ---- */}
       <nav className="fixed bottom-0 left-0 right-0 bg-graphite/95 backdrop-blur-md border-t border-charcoal/30 z-40">
         <div className="max-w-2xl mx-auto grid grid-cols-5 px-2 py-2">
-          <TabButton icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>} label="Feed"      active={activeTab === 'feed'}      onClick={() => setActiveTab('feed')} />
-          <TabButton icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>} label="Discover"  active={activeTab === 'discover'}  onClick={() => setActiveTab('discover')} />
-          <TabButton icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>} label="Following" active={activeTab === 'following'} onClick={() => setActiveTab('following')} badge={followingCount} />
-          <TabButton icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>} label="Messages"  active={activeTab === 'messages'}  onClick={() => setActiveTab('messages')} badge={msgUnread} />
-          <TabButton icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>} label="Profile"   active={activeTab === 'profile'}   onClick={() => setActiveTab('profile')} />
+          <TabButton animation="sway"    icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>} label="Feed"      active={activeTab === 'feed'}      onClick={() => setActiveTab('feed')} />
+          <TabButton animation="shake"   icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>} label="Discover"  active={activeTab === 'discover'}  onClick={() => setActiveTab('discover')} />
+          <TabButton animation="ping"    icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>} label="Following" active={activeTab === 'following'} onClick={() => setActiveTab('following')} badge={followingCount} />
+          <TabButton animation="pop"     icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>} label="Messages"  active={activeTab === 'messages'}  onClick={() => setActiveTab('messages')} badge={msgUnread} />
+          <TabButton animation="float"   icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>} label="Profile"   active={activeTab === 'profile'}   onClick={() => setActiveTab('profile')} />
         </div>
       </nav>
 
@@ -1184,17 +1184,18 @@ function StatCard({ value, label, color, icon, highlight }: {
   )
 }
 
-function TabButton({ icon, label, active, onClick, badge }: {
+function TabButton({ icon, label, active, onClick, badge, animation = 'bounce' }: {
   icon: React.ReactNode
   label: string
   active: boolean
   onClick: () => void
   badge?: number
+  animation?: string
 }) {
   return (
-    <button onClick={onClick} className="py-1 flex flex-col items-center gap-1 transition-colors relative">
+    <button onClick={onClick} className={`py-1 flex flex-col items-center gap-1 transition-colors relative tab-hover-${animation}`}>
       <div className={`relative w-11 h-9 rounded-xl flex items-center justify-center transition-all ${active ? 'bg-chestnut shadow-md' : ''}`}>
-        <span className={`w-5 h-5 ${active ? 'text-snow' : 'text-snow/50'}`}>{icon}</span>
+        <span className={`tab-icon w-5 h-5 ${active ? 'text-snow' : 'text-snow/50'}`}>{icon}</span>
         {badge != null && badge > 0 && (
           <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-chestnut border-2 border-graphite rounded-full text-[9px] text-snow font-bold flex items-center justify-center">
             {badge}
