@@ -112,6 +112,7 @@ export default function PrivacyPage() {
                   <li><strong>Stripe:</strong> payment processing and Stripe Connect for musician payouts.</li>
                   <li><strong>Google:</strong> OAuth authentication and location autocomplete (Places API).</li>
                   <li><strong>Vercel:</strong> hosting and edge network delivery.</li>
+                  <li><strong>Resend:</strong> transactional email delivery for booking confirmations, notifications, and account alerts.</li>
                 </ul>
                 <p>These providers are contractually bound to use your data only to provide services to us, not for their own purposes.</p>
               </Subsection>

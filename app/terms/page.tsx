@@ -85,6 +85,7 @@ export default function TermsPage() {
                   <li>If you must cancel, you will notify the restaurant and Drum Up as early as possible.</li>
                   <li>You have all rights to any media (audio, video, photos) you upload to your profile.</li>
                 </ul>
+                <p>Musicians and artists using Drum Up are independent contractors and not employees, agents, or partners of Drum Up or of any restaurant or venue. Nothing in these Terms creates an employment relationship. Musicians are solely responsible for their own equipment, transportation, and professional conduct at any engagement booked through the platform.</p>
               </Subsection>
               <Subsection title="Fans">
                 <p>Fans use Drum Up to discover live music at local venues. Fan accounts are free. Fans may follow musicians and restaurants and receive notifications of upcoming events. Fans are not permitted to contact restaurants or musicians through the platform for the purpose of soliciting direct bookings that circumvent Drum Up.</p>
@@ -95,7 +96,7 @@ export default function TermsPage() {
               <p>When a restaurant confirms a musician application, a booking is created. All payment for confirmed bookings must be processed through Drum Up's integrated payment system (powered by Stripe Connect).</p>
 
               <Subsection title="Platform Fee">
-                <p>Drum Up charges a platform fee of 5-10% on each booking. The exact fee percentage is displayed before confirmation. This fee covers payment processing, platform maintenance, and fraud protection.</p>
+                <p>Drum Up charges a platform fee of 8% on each booking. This fee is deducted at the time of payment and covers payment processing, platform maintenance, and fraud protection.</p>
               </Subsection>
 
               <Subsection title="Payouts">
@@ -109,11 +110,11 @@ export default function TermsPage() {
 
             <Section title="7. Cancellations and Refunds">
               <Subsection title="Cancellation by Restaurant">
-                <p>If a restaurant cancels a confirmed booking more than 48 hours before the performance, the musician will be notified and the booking will be voided with no charge. Cancellations within 48 hours of the performance may incur a cancellation fee, which may be paid to the musician as partial compensation at Drum Up's discretion.</p>
+                <p>If a restaurant cancels a confirmed booking at any time, the restaurant will be refunded the gig pay amount minus the 8% platform fee, which is retained by Drum Up. The musician will be notified promptly. The platform fee is non-refundable regardless of when the cancellation occurs.</p>
               </Subsection>
 
               <Subsection title="Cancellation by Musician">
-                <p>Musicians who cancel a confirmed booking within 48 hours of the performance may have their account flagged or temporarily suspended. Repeated cancellations may result in permanent removal from the platform.</p>
+                <p>If a musician cancels a confirmed booking with more than 48 hours' notice before the performance, the booking is voided and the restaurant receives a full refund of the gig pay with no platform fee retained. If a musician cancels within 48 hours of the scheduled performance, their account will be automatically suspended pending review. Repeated late cancellations may result in permanent removal from the platform.</p>
               </Subsection>
 
               <Subsection title="Disputes">
@@ -121,7 +122,19 @@ export default function TermsPage() {
               </Subsection>
             </Section>
 
-            <Section title="8. Prohibited Conduct">
+            <Section title="8. Music Licensing and Performance Rights">
+              <p>Drum Up is a booking marketplace only and is not responsible for ensuring compliance with music performance licensing requirements, including but not limited to licenses issued by ASCAP, BMI, and SESAC.</p>
+              <p>Restaurants and venues are solely responsible for obtaining any required performance licenses for their establishment prior to hosting live music. This includes blanket licenses for publicly performed musical compositions where required by applicable law.</p>
+              <p>Musicians are solely responsible for ensuring they have the rights to perform any material included in their sets. Drum Up makes no representations and accepts no liability regarding the licensing status of any music performed at a booked engagement.</p>
+            </Section>
+
+            <Section title="9. Taxes and Reporting">
+              <p>Musicians are responsible for reporting and paying all applicable federal, state, and local taxes on income earned through the Drum Up platform. Drum Up does not withhold taxes on behalf of musicians.</p>
+              <p>Drum Up and its payment processor Stripe may be required to issue IRS Form 1099-K to musicians who exceed applicable reporting thresholds under federal tax law. By using the platform, musicians agree to provide accurate tax identification information as required and acknowledge that Drum Up may report payment information to the IRS and other applicable tax authorities.</p>
+              <p>Musicians should consult a qualified tax professional regarding their individual tax obligations. Drum Up is not a tax advisor and nothing in these Terms constitutes tax advice.</p>
+            </Section>
+
+            <Section title="10. Prohibited Conduct">
               <p>You agree not to:</p>
               <ul>
                 <li>Post false, misleading, or fraudulent information on your profile or in slot listings.</li>
@@ -136,37 +149,37 @@ export default function TermsPage() {
               <p>Violations may result in account suspension or permanent termination.</p>
             </Section>
 
-            <Section title="9. Intellectual Property">
+            <Section title="11. Intellectual Property">
               <p>The Drum Up name, logo, and all platform content created by Drum Up are protected by copyright and trademark law. You may not use our branding without express written permission.</p>
               <p>Content you upload (profile photos, performance videos, bio text) remains yours. By uploading it, you grant Drum Up a non-exclusive, royalty-free, worldwide license to display and distribute that content as part of operating the Service, including for marketing and promotional purposes. You may revoke this license by deleting the content from your account.</p>
             </Section>
 
-            <Section title="10. Third-Party Services">
+            <Section title="12. Third-Party Services">
               <p>Drum Up integrates with third-party services including Stripe (payments), Google (authentication and location), and Supabase (infrastructure). Your use of those services is subject to their respective terms and privacy policies. Drum Up is not responsible for the acts or omissions of any third-party provider.</p>
             </Section>
 
-            <Section title="11. Disclaimers">
+            <Section title="13. Disclaimers">
               <p>The Service is provided "as is" and "as available" without warranties of any kind, express or implied. Drum Up does not warrant that the Service will be uninterrupted, error-free, or free of harmful components. We do not endorse any musician, restaurant, or other user, and we make no representations about the quality, safety, or legality of any listing or performance.</p>
             </Section>
 
-            <Section title="12. Limitation of Liability">
+            <Section title="14. Limitation of Liability">
               <p>To the fullest extent permitted by applicable law, Drum Up and its officers, directors, employees, and agents shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising out of or related to your use of the Service, even if Drum Up has been advised of the possibility of such damages.</p>
               <p>Drum Up's total liability to you for any claim arising out of these Terms or the Service shall not exceed the greater of: (a) the amount you paid to Drum Up in the 12 months preceding the claim, or (b) one hundred dollars ($100 USD).</p>
             </Section>
 
-            <Section title="13. Indemnification">
+            <Section title="15. Indemnification">
               <p>You agree to indemnify, defend, and hold harmless Drum Up and its affiliates from any claims, losses, liabilities, damages, costs, or expenses (including reasonable attorneys' fees) arising from: (a) your use of the Service; (b) your violation of these Terms; (c) your violation of any third-party rights; or (d) any content you submit to the Service.</p>
             </Section>
 
-            <Section title="14. Governing Law">
+            <Section title="16. Governing Law">
               <p>These Terms are governed by the laws of the Commonwealth of Pennsylvania, without regard to its conflict of law principles. Any disputes arising under these Terms shall be resolved exclusively in the state or federal courts located in Philadelphia, Pennsylvania, and you consent to personal jurisdiction in those courts.</p>
             </Section>
 
-            <Section title="15. Termination">
+            <Section title="17. Termination">
               <p>We reserve the right to suspend or terminate your account at any time, with or without notice, for violations of these Terms or for any other reason at our sole discretion. You may delete your account at any time from your account settings. Upon termination, your right to use the Service ceases immediately, though these Terms will otherwise survive termination to the extent applicable.</p>
             </Section>
 
-            <Section title="16. Contact Us">
+            <Section title="18. Contact Us">
               <p>Questions about these Terms? Reach us at:</p>
               <p className="font-semibold text-graphite">support@drumup.app</p>
             </Section>

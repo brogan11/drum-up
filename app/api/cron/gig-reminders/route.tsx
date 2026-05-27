@@ -2,10 +2,14 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sendEmail } from '@/lib/send-email'
 import { GigReminderEmail } from '@/emails/GigReminderEmail'
+import { checkRateLimit, cronLimiter } from '@/lib/ratelimit'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: Request) {
+  const rl = await checkRateLimit(request, cronLimiter)
+  if (rl.limited) return rl.response!
+
   const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
