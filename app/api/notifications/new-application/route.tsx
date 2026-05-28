@@ -63,22 +63,31 @@ export async function POST(request: Request) {
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://drum-up.app'
 
-    await sendEmail({
-      to: restaurantEmail,
-      subject: `New application from ${musicianName}`,
-      emailComponent: (
-        <NewApplicationEmail
-          restaurantName={restaurantName}
-          musicianName={musicianName}
-          performerType={performerType as 'solo' | 'band'}
-          applicationNote={booking.note ?? ''}
-          gigDate={gigDate}
-          gigTime={gigTime}
-          payAmount={Number(booking.pay_amount) || 0}
-          dashboardUrl={`${appUrl}/dashboard`}
-        />
-      ),
-    })
+    await Promise.all([
+      sendEmail({
+        to: restaurantEmail,
+        subject: `New application from ${musicianName}`,
+        emailComponent: (
+          <NewApplicationEmail
+            restaurantName={restaurantName}
+            musicianName={musicianName}
+            performerType={performerType as 'solo' | 'band'}
+            applicationNote={booking.note ?? ''}
+            gigDate={gigDate}
+            gigTime={gigTime}
+            payAmount={Number(booking.pay_amount) || 0}
+            dashboardUrl={`${appUrl}/dashboard`}
+          />
+        ),
+      }),
+      supabaseAdmin.from('notifications').insert({
+        user_id: booking.restaurant_id,
+        type: 'new_application',
+        title: `New application from ${musicianName}`,
+        body: `${musicianName} applied for your ${gigDate} slot`,
+        link: '/dashboard',
+      }),
+    ])
 
     return NextResponse.json({ success: true })
   } catch (err) {

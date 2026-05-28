@@ -133,7 +133,7 @@ export default function PrivacyPage() {
 
             <Section title="7. Your Rights and Choices">
               <Subsection title="Access and Correction">
-                <p>You may view and update your profile information at any time from your account settings. If you believe we hold inaccurate data about you that you cannot correct through the app, contact us at support@drumup.app.</p>
+                <p>You may view and update your profile information at any time from your account settings. If you believe we hold inaccurate data about you that you cannot correct through the app, contact us at brogan.smith525@gmail.com.</p>
               </Subsection>
 
               <Subsection title="Account Deletion">
@@ -149,7 +149,7 @@ export default function PrivacyPage() {
               </Subsection>
 
               <Subsection title="California Residents">
-                <p>If you are a California resident, you have the right to request disclosure of the categories and specific pieces of personal information we have collected about you, to request deletion of your personal information, and to opt out of any sale of personal information. We do not sell personal information. To exercise your rights, contact support@drumup.app.</p>
+                <p>If you are a California resident, you have the right to request disclosure of the categories and specific pieces of personal information we have collected about you, to request deletion of your personal information, and to opt out of any sale of personal information. We do not sell personal information. To exercise your rights, contact brogan.smith525@gmail.com.</p>
               </Subsection>
             </Section>
 
@@ -164,11 +164,11 @@ export default function PrivacyPage() {
             </Section>
 
             <Section title="9. Security">
-              <p>We implement industry-standard security measures including encrypted data transmission (TLS), hashed passwords, Row Level Security policies on our database, and access controls that limit which employees can access user data. No method of transmission or storage is 100% secure. If you discover a potential security vulnerability, please report it to security@drumup.app.</p>
+              <p>We implement industry-standard security measures including encrypted data transmission (TLS), hashed passwords, Row Level Security policies on our database, and access controls that limit which employees can access user data. No method of transmission or storage is 100% secure. If you discover a potential security vulnerability, please report it to brogan.smith525@gmail.com.</p>
             </Section>
 
             <Section title="10. Children's Privacy">
-              <p>Drum Up is not intended for users under the age of 18. We do not knowingly collect personal information from anyone under 18. If we become aware that a minor has created an account, we will delete the account and associated data promptly. Contact us at support@drumup.app if you believe we have collected information from a minor.</p>
+              <p>Drum Up is not intended for users under the age of 18. We do not knowingly collect personal information from anyone under 18. If we become aware that a minor has created an account, we will delete the account and associated data promptly. Contact us at brogan.smith525@gmail.com if you believe we have collected information from a minor.</p>
             </Section>
 
             <Section title="11. Changes to This Policy">
@@ -177,7 +177,7 @@ export default function PrivacyPage() {
 
             <Section title="12. Contact Us">
               <p>If you have questions about this Privacy Policy or how we handle your data, please contact us:</p>
-              <p className="font-semibold text-graphite">support@drumup.app</p>
+              <p className="font-semibold text-graphite">brogan.smith525@gmail.com</p>
             </Section>
 
           </div>

@@ -8,6 +8,7 @@ import { Avatar } from '@/components/Avatar'
 import { useToast } from '@/components/Toast'
 import { SkeletonProfilePageMusician, SkeletonProfilePageLight } from '@/components/Skeleton'
 import { buildSocialUrl } from '@/lib/social-urls'
+import InviteModal from '@/components/InviteModal'
 
 // ---- Types ----
 
@@ -192,6 +193,8 @@ export default function ProfilePage() {
   const [followersCount, setFollowersCount] = useState(0)
   const [followingCount, setFollowingCount] = useState(0)
 
+  const [inviteModalOpen, setInviteModalOpen] = useState(false)
+
   const [eligibleBookingId, setEligibleBookingId] = useState<string | null>(null)
   const [hasReviewed, setHasReviewed] = useState(false)
   const [reviewModalOpen, setReviewModalOpen] = useState(false)
@@ -261,9 +264,12 @@ export default function ProfilePage() {
 
       const pid = pd.id
 
-      // Track profile view — fire and forget, ignore if table doesn't exist yet
+      // Track profile view — upserts one row per viewer; re-visits refresh viewed_at for accurate 7d/30d windows
       if (user.id !== pid) {
-        supabase.from('profile_views').insert({ profile_id: pid, viewer_id: user.id }).then(() => {})
+        void supabase.from('profile_views').upsert(
+          { profile_id: pid, viewer_id: user.id, viewed_at: new Date().toISOString() },
+          { onConflict: 'profile_id,viewer_id' }
+        )
       }
 
       const [{ count: fc }, { count: fng }, { data: frow }] = await Promise.all([
@@ -596,10 +602,12 @@ export default function ProfilePage() {
                 </button>
               ) : (
                 <>
-                  {viewer?.user_type === 'restaurant' && (
-                    <button onClick={() => router.push('/dashboard')}
-                      className="bg-chestnut text-snow px-5 py-2.5 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity">
-                      Apply to Book
+                  {viewer?.user_type === 'restaurant' && profile?.user_type === 'musician' && (
+                    <button
+                      onClick={() => setInviteModalOpen(true)}
+                      className="bg-chestnut text-snow px-5 py-2.5 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity"
+                    >
+                      Invite to Gig
                     </button>
                   )}
                   <button onClick={handleToggleFollow} disabled={followLoading}
@@ -850,6 +858,18 @@ export default function ProfilePage() {
           <ReviewModal displayName={displayName} reviewRating={reviewRating} reviewText={reviewText}
             submitting={submittingReview} onClose={() => setReviewModalOpen(false)}
             onRating={setReviewRating} onText={setReviewText} onSubmit={handleSubmitReview} />
+        )}
+
+        {inviteModalOpen && profile && (
+          <InviteModal
+            musicianId={profile.id}
+            musicianName={displayName}
+            onClose={() => setInviteModalOpen(false)}
+            onSuccess={() => {
+              setInviteModalOpen(false)
+              toast.success(`Invite sent to ${displayName}! They'll be notified to accept or decline.`)
+            }}
+          />
         )}
       </div>
     )

@@ -99,6 +99,16 @@ export async function POST(request: Request) {
       )
     }
 
+    sends.push(
+      supabaseAdmin.from('notifications').insert({
+        user_id: booking.restaurant_id,
+        type: 'booking_confirmed',
+        title: 'Booking confirmed',
+        body: `${musicianName} is confirmed for ${gigDate}`,
+        link: '/dashboard',
+      }) as unknown as Promise<unknown>,
+    )
+
     if (musicianAuth?.email) {
       sends.push(
         sendEmail({
@@ -114,6 +124,16 @@ export async function POST(request: Request) {
         }),
       )
     }
+
+    sends.push(
+      supabaseAdmin.from('notifications').insert({
+        user_id: booking.musician_id,
+        type: 'booking_confirmed',
+        title: 'Booking confirmed!',
+        body: `You're confirmed at ${restaurantName} for ${gigDate}`,
+        link: '/dashboard',
+      }) as unknown as Promise<unknown>,
+    )
 
     await Promise.all(sends)
 

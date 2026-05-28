@@ -10,6 +10,7 @@ import { buildSocialUrl } from '@/lib/social-urls'
 import { Avatar } from '@/components/Avatar'
 import MessagingTab, { MessagingTabRef } from '@/components/MessagingTab'
 import { useToast } from '@/components/Toast'
+import NotificationBell from '@/components/NotificationBell'
 import {
   SkeletonStatCard,
   SkeletonBookingCard,
@@ -48,6 +49,8 @@ interface Booking {
   note: string
   paymentStatus: string | null
   payoutReleased: boolean
+  source: string
+  inviteAccepted: boolean | null
 }
 
 interface MusicianProfile {
@@ -63,6 +66,18 @@ interface MusicianProfile {
   legalName: string
   performerType: 'solo' | 'band' | ''
   bandMembers: number | null
+}
+
+interface MusicianAvailSlot {
+  id: string
+  date: string
+  dateLabel: string
+  start_time: string | null
+  end_time: string | null
+  genres: string[]
+  min_pay: number | null
+  notes: string | null
+  status: string
 }
 
 // ---- Constants ----
@@ -172,13 +187,20 @@ export default function MusicianDashboard() {
   const [showStripeExplainModal, setShowStripeExplainModal] = useState(false)
   const [showStripeRefreshModal, setShowStripeRefreshModal] = useState(false)
 
+  // Musician availability
+  const [showAvailabilityModal, setShowAvailabilityModal] = useState(false)
+  const [myAvailability, setMyAvailability] = useState<MusicianAvailSlot[]>([])
+  const [availLoading, setAvailLoading] = useState(false)
+  const [profileLat, setProfileLat] = useState<number | null>(null)
+  const [profileLon, setProfileLon] = useState<number | null>(null)
+
   // ---- Data loading ----
 
   const loadMyBookings = async (uid: string, myLat: number | null, myLon: number | null) => {
     try {
       const { data: myBookings, error: bookingsErr } = await supabase
         .from('bookings')
-        .select('id, availability_id, restaurant_id, status, pay_amount, note, created_at, payment_status, payout_released')
+        .select('id, availability_id, restaurant_id, status, pay_amount, note, created_at, payment_status, payout_released, source, invite_accepted')
         .eq('musician_id', uid)
         .order('created_at', { ascending: false })
 
@@ -240,6 +262,8 @@ export default function MusicianDashboard() {
           note: b.note ?? '',
           paymentStatus: (b as Record<string, unknown>).payment_status as string | null ?? null,
           payoutReleased: ((b as Record<string, unknown>).payout_released as boolean | null) ?? false,
+          source: (b as Record<string, unknown>).source as string ?? 'application',
+          inviteAccepted: (b as Record<string, unknown>).invite_accepted as boolean | null ?? null,
         }
       })
       setBookings(mapped)
@@ -288,6 +312,9 @@ export default function MusicianDashboard() {
         const myLat = data.latitude as number | null
         const myLon = data.longitude as number | null
         const maxMiles = (data.max_distance_miles as number | null) ?? 20
+
+        setProfileLat(myLat)
+        setProfileLon(myLon)
 
         await loadMyBookings(user.id, myLat, myLon)
         setDataLoading(false)
@@ -380,9 +407,12 @@ export default function MusicianDashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Load analytics when profile tab is first opened
+  // Load analytics and availability when profile tab is first opened
   useEffect(() => {
-    if (activeTab === 'profile' && userId) loadAnalytics(userId)
+    if (activeTab === 'profile' && userId) {
+      loadAnalytics(userId)
+      void loadMyAvailability(userId)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, userId])
 
@@ -557,6 +587,36 @@ export default function MusicianDashboard() {
     }
   }
 
+  const loadMyAvailability = async (uid: string) => {
+    setAvailLoading(true)
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      const { data } = await supabase
+        .from('musician_availability')
+        .select('id, date, start_time, end_time, genres, min_pay, notes, status')
+        .eq('musician_id', uid)
+        .gte('date', today)
+        .order('date', { ascending: true })
+      if (data) {
+        setMyAvailability(data.map(s => ({
+          id: s.id,
+          date: s.date,
+          dateLabel: new Date(s.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+          start_time: s.start_time?.slice(0, 5) ?? null,
+          end_time: s.end_time?.slice(0, 5) ?? null,
+          genres: Array.isArray(s.genres) ? s.genres : [],
+          min_pay: s.min_pay != null ? Number(s.min_pay) : null,
+          notes: s.notes ?? null,
+          status: s.status,
+        })))
+      }
+    } catch (err) {
+      console.error('Failed to load availability:', err)
+    } finally {
+      setAvailLoading(false)
+    }
+  }
+
   const [applying, setApplying] = useState(false)
   const [applyError, setApplyError] = useState('')
 
@@ -611,6 +671,8 @@ export default function MusicianDashboard() {
         note: applyNote,
         paymentStatus: null,
         payoutReleased: false,
+        source: 'application',
+        inviteAccepted: null,
       }
       setBookings(prev => [booking, ...prev])
       setGigs(prev => prev.filter(g => g.id !== gig.id))
@@ -625,6 +687,39 @@ export default function MusicianDashboard() {
       toast.error('Failed to send application. Please try again.')
     } finally {
       setApplying(false)
+    }
+  }
+
+  const handleRespondInvite = async (bookingId: string, response: 'accept' | 'decline') => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { toast.error('Please log in again.'); return }
+
+      const res = await fetch('/api/bookings/respond-invite', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ booking_id: bookingId, response }),
+      })
+      const data = await res.json() as { success?: boolean; error?: string }
+      if (!res.ok) throw new Error(data.error ?? 'Failed to respond')
+
+      if (response === 'accept') {
+        setBookings(prev => prev.map(b =>
+          b.id === bookingId ? { ...b, inviteAccepted: true } : b
+        ))
+        toast.success('Invite accepted! The venue will be notified to complete payment.')
+      } else {
+        setBookings(prev => prev.map(b =>
+          b.id === bookingId ? { ...b, inviteAccepted: false, status: 'cancelled' } : b
+        ))
+        toast.info('Invite declined.')
+      }
+    } catch (err) {
+      console.error('Respond invite failed:', err)
+      toast.error(err instanceof Error ? err.message : 'Could not respond to invite. Please try again.')
     }
   }
 
@@ -747,34 +842,37 @@ export default function MusicianDashboard() {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-chestnut" />
             </span>
           </div>
-          <div className="relative">
-            <button
-              onClick={() => setHeaderMenuOpen(o => !o)}
-              className="flex items-center gap-2 group"
-            >
-              {profile.avatar
-                ? <img src={profile.avatar} alt="" className="w-8 h-8 rounded-full object-cover border-2 border-chestnut/40 group-hover:border-chestnut transition-colors" />
-                : <div className="w-8 h-8 rounded-full bg-graphite border-2 border-chestnut/40 group-hover:border-chestnut transition-colors flex items-center justify-center text-snow text-xs font-black">
-                    {profile.name.slice(0, 2).toUpperCase() || 'DU'}
-                  </div>}
-            </button>
-            {headerMenuOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setHeaderMenuOpen(false)} />
-                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl z-50 overflow-hidden border border-charcoal/10">
-                  <button onClick={() => { router.push('/profile/' + userId); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
-                    <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> View Profile
-                  </button>
-                  <button onClick={() => { router.push('/settings'); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
-                    <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg> Settings
-                  </button>
-                  <div className="border-t border-charcoal/10" />
-                  <button onClick={() => { handleLogout(); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-medium text-charcoal hover:bg-snow transition-colors flex items-center gap-2">
-                    <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg> Log Out
-                  </button>
-                </div>
-              </>
-            )}
+          <div className="flex items-center gap-1">
+            <NotificationBell userId={userId} />
+            <div className="relative">
+              <button
+                onClick={() => setHeaderMenuOpen(o => !o)}
+                className="flex items-center gap-2 group"
+              >
+                {profile.avatar
+                  ? <img src={profile.avatar} alt="" className="w-8 h-8 rounded-full object-cover border-2 border-chestnut/40 group-hover:border-chestnut transition-colors" />
+                  : <div className="w-8 h-8 rounded-full bg-graphite border-2 border-chestnut/40 group-hover:border-chestnut transition-colors flex items-center justify-center text-snow text-xs font-black">
+                      {profile.name.slice(0, 2).toUpperCase() || 'DU'}
+                    </div>}
+              </button>
+              {headerMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setHeaderMenuOpen(false)} />
+                  <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl z-50 overflow-hidden border border-charcoal/10">
+                    <button onClick={() => { router.push('/profile/' + userId); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
+                      <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> View Profile
+                    </button>
+                    <button onClick={() => { router.push('/settings'); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
+                      <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg> Settings
+                    </button>
+                    <div className="border-t border-charcoal/10" />
+                    <button onClick={() => { handleLogout(); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-medium text-charcoal hover:bg-snow transition-colors flex items-center gap-2">
+                      <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg> Log Out
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -826,12 +924,20 @@ export default function MusicianDashboard() {
                     {profile.genres.length > 0 ? profile.genres.slice(0, 3).join(' · ') : 'Set your genres in Profile'}
                   </p>
                 </div>
-                <button
-                  onClick={() => setActiveTab('gigs')}
-                  className="bg-chestnut text-snow px-5 py-3 rounded-xl text-sm font-black hover:opacity-90 transition-opacity shrink-0 shadow-lg"
-                >
-                  Browse Gigs
-                </button>
+                <div className="flex flex-col gap-2 shrink-0">
+                  <button
+                    onClick={() => setActiveTab('gigs')}
+                    className="bg-chestnut text-snow px-5 py-2.5 rounded-xl text-sm font-black hover:opacity-90 transition-opacity shadow-lg"
+                  >
+                    Browse Gigs
+                  </button>
+                  <button
+                    onClick={() => setShowAvailabilityModal(true)}
+                    className="bg-white/15 text-snow px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-white/25 transition-colors border border-white/20"
+                  >
+                    Post Availability
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -903,8 +1009,8 @@ export default function MusicianDashboard() {
               </>
             )}
 
-            {/* Pending applications */}
-            <SectionHeader eyebrow="Sent" title="Pending" accent="Applications." />
+            {/* Pending applications + invites */}
+            <SectionHeader eyebrow="Inbox" title="Pending" accent="Activity." />
             {dataLoading ? (
               <div className="space-y-3">
                 <SkeletonBookingCard />
@@ -914,42 +1020,91 @@ export default function MusicianDashboard() {
             ) : pendingApps === 0 ? (
               <EmptyState
                 icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>}
-                title="No pending applications"
+                title="No pending activity"
                 body="Browse open gig slots and apply to restaurants looking for live music."
                 action={{ label: 'Browse Open Gigs', onClick: () => setActiveTab('gigs') }}
               />
             ) : (
               <div className="space-y-3">
-                {bookings.filter(b => b.status === 'pending').map(b => (
-                  <div key={b.id} className="bg-white rounded-2xl p-4 shadow-sm">
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-3">
-                        <Avatar src={b.gig.venue.avatar} className="w-10 h-10 rounded-full" textSize="text-xl" />
-                        <div>
-                          <p className="text-graphite font-bold text-sm">{b.gig.venue.name}</p>
-                          <p className="text-charcoal text-xs">{b.gig.date} · {b.gig.time}</p>
+                {bookings.filter(b => b.status === 'pending').map(b => {
+                  const isInvite = b.source === 'invite'
+                  const inviteAwaiting = isInvite && b.inviteAccepted === null
+                  const inviteAccepted = isInvite && b.inviteAccepted === true
+
+                  return (
+                    <div
+                      key={b.id}
+                      className={`bg-white rounded-2xl p-4 shadow-sm ${isInvite ? 'border-l-4 border-l-chestnut' : ''}`}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-3">
+                          <Avatar src={b.gig.venue.avatar} className="w-10 h-10 rounded-full" textSize="text-xl" />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="text-graphite font-bold text-sm">{b.gig.venue.name}</p>
+                              {isInvite && (
+                                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-chestnut/10 text-chestnut uppercase tracking-wide">
+                                  Invite
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-charcoal text-xs">{b.gig.date} · {b.gig.time}</p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-teal font-black text-sm">${b.price}</p>
+                          {inviteAccepted && (
+                            <span className="text-[10px] font-bold text-teal block mt-0.5">Awaiting payment</span>
+                          )}
+                          {!isInvite && <div className="mt-1"><BookingBadge status={b.status} /></div>}
                         </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-teal font-black text-sm">${b.price}</p>
-                        <div className="mt-1"><BookingBadge status={b.status} /></div>
-                      </div>
+
+                      {b.note && (
+                        <div className="bg-snow rounded-xl px-3 py-2 mb-2">
+                          <p className="text-charcoal text-xs italic">
+                            {isInvite ? 'Note from venue: ' : 'Your note: '}
+                            &ldquo;{b.note}&rdquo;
+                          </p>
+                        </div>
+                      )}
+
+                      {inviteAwaiting && (
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            onClick={() => handleRespondInvite(b.id, 'decline')}
+                            className="flex-1 bg-snow text-charcoal py-2.5 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10"
+                          >
+                            Decline
+                          </button>
+                          <button
+                            onClick={() => handleRespondInvite(b.id, 'accept')}
+                            className="flex-1 bg-chestnut text-snow py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
+                          >
+                            Accept Invite
+                          </button>
+                        </div>
+                      )}
+
+                      {inviteAccepted && (
+                        <p className="text-charcoal/50 text-xs mt-2 text-center">
+                          You accepted — the venue is completing payment.
+                        </p>
+                      )}
+
+                      {!isInvite && (
+                        <div className="flex justify-end mt-1">
+                          <button
+                            onClick={() => handleCancelApplication(b.id)}
+                            className="text-charcoal/60 text-xs font-medium hover:text-red-500 transition-colors"
+                          >
+                            Cancel Application
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    {b.note && (
-                      <div className="bg-snow rounded-xl px-3 py-2 mb-2">
-                        <p className="text-charcoal text-xs italic">Your note: &ldquo;{b.note}&rdquo;</p>
-                      </div>
-                    )}
-                    <div className="flex justify-end mt-1">
-                      <button
-                        onClick={() => handleCancelApplication(b.id)}
-                        className="text-charcoal/60 text-xs font-medium hover:text-red-500 transition-colors"
-                      >
-                        Cancel Application
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </>
@@ -1716,6 +1871,67 @@ export default function MusicianDashboard() {
               </div>
             </div>
 
+            {/* My Availability */}
+            <div className="bg-white rounded-2xl shadow-sm mb-4 overflow-hidden">
+              <div className="flex items-center justify-between px-5 pt-4 pb-3">
+                <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em]">My Availability</p>
+                <button
+                  onClick={() => setShowAvailabilityModal(true)}
+                  className="text-xs text-chestnut font-bold hover:opacity-70 transition-opacity"
+                >
+                  + Post Slot
+                </button>
+              </div>
+              {availLoading ? (
+                <div className="px-5 pb-4 space-y-2">
+                  {[1, 2].map(i => <div key={i} className="h-12 bg-snow rounded-xl animate-pulse" />)}
+                </div>
+              ) : myAvailability.length === 0 ? (
+                <div className="px-5 pb-4 text-center">
+                  <p className="text-charcoal/50 text-sm mb-3">No upcoming availability posted.</p>
+                  <button
+                    onClick={() => setShowAvailabilityModal(true)}
+                    className="text-sm text-chestnut font-bold hover:opacity-70 transition-opacity"
+                  >
+                    Post your first slot →
+                  </button>
+                </div>
+              ) : (
+                <div className="divide-y divide-charcoal/[0.06] px-1 pb-1">
+                  {myAvailability.map(slot => (
+                    <div key={slot.id} className="flex items-center justify-between px-4 py-3 gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-graphite font-bold text-sm">{slot.dateLabel}</p>
+                        {slot.start_time && slot.end_time && (
+                          <p className="text-charcoal text-xs mt-0.5">{fmt(slot.start_time)} – {fmt(slot.end_time)}</p>
+                        )}
+                        {slot.genres.length > 0 && (
+                          <p className="text-charcoal/50 text-[10px] mt-0.5 truncate">{slot.genres.slice(0, 3).join(', ')}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {slot.min_pay != null && (
+                          <span className="text-teal text-xs font-black">${slot.min_pay}+</span>
+                        )}
+                        <button
+                          onClick={async () => {
+                            await supabase.from('musician_availability').update({ status: 'cancelled' }).eq('id', slot.id)
+                            setMyAvailability(prev => prev.filter(s => s.id !== slot.id))
+                          }}
+                          className="text-charcoal/40 hover:text-red-500 transition-colors"
+                          aria-label="Cancel slot"
+                        >
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Account */}
             <div className="bg-white rounded-2xl p-5 shadow-sm">
               <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">Account</p>
@@ -1732,10 +1948,25 @@ export default function MusicianDashboard() {
       <div className={activeTab !== 'messages' ? 'hidden' : ''}>
         <div className="max-w-2xl mx-auto px-4" style={{ paddingBottom: '96px' }}>
           {userId && (
-            <MessagingTab ref={messagingRef} userId={userId} onUnreadChange={setMsgUnread} />
+            <MessagingTab ref={messagingRef} userId={userId} currentUserType="musician" onUnreadChange={setMsgUnread} />
           )}
         </div>
       </div>
+
+      {/* ---- POST AVAILABILITY MODAL ---- */}
+      {showAvailabilityModal && userId && (
+        <PostAvailabilityModal
+          userId={userId}
+          myLat={profileLat}
+          myLon={profileLon}
+          onClose={() => setShowAvailabilityModal(false)}
+          onSuccess={(slot) => {
+            setMyAvailability(prev => [slot, ...prev].sort((a, b) => a.date.localeCompare(b.date)))
+            setShowAvailabilityModal(false)
+            toast.success('Availability posted! Restaurants can now discover you.')
+          }}
+        />
+      )}
 
       {/* ---- BOTTOM TAB BAR ---- */}
       <nav className="fixed bottom-0 left-0 right-0 bg-graphite/95 backdrop-blur-md border-t border-charcoal/30 z-40">
@@ -1983,6 +2214,245 @@ export default function MusicianDashboard() {
         </div>
       )}
 
+    </div>
+  )
+}
+
+// ---- PostAvailabilityModal ----
+
+const AVAIL_TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
+  const h = Math.floor(i / 2)
+  const m = (i % 2) * 30
+  const period = h < 12 ? 'AM' : 'PM'
+  const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+  return {
+    label: `${hour12}:${m.toString().padStart(2, '0')} ${period}`,
+    value: `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`,
+  }
+})
+
+function getAvailDateOptions() {
+  const options: { value: string; label: string }[] = []
+  const today = new Date()
+  for (let i = 0; i < 90; i++) {
+    const d = new Date(today)
+    d.setDate(today.getDate() + i)
+    const value = d.toISOString().split('T')[0]
+    const prefix = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'long' })
+    options.push({ value, label: `${prefix} · ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` })
+  }
+  return options
+}
+
+function AvailSelect({ value, onChange, options, placeholder }: {
+  value: string
+  onChange: (v: string) => void
+  options: { value: string; label: string }[]
+  placeholder?: string
+}) {
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className={`w-full appearance-none bg-white rounded-xl px-4 py-3 pr-10 shadow-sm border border-charcoal/10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-chestnut/20 cursor-pointer ${value ? 'text-graphite' : 'text-charcoal/40'}`}
+      >
+        {placeholder && <option value="" disabled>{placeholder}</option>}
+        {options.map(opt => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+      <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-charcoal/40">
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+      </div>
+    </div>
+  )
+}
+
+function PostAvailabilityModal({ userId, myLat, myLon, onClose, onSuccess }: {
+  userId: string
+  myLat: number | null
+  myLon: number | null
+  onClose: () => void
+  onSuccess: (slot: MusicianAvailSlot) => void
+}) {
+  const [date, setDate] = useState('')
+  const [startTime, setStartTime] = useState('')
+  const [endTime, setEndTime] = useState('')
+  const [minPay, setMinPay] = useState('')
+  const [notes, setNotes] = useState('')
+  const [selectedGenres, setSelectedGenres] = useState<string[]>([])
+  const [genrePanelOpen, setGenrePanelOpen] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  const toggleGenre = (g: string) => {
+    setSelectedGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g])
+  }
+
+  const handleSubmit = async () => {
+    setError('')
+    if (!date) { setError('Please select a date.'); return }
+    if (!startTime) { setError('Please select a start time.'); return }
+    if (!endTime) { setError('Please select an end time.'); return }
+
+    setSubmitting(true)
+    try {
+      const { data, error: dbErr } = await supabase
+        .from('musician_availability')
+        .insert({
+          musician_id: userId,
+          date,
+          start_time: startTime,
+          end_time: endTime,
+          genres: selectedGenres,
+          min_pay: minPay ? Number(minPay) : null,
+          notes: notes.trim() || null,
+          status: 'open',
+          latitude: myLat,
+          longitude: myLon,
+        })
+        .select('id, date, start_time, end_time, genres, min_pay, notes, status')
+        .single()
+
+      if (dbErr) throw dbErr
+
+      const slot: MusicianAvailSlot = {
+        id: data.id,
+        date: data.date,
+        dateLabel: new Date(data.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+        start_time: data.start_time?.slice(0, 5) ?? null,
+        end_time: data.end_time?.slice(0, 5) ?? null,
+        genres: Array.isArray(data.genres) ? data.genres : [],
+        min_pay: data.min_pay != null ? Number(data.min_pay) : null,
+        notes: data.notes ?? null,
+        status: data.status,
+      }
+      onSuccess(slot)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to post availability')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
+      <div className="bg-snow w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
+
+        <div className="bg-graphite rounded-t-3xl px-6 py-4 flex items-center justify-between relative overflow-hidden">
+          <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-teal opacity-20 blur-2xl pointer-events-none" />
+          <div className="relative z-10">
+            <p className="text-teal text-[10px] font-semibold uppercase tracking-[0.3em]">Availability</p>
+            <h3 className="text-snow text-xl font-black tracking-tight">
+              Post a <span className="text-teal italic">Slot.</span>
+            </h3>
+          </div>
+          <button onClick={onClose} className="relative z-10 text-snow/60 hover:text-snow transition-colors">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+          <div>
+            <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">Date</label>
+            <AvailSelect value={date} onChange={setDate} options={getAvailDateOptions()} placeholder="Pick a date" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">Start Time</label>
+              <AvailSelect value={startTime} onChange={setStartTime} options={AVAIL_TIME_OPTIONS} placeholder="Start" />
+            </div>
+            <div>
+              <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">End Time</label>
+              <AvailSelect value={endTime} onChange={setEndTime} options={AVAIL_TIME_OPTIONS} placeholder="End" />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">
+              Min Pay <span className="text-charcoal/40 font-normal normal-case">(optional)</span>
+            </label>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-charcoal/50 text-sm font-semibold">$</span>
+              <input
+                type="number" min="0" step="1" placeholder="e.g. 150"
+                value={minPay} onChange={e => setMinPay(e.target.value)}
+                className="w-full bg-white rounded-xl pl-8 pr-4 py-3 text-sm shadow-sm border border-charcoal/10 focus:outline-none focus:ring-2 focus:ring-chestnut/20"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">
+              Genres <span className="text-charcoal/40 font-normal normal-case">(optional)</span>
+            </label>
+            <button
+              onClick={() => setGenrePanelOpen(o => !o)}
+              className="w-full text-left bg-white rounded-xl px-4 py-3 text-sm shadow-sm border border-charcoal/10 flex items-center justify-between"
+            >
+              <span className={selectedGenres.length > 0 ? 'text-graphite font-medium' : 'text-charcoal/40'}>
+                {selectedGenres.length > 0
+                  ? selectedGenres.slice(0, 3).join(', ') + (selectedGenres.length > 3 ? ` +${selectedGenres.length - 3}` : '')
+                  : 'Select genres…'}
+              </span>
+              <svg className={`w-4 h-4 text-charcoal/40 transition-transform ${genrePanelOpen ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+            </button>
+            {genrePanelOpen && (
+              <div className="bg-white rounded-xl shadow-sm border border-charcoal/10 p-3 mt-1 max-h-48 overflow-y-auto">
+                {GENRE_GROUPS.map((group) => (
+                  <div key={group.label} className="mb-3">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-charcoal/50 mb-1.5">{group.label}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {group.genres.map(g => (
+                        <button
+                          key={g}
+                          onClick={() => toggleGenre(g)}
+                          className={`text-xs px-2.5 py-1 rounded-full font-semibold transition-colors ${
+                            selectedGenres.includes(g)
+                              ? 'bg-chestnut text-snow'
+                              : 'bg-snow text-charcoal hover:bg-charcoal/10'
+                          }`}
+                        >
+                          {g}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">
+              Notes <span className="text-charcoal/40 font-normal normal-case">(optional)</span>
+            </label>
+            <textarea
+              placeholder="Any details restaurants should know…"
+              value={notes} onChange={e => setNotes(e.target.value)}
+              rows={2}
+              className="w-full bg-white rounded-xl px-4 py-3 text-sm shadow-sm border border-charcoal/10 focus:outline-none focus:ring-2 focus:ring-chestnut/20 resize-none placeholder:text-charcoal/40"
+            />
+          </div>
+
+          {error && <div className="bg-red-50 text-red-600 px-4 py-3 rounded-xl text-sm">{error}</div>}
+
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="w-full bg-chestnut text-snow py-3.5 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            {submitting ? 'Posting…' : 'Post Availability'}
+          </button>
+          <button onClick={onClose} disabled={submitting} className="w-full bg-white text-charcoal py-3 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10 disabled:opacity-50">
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

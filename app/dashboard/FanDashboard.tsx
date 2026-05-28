@@ -8,6 +8,7 @@ import { milesBetween } from '@/lib/distance'
 import { Avatar } from '@/components/Avatar'
 import MessagingTab, { MessagingTabRef } from '@/components/MessagingTab'
 import { useToast } from '@/components/Toast'
+import NotificationBell from '@/components/NotificationBell'
 import {
   SkeletonStatCard,
   SkeletonMusicianCard,
@@ -116,6 +117,11 @@ export default function FanDashboard() {
   const [discoverSearch, setDiscoverSearch] = useState('')
   const [discoverRadius, setDiscoverRadius] = useState(25)
   const [discoverLoading, setDiscoverLoading] = useState(false)
+
+  // Events sub-view
+  const [eventsView, setEventsView] = useState<'events' | 'browse'>('events')
+  const [eventsDateFilter, setEventsDateFilter] = useState<'all' | 'weekend' | 'week' | 'month'>('all')
+  const [eventsDistanceFilter, setEventsDistanceFilter] = useState(25)
 
   // Fan state
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set())
@@ -489,31 +495,34 @@ export default function FanDashboard() {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-chestnut" />
             </span>
           </div>
-          <div className="relative">
-            <button onClick={() => setHeaderMenuOpen(o => !o)} className="flex items-center gap-2 group">
-              {profile.avatar
-                ? <img src={profile.avatar} alt="" className="w-8 h-8 rounded-full object-cover border-2 border-chestnut/40 group-hover:border-chestnut transition-colors" />
-                : <div className="w-8 h-8 rounded-full bg-graphite border-2 border-chestnut/40 group-hover:border-chestnut transition-colors flex items-center justify-center text-snow text-xs font-black">
-                    {profile.name.slice(0, 2).toUpperCase() || 'DU'}
-                  </div>}
-            </button>
-            {headerMenuOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setHeaderMenuOpen(false)} />
-                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl z-50 overflow-hidden border border-charcoal/10">
-                  <button onClick={() => { router.push('/profile/' + userId); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
-                    <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> View Profile
-                  </button>
-                  <button onClick={() => { router.push('/settings'); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
-                    <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg> Settings
-                  </button>
-                  <div className="border-t border-charcoal/10" />
-                  <button onClick={() => { handleLogout(); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-medium text-charcoal hover:bg-snow transition-colors flex items-center gap-2">
-                    <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg> Log Out
-                  </button>
-                </div>
-              </>
-            )}
+          <div className="flex items-center gap-1">
+            <NotificationBell userId={userId} />
+            <div className="relative">
+              <button onClick={() => setHeaderMenuOpen(o => !o)} className="flex items-center gap-2 group">
+                {profile.avatar
+                  ? <img src={profile.avatar} alt="" className="w-8 h-8 rounded-full object-cover border-2 border-chestnut/40 group-hover:border-chestnut transition-colors" />
+                  : <div className="w-8 h-8 rounded-full bg-graphite border-2 border-chestnut/40 group-hover:border-chestnut transition-colors flex items-center justify-center text-snow text-xs font-black">
+                      {profile.name.slice(0, 2).toUpperCase() || 'DU'}
+                    </div>}
+              </button>
+              {headerMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setHeaderMenuOpen(false)} />
+                  <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl z-50 overflow-hidden border border-charcoal/10">
+                    <button onClick={() => { router.push('/profile/' + userId); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
+                      <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> View Profile
+                    </button>
+                    <button onClick={() => { router.push('/settings'); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
+                      <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg> Settings
+                    </button>
+                    <div className="border-t border-charcoal/10" />
+                    <button onClick={() => { handleLogout(); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-medium text-charcoal hover:bg-snow transition-colors flex items-center gap-2">
+                      <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg> Log Out
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -694,10 +703,176 @@ export default function FanDashboard() {
             <div className="mb-5">
               <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">Local Scene</p>
               <h2 className="text-graphite text-3xl font-black tracking-tight leading-none">
-                Find Your <span className="text-chestnut italic">Sound.</span>
+                {eventsView === 'events' ? <>Live <span className="text-chestnut italic">Events.</span></> : <>Find Your <span className="text-chestnut italic">Sound.</span></>}
               </h2>
             </div>
 
+            {/* Events / Browse top toggle */}
+            <div className="flex bg-white rounded-xl p-1 mb-4 shadow-sm">
+              <button
+                onClick={() => setEventsView('events')}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${eventsView === 'events' ? 'bg-chestnut text-snow shadow-sm' : 'text-charcoal hover:text-graphite'}`}
+              >
+                Events
+              </button>
+              <button
+                onClick={() => setEventsView('browse')}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${eventsView === 'browse' ? 'bg-chestnut text-snow shadow-sm' : 'text-charcoal hover:text-graphite'}`}
+              >
+                Browse
+              </button>
+            </div>
+
+            {/* ---- EVENTS VIEW ---- */}
+            {eventsView === 'events' && (() => {
+              const now = new Date()
+              const weekendStart = new Date(); weekendStart.setHours(0,0,0,0)
+              const day = weekendStart.getDay()
+              const daysUntilFri = day <= 5 ? (5 - day) : 6
+              const fridayDate = new Date(weekendStart); fridayDate.setDate(weekendStart.getDate() + daysUntilFri)
+              const sundayDate = new Date(fridayDate); sundayDate.setDate(fridayDate.getDate() + 2); sundayDate.setHours(23,59,59,999)
+              const weekEnd = new Date(weekendStart); weekEnd.setDate(weekendStart.getDate() + 7); weekEnd.setHours(23,59,59,999)
+              const monthEnd = new Date(weekendStart); monthEnd.setDate(weekendStart.getDate() + 30); monthEnd.setHours(23,59,59,999)
+
+              const eventGigs = feedGigs
+                .filter(g => {
+                  const endDt = new Date(g.rawEndDatetime)
+                  if (endDt < now) return false
+                  if (g.distance != null && g.distance > eventsDistanceFilter) return false
+                  if (eventsDateFilter === 'weekend') {
+                    const d = new Date(g.rawDate + 'T00:00:00')
+                    return d >= fridayDate && d <= sundayDate
+                  }
+                  if (eventsDateFilter === 'week') return new Date(g.rawDate + 'T00:00:00') <= weekEnd
+                  if (eventsDateFilter === 'month') return new Date(g.rawDate + 'T00:00:00') <= monthEnd
+                  return true
+                })
+
+              const groupedEvents = groupGigsByDate(eventGigs)
+
+              return (
+                <>
+                  {fanCoords.lat == null && (
+                    <div className="bg-chestnut/10 border border-chestnut/20 rounded-2xl p-4 mb-4 text-sm text-chestnut font-medium">
+                      <span className="inline-flex items-center gap-1"><svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>Set your location in Profile to see distance.</span>
+                    </div>
+                  )}
+
+                  {/* Date filter chips */}
+                  <div className="flex gap-2 mb-3 overflow-x-auto pb-0.5 no-scrollbar">
+                    {([
+                      { key: 'all' as const, label: 'All Dates' },
+                      { key: 'weekend' as const, label: 'This Weekend' },
+                      { key: 'week' as const, label: 'This Week' },
+                      { key: 'month' as const, label: 'This Month' },
+                    ]).map(opt => (
+                      <button
+                        key={opt.key}
+                        onClick={() => setEventsDateFilter(opt.key)}
+                        className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${eventsDateFilter === opt.key ? 'bg-chestnut text-snow shadow-sm' : 'bg-white text-charcoal hover:bg-snow shadow-sm'}`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Distance filter */}
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="text-charcoal text-xs font-semibold uppercase tracking-wide shrink-0">Within</span>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {RADIUS_OPTIONS.map(r => (
+                        <button
+                          key={r}
+                          onClick={() => setEventsDistanceFilter(r)}
+                          className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${eventsDistanceFilter === r ? 'bg-teal text-snow shadow-sm' : 'bg-white text-charcoal shadow-sm hover:bg-snow'}`}
+                        >
+                          {r} mi
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {feedLoading ? (
+                    <div className="space-y-3">
+                      <SkeletonGigCard /><SkeletonGigCard /><SkeletonGigCard />
+                    </div>
+                  ) : eventGigs.length === 0 ? (
+                    <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
+                      <div className="w-12 h-12 bg-charcoal/10 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                        <svg className="w-6 h-6 text-charcoal/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+                      </div>
+                      <p className="text-graphite font-bold text-sm mb-1">No events found</p>
+                      <p className="text-charcoal/50 text-xs">Try a wider date or distance filter.</p>
+                    </div>
+                  ) : (
+                    <div>
+                      {groupedEvents.map(group => (
+                        <div key={group.label} className="mb-5">
+                          <p className="text-charcoal/50 text-[10px] font-black uppercase tracking-[0.25em] mb-2">{group.label}</p>
+                          <div className="space-y-3">
+                            {group.gigs.map(gig => {
+                              const venueFollowing = followedIds.has(gig.restaurantId)
+                              const artistFollowing = followedIds.has(gig.musicianId)
+                              return (
+                                <div key={gig.id} className="bg-white rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                                  <div className="flex items-start gap-3 mb-3">
+                                    <button onClick={() => router.push('/profile/' + gig.restaurantId)} className="shrink-0">
+                                      <Avatar src={gig.restaurantAvatar} className="w-11 h-11 rounded-full" textSize="text-xl" />
+                                    </button>
+                                    <div className="flex-1 min-w-0">
+                                      <button onClick={() => router.push('/profile/' + gig.restaurantId)} className="text-left">
+                                        <p className="text-graphite font-bold text-sm hover:text-chestnut transition-colors truncate">{gig.restaurantName}</p>
+                                      </button>
+                                      <p className="text-charcoal text-xs">{gig.time}</p>
+                                      {gig.distance != null && (
+                                        <p className="inline-flex items-center gap-0.5 text-teal text-xs font-semibold mt-0.5">
+                                          <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                                          {gig.distance < 1 ? '<1 mi' : `${gig.distance.toFixed(1)} mi`}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2 mb-3 pl-14">
+                                    <button onClick={() => router.push('/profile/' + gig.musicianId)}>
+                                      <Avatar src={gig.musicianAvatar} className="w-7 h-7 rounded-full" textSize="text-sm" />
+                                    </button>
+                                    <button onClick={() => router.push('/profile/' + gig.musicianId)} className="flex-1 min-w-0 text-left">
+                                      <p className="text-charcoal text-xs font-semibold truncate">
+                                        {gig.musicianName}
+                                        {gig.performerType === 'solo' && <span className="text-charcoal/40"> · Solo</span>}
+                                        {gig.performerType === 'band' && <span className="text-charcoal/40"> · Band</span>}
+                                      </p>
+                                    </button>
+                                  </div>
+                                  <div className="flex gap-2 pl-0">
+                                    <button
+                                      onClick={() => toggleFollow(gig.restaurantId)}
+                                      className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${venueFollowing ? 'bg-teal/10 text-teal border border-teal/30' : 'bg-snow text-charcoal border border-charcoal/10 hover:border-teal hover:text-teal'}`}
+                                    >
+                                      {venueFollowing ? 'Following Venue ✓' : '+ Follow Venue'}
+                                    </button>
+                                    <button
+                                      onClick={() => toggleFollow(gig.musicianId)}
+                                      className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${artistFollowing ? 'bg-teal/10 text-teal border border-teal/30' : 'bg-snow text-charcoal border border-charcoal/10 hover:border-teal hover:text-teal'}`}
+                                    >
+                                      {artistFollowing ? 'Following Artist ✓' : '+ Follow Artist'}
+                                    </button>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )
+            })()}
+
+            {/* ---- BROWSE VIEW (original discover content) ---- */}
+            {eventsView === 'browse' && (
+              <>
             {fanCoords.lat == null && (
               <div className="bg-chestnut/10 border border-chestnut/20 rounded-2xl p-4 mb-5 text-sm text-chestnut font-medium">
                 <span className="inline-flex items-center gap-1"><svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>Set your location in Profile to discover nearby venues and musicians.</span>
@@ -823,6 +998,8 @@ export default function FanDashboard() {
                     </div>
                   )
                 )}
+              </>
+            )}
               </>
             )}
           </>
@@ -985,7 +1162,7 @@ export default function FanDashboard() {
       <nav className="fixed bottom-0 left-0 right-0 bg-graphite/95 backdrop-blur-md border-t border-charcoal/30 z-40">
         <div className="max-w-2xl mx-auto grid grid-cols-5 px-2 py-2">
           <TabButton animation="sway"    icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>} label="Feed"      active={activeTab === 'feed'}      onClick={() => setActiveTab('feed')} />
-          <TabButton animation="shake"   icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>} label="Discover"  active={activeTab === 'discover'}  onClick={() => setActiveTab('discover')} />
+          <TabButton animation="shake"   icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>} label="Events"  active={activeTab === 'discover'}  onClick={() => setActiveTab('discover')} />
           <TabButton animation="ping"    icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>} label="Following" active={activeTab === 'following'} onClick={() => setActiveTab('following')} badge={followingCount} />
           <TabButton animation="pop"     icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>} label="Messages"  active={activeTab === 'messages'}  onClick={() => setActiveTab('messages')} badge={msgUnread} />
           <TabButton animation="float"   icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>} label="Profile"   active={activeTab === 'profile'}   onClick={() => setActiveTab('profile')} />

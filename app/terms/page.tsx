@@ -62,7 +62,7 @@ export default function TermsPage() {
             </Section>
 
             <Section title="4. Account Registration">
-              <p>To access most features you must create an account. You are responsible for maintaining the confidentiality of your login credentials and for all activity that occurs under your account. Notify us immediately at support@drumup.app if you suspect unauthorized access.</p>
+              <p>To access most features you must create an account. You are responsible for maintaining the confidentiality of your login credentials and for all activity that occurs under your account. Notify us immediately at brogan.smith525@gmail.com if you suspect unauthorized access.</p>
               <p>You may not share your account, transfer it to another person, or create multiple accounts for the purpose of circumventing restrictions.</p>
             </Section>
 
@@ -118,7 +118,7 @@ export default function TermsPage() {
               </Subsection>
 
               <Subsection title="Disputes">
-                <p>If a dispute arises between a restaurant and a musician regarding a booking, both parties should contact support@drumup.app. Drum Up will make good-faith efforts to mediate but is not obligated to do so. All payment decisions made by Drum Up in connection with a dispute are final.</p>
+                <p>If a dispute arises between a restaurant and a musician regarding a booking, both parties should contact brogan.smith525@gmail.com. Drum Up will make good-faith efforts to mediate but is not obligated to do so. All payment decisions made by Drum Up in connection with a dispute are final.</p>
               </Subsection>
             </Section>
 
@@ -181,7 +181,7 @@ export default function TermsPage() {
 
             <Section title="18. Contact Us">
               <p>Questions about these Terms? Reach us at:</p>
-              <p className="font-semibold text-graphite">support@drumup.app</p>
+              <p className="font-semibold text-graphite">brogan.smith525@gmail.com</p>
             </Section>
 
           </div>

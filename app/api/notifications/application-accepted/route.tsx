@@ -66,23 +66,32 @@ export async function POST(request: Request) {
     const musicianReceives = Math.round((payAmount - platformFee) * 100) / 100
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://drum-up.app'
 
-    await sendEmail({
-      to: musicianEmail,
-      subject: `You're booked at ${restaurantName}! 🎉`,
-      emailComponent: (
-        <ApplicationAcceptedEmail
-          musicianName={musicianName}
-          restaurantName={restaurantName}
-          gigDate={gigDate}
-          gigTime={gigTime}
-          payAmount={payAmount}
-          platformFee={platformFee}
-          musicianReceives={musicianReceives}
-          restaurantAddress={restaurantAddress}
-          dashboardUrl={`${appUrl}/dashboard`}
-        />
-      ),
-    })
+    await Promise.all([
+      sendEmail({
+        to: musicianEmail,
+        subject: `You're booked at ${restaurantName}! 🎉`,
+        emailComponent: (
+          <ApplicationAcceptedEmail
+            musicianName={musicianName}
+            restaurantName={restaurantName}
+            gigDate={gigDate}
+            gigTime={gigTime}
+            payAmount={payAmount}
+            platformFee={platformFee}
+            musicianReceives={musicianReceives}
+            restaurantAddress={restaurantAddress}
+            dashboardUrl={`${appUrl}/dashboard`}
+          />
+        ),
+      }),
+      supabaseAdmin.from('notifications').insert({
+        user_id: booking.musician_id,
+        type: 'application_accepted',
+        title: 'Application accepted!',
+        body: `You're booked at ${restaurantName} on ${gigDate}`,
+        link: '/dashboard',
+      }),
+    ])
 
     return NextResponse.json({ success: true })
   } catch (err) {

@@ -8,12 +8,14 @@ import { milesBetween } from '@/lib/distance'
 import { Avatar } from '@/components/Avatar'
 import MessagingTab, { MessagingTabRef } from '@/components/MessagingTab'
 import { useToast } from '@/components/Toast'
+import NotificationBell from '@/components/NotificationBell'
 import { SkeletonStatCard, SkeletonBookingCard, SkeletonMusicianCard } from '@/components/Skeleton'
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { stripePromise } from '@/lib/stripe-client'
 import { buildSocialUrl } from '@/lib/social-urls'
 import { GENRE_GROUPS } from '@/lib/genres'
 import { GenreSelector } from '@/components/GenreSelector'
+import InviteModal from '@/components/InviteModal'
 
 // ---- Types ----
 
@@ -40,6 +42,8 @@ interface Application {
   payoutReleased: boolean
   performerType: string
   bandMembers: number | null
+  source: string
+  inviteAccepted: boolean | null
 }
 
 interface PaymentModalData {
@@ -88,6 +92,25 @@ interface VenueProfile {
   youtube: string
   tiktok: string
   avatar: string
+}
+
+interface MusicianAvailCard {
+  id: string
+  musicianId: string
+  musicianName: string
+  musicianAvatar: string
+  musicianBio: string
+  musicianLocation: string
+  performerType: string
+  date: string
+  dateLabel: string
+  start_time: string | null
+  end_time: string | null
+  genres: string[]
+  min_pay: number | null
+  notes: string | null
+  distance: number
+  distanceStr: string
 }
 
 // ---- Constants ----
@@ -317,6 +340,13 @@ export default function RestaurantDashboard() {
   const [liveMusicians, setLiveMusicians] = useState<LiveMusician[]>([])
   const [browseLoading, setBrowseLoading] = useState(false)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
+
+  // Browse view toggle + musician availability
+  const [browseView, setBrowseView] = useState<'musicians' | 'availability'>('musicians')
+  const [musicianAvailability, setMusicianAvailability] = useState<MusicianAvailCard[]>([])
+  const [availabilityLoading, setAvailabilityLoading] = useState(false)
+  const [inviteModal, setInviteModal] = useState<{ musicianId: string; musicianName: string; date?: string; startTime?: string; endTime?: string } | null>(null)
+  const [inviteSuccessBookingId, setInviteSuccessBookingId] = useState<string | null>(null)
   const [archiveOpen, setArchiveOpen] = useState(false)
   const [dataLoading, setDataLoading] = useState(true)
   const { toast } = useToast()
@@ -375,7 +405,7 @@ export default function RestaurantDashboard() {
     if (slotIds.length > 0) {
       const { data: bookingsData } = await supabase
         .from('bookings')
-        .select('id, availability_id, musician_id, status, pay_amount, note, payment_status, payout_released')
+        .select('id, availability_id, musician_id, status, pay_amount, note, payment_status, payout_released, source, invite_accepted')
         .eq('restaurant_id', rid)
         .in('status', ['pending', 'confirmed'])
         .in('availability_id', slotIds)
@@ -416,6 +446,8 @@ export default function RestaurantDashboard() {
               payoutReleased: ((b as Record<string, unknown>).payout_released as boolean | null) ?? false,
               performerType: (musician as Record<string, unknown>)?.performer_type as string ?? '',
               bandMembers: (musician as Record<string, unknown>)?.band_members as number | null ?? null,
+              source: (b as Record<string, unknown>).source as string ?? 'application',
+              inviteAccepted: (b as Record<string, unknown>).invite_accepted as boolean | null ?? null,
             }
           })
           return { ...slot, applications }
@@ -472,6 +504,66 @@ export default function RestaurantDashboard() {
       toast.error('Could not load musicians. Please try again.')
     } finally {
       setBrowseLoading(false)
+    }
+  }
+
+  const loadMusicianAvailability = async (lat: number, lon: number, radius: number) => {
+    setAvailabilityLoading(true)
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      const { data, error } = await supabase
+        .from('musician_availability')
+        .select('id, date, start_time, end_time, genres, min_pay, notes, status, latitude, longitude, musician_id, musician:musician_id(id, full_name, avatar_url, bio, location_text, latitude, longitude, role_metadata, performer_type)')
+        .eq('status', 'open')
+        .gte('date', today)
+        .order('date', { ascending: true })
+      if (error) throw error
+      if (!data) { setMusicianAvailability([]); return }
+
+      const results: MusicianAvailCard[] = data
+        .filter(s => {
+          const m = s.musician as unknown as Record<string, unknown> | null
+          return m && m.latitude != null && m.longitude != null
+        })
+        .map(s => {
+          const m = s.musician as unknown as Record<string, unknown>
+          const mLat = m.latitude as number
+          const mLon = m.longitude as number
+          const dist = milesBetween(lat, lon, mLat, mLon)
+          const fmtT = (t: string | null) => {
+            if (!t) return null
+            const hh = parseInt(t.slice(0, 2))
+            const mm = t.slice(3, 5)
+            const period = hh >= 12 ? 'PM' : 'AM'
+            return `${hh % 12 || 12}:${mm} ${period}`
+          }
+          return {
+            id: s.id,
+            musicianId: s.musician_id as string,
+            musicianName: (m.full_name as string) ?? 'Musician',
+            musicianAvatar: (m.avatar_url as string) ?? '',
+            musicianBio: (m.bio as string) ?? '',
+            musicianLocation: (m.location_text as string) ?? '',
+            performerType: (m.performer_type as string) ?? '',
+            date: s.date,
+            dateLabel: new Date(s.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+            start_time: fmtT(s.start_time?.slice(0, 5) ?? null),
+            end_time: fmtT(s.end_time?.slice(0, 5) ?? null),
+            genres: Array.isArray(s.genres) ? s.genres : [],
+            min_pay: s.min_pay != null ? Number(s.min_pay) : null,
+            notes: s.notes ?? null,
+            distance: dist,
+            distanceStr: dist < 1 ? '<1 mi' : `${dist.toFixed(1)} mi`,
+          }
+        })
+        .filter(s => s.distance <= radius)
+        .sort((a, b) => a.date.localeCompare(b.date) || a.distance - b.distance)
+
+      setMusicianAvailability(results)
+    } catch (err) {
+      console.error('Failed to load musician availability:', err)
+    } finally {
+      setAvailabilityLoading(false)
     }
   }
 
@@ -661,6 +753,14 @@ export default function RestaurantDashboard() {
 
   const [postingSlot, setPostingSlot] = useState(false)
   const [postSlotError, setPostSlotError] = useState('')
+
+  // Load musician availability when switching to that view
+  useEffect(() => {
+    if (browseView === 'availability' && restaurantCoords.lat != null && restaurantCoords.lon != null && musicianAvailability.length === 0) {
+      void loadMusicianAvailability(restaurantCoords.lat, restaurantCoords.lon, discoveryRadius)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [browseView])
 
   const [editingSlot, setEditingSlot] = useState<Slot | null>(null)
   const [editDraft, setEditDraft] = useState({ date: '', startTime: '', endTime: '', budget: '', notes: '' })
@@ -997,37 +1097,40 @@ export default function RestaurantDashboard() {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-chestnut" />
             </span>
           </div>
-          <div className="relative">
-            <button
-              onClick={() => setHeaderMenuOpen(o => !o)}
-              className="flex items-center gap-2 group"
-            >
-              {profile.avatar
-                ? <img src={profile.avatar} alt="" className="w-8 h-8 rounded-full object-cover border-2 border-chestnut/40 group-hover:border-chestnut transition-colors" />
-                : <div className="w-8 h-8 rounded-full bg-graphite border-2 border-chestnut/40 group-hover:border-chestnut transition-colors flex items-center justify-center text-snow text-xs font-black">
-                    {profile.name.slice(0, 2).toUpperCase() || 'DU'}
-                  </div>}
-            </button>
-            {headerMenuOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setHeaderMenuOpen(false)} />
-                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl z-50 overflow-hidden border border-charcoal/10">
-                  <button onClick={() => { router.push('/profile/' + userId); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
-                    <svg className="w-4 h-4 text-charcoal/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                    View Profile
-                  </button>
-                  <button onClick={() => { router.push('/settings'); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
-                    <svg className="w-4 h-4 text-charcoal/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-                    Settings
-                  </button>
-                  <div className="border-t border-charcoal/10" />
-                  <button onClick={() => { handleLogout(); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-medium text-charcoal hover:bg-snow transition-colors flex items-center gap-2">
-                    <svg className="w-4 h-4 text-charcoal/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
-                    Log Out
-                  </button>
-                </div>
-              </>
-            )}
+          <div className="flex items-center gap-1">
+            <NotificationBell userId={userId} />
+            <div className="relative">
+              <button
+                onClick={() => setHeaderMenuOpen(o => !o)}
+                className="flex items-center gap-2 group"
+              >
+                {profile.avatar
+                  ? <img src={profile.avatar} alt="" className="w-8 h-8 rounded-full object-cover border-2 border-chestnut/40 group-hover:border-chestnut transition-colors" />
+                  : <div className="w-8 h-8 rounded-full bg-graphite border-2 border-chestnut/40 group-hover:border-chestnut transition-colors flex items-center justify-center text-snow text-xs font-black">
+                      {profile.name.slice(0, 2).toUpperCase() || 'DU'}
+                    </div>}
+              </button>
+              {headerMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setHeaderMenuOpen(false)} />
+                  <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl z-50 overflow-hidden border border-charcoal/10">
+                    <button onClick={() => { router.push('/profile/' + userId); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
+                      <svg className="w-4 h-4 text-charcoal/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                      View Profile
+                    </button>
+                    <button onClick={() => { router.push('/settings'); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
+                      <svg className="w-4 h-4 text-charcoal/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                      Settings
+                    </button>
+                    <div className="border-t border-charcoal/10" />
+                    <button onClick={() => { handleLogout(); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-medium text-charcoal hover:bg-snow transition-colors flex items-center gap-2">
+                      <svg className="w-4 h-4 text-charcoal/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+                      Log Out
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -1189,9 +1292,17 @@ export default function RestaurantDashboard() {
                           </div>
                         )}
                         <div className="flex gap-2">
-                          <button onClick={() => openPaymentModal(slot, app)} className="flex-1 bg-teal text-snow py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">Accept</button>
+                          {app.source === 'invite' && app.inviteAccepted === null ? (
+                            <div className="flex-1 bg-chestnut/10 text-chestnut py-2.5 rounded-xl text-sm font-bold text-center">Awaiting Response</div>
+                          ) : app.source === 'invite' && app.inviteAccepted === true ? (
+                            <button onClick={() => openPaymentModal(slot, app)} className="flex-1 bg-teal text-snow py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">Complete & Pay</button>
+                          ) : (
+                            <button onClick={() => openPaymentModal(slot, app)} className="flex-1 bg-teal text-snow py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">Accept</button>
+                          )}
                           <button onClick={() => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })} className="px-4 py-2.5 rounded-xl text-sm font-bold bg-graphite/10 text-graphite hover:bg-graphite/20 transition-colors"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></button>
-                          <button onClick={() => handleApplicationAction(slot.id, app.id, 'decline')} className="flex-1 bg-snow text-charcoal py-2.5 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10">Decline</button>
+                          {app.source !== 'invite' && (
+                            <button onClick={() => handleApplicationAction(slot.id, app.id, 'decline')} className="flex-1 bg-snow text-charcoal py-2.5 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10">Decline</button>
+                          )}
                         </div>
                       </div>
                     ))
@@ -1240,12 +1351,17 @@ export default function RestaurantDashboard() {
                           <Avatar src={app.avatar} className="w-11 h-11 rounded-full" textSize="text-xl" bg="bg-chestnut/10" />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
-                              <button
-                                onClick={() => router.push('/profile/' + app.musicianId)}
-                                className="text-graphite font-bold text-sm truncate hover:text-chestnut transition-colors text-left"
-                              >
-                                {app.musicianName}
-                              </button>
+                              <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                <button
+                                  onClick={() => router.push('/profile/' + app.musicianId)}
+                                  className="text-graphite font-bold text-sm truncate hover:text-chestnut transition-colors text-left"
+                                >
+                                  {app.musicianName}
+                                </button>
+                                {app.source === 'invite' && (
+                                  <span className="shrink-0 text-[9px] font-black bg-chestnut/10 text-chestnut px-1.5 py-0.5 rounded-full uppercase tracking-wide">Invite</span>
+                                )}
+                              </div>
                               <div className="text-right shrink-0">
                                 <p className="text-teal font-black text-sm">${slot.budget}</p>
                                 <p className="text-charcoal/50 text-[9px] uppercase tracking-wide">pay</p>
@@ -1279,9 +1395,17 @@ export default function RestaurantDashboard() {
                           </div>
                         )}
                         <div className="flex gap-2">
-                          <button onClick={() => openPaymentModal(slot, app)} className="flex-1 bg-chestnut text-snow py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">Accept</button>
+                          {app.source === 'invite' && app.inviteAccepted === null ? (
+                            <div className="flex-1 bg-chestnut/10 text-chestnut py-2.5 rounded-xl text-sm font-bold text-center">Awaiting Response</div>
+                          ) : app.source === 'invite' && app.inviteAccepted === true ? (
+                            <button onClick={() => openPaymentModal(slot, app)} className="flex-1 bg-teal text-snow py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">Complete & Pay</button>
+                          ) : (
+                            <button onClick={() => openPaymentModal(slot, app)} className="flex-1 bg-chestnut text-snow py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">Accept</button>
+                          )}
                           <button onClick={() => openConversation({ id: app.musicianId, name: app.musicianName, avatar: app.avatar })} className="px-4 py-2.5 rounded-xl text-sm font-bold bg-graphite/10 text-graphite hover:bg-graphite/20 transition-colors"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></button>
-                          <button onClick={() => handleApplicationAction(slot.id, app.id, 'decline')} className="flex-1 bg-snow text-charcoal py-2.5 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10">Decline</button>
+                          {app.source !== 'invite' && (
+                            <button onClick={() => handleApplicationAction(slot.id, app.id, 'decline')} className="flex-1 bg-snow text-charcoal py-2.5 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10">Decline</button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1550,6 +1674,110 @@ export default function RestaurantDashboard() {
               </h2>
             </div>
 
+            {/* Browse view toggle */}
+            <div className="flex bg-white rounded-xl p-1 mb-4 shadow-sm">
+              <button
+                onClick={() => setBrowseView('musicians')}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${browseView === 'musicians' ? 'bg-chestnut text-snow shadow-sm' : 'text-charcoal hover:text-graphite'}`}
+              >
+                Musicians
+              </button>
+              <button
+                onClick={() => setBrowseView('availability')}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${browseView === 'availability' ? 'bg-chestnut text-snow shadow-sm' : 'text-charcoal hover:text-graphite'}`}
+              >
+                Availability
+              </button>
+            </div>
+
+            {/* ---- AVAILABILITY VIEW ---- */}
+            {browseView === 'availability' && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-charcoal/60 text-xs font-semibold">Musicians posting open slots near you</p>
+                  <button
+                    onClick={() => {
+                      if (restaurantCoords.lat != null && restaurantCoords.lon != null) {
+                        void loadMusicianAvailability(restaurantCoords.lat, restaurantCoords.lon, discoveryRadius)
+                      }
+                    }}
+                    disabled={availabilityLoading}
+                    className="text-chestnut text-xs font-bold hover:underline disabled:opacity-40"
+                  >
+                    {availabilityLoading ? 'Loading…' : 'Refresh'}
+                  </button>
+                </div>
+
+                {availabilityLoading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map(i => <div key={i} className="h-24 bg-white rounded-2xl animate-pulse shadow-sm" />)}
+                  </div>
+                ) : restaurantCoords.lat == null ? (
+                  <div className="bg-white rounded-2xl p-6 text-center shadow-sm">
+                    <p className="text-charcoal/60 text-sm">Add a location to your profile to see nearby musicians.</p>
+                  </div>
+                ) : musicianAvailability.length === 0 ? (
+                  <div className="bg-white rounded-2xl p-6 text-center shadow-sm">
+                    <p className="text-graphite font-bold text-sm mb-1">No availability posted nearby</p>
+                    <p className="text-charcoal/50 text-xs">Musicians within {discoveryRadius} miles haven't posted open slots yet.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {musicianAvailability.map(slot => (
+                      <div key={slot.id} className="bg-white rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex items-start gap-3 mb-3">
+                          <div className="w-11 h-11 rounded-full overflow-hidden shrink-0 bg-graphite/10 flex items-center justify-center">
+                            {slot.musicianAvatar
+                              ? <img src={slot.musicianAvatar} alt="" className="w-full h-full object-cover" />
+                              : <span className="text-graphite font-black text-sm">{slot.musicianName.slice(0, 2).toUpperCase()}</span>}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-graphite font-bold text-sm truncate">{slot.musicianName}</p>
+                              <span className="text-charcoal/50 text-[10px] shrink-0">{slot.distanceStr}</span>
+                            </div>
+                            <p className="text-chestnut font-black text-xs mt-0.5">{slot.dateLabel}</p>
+                            {slot.start_time && slot.end_time && (
+                              <p className="text-charcoal text-xs">{slot.start_time} – {slot.end_time}</p>
+                            )}
+                          </div>
+                        </div>
+                        {slot.genres.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-3">
+                            {slot.genres.slice(0, 4).map(g => (
+                              <span key={g} className="text-[10px] bg-charcoal/10 text-charcoal px-2 py-0.5 rounded-full font-semibold">{g}</span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between">
+                          {slot.min_pay != null ? (
+                            <span className="text-teal text-sm font-black">${slot.min_pay}+ min pay</span>
+                          ) : (
+                            <span className="text-charcoal/40 text-xs">No min pay set</span>
+                          )}
+                          <button
+                            onClick={() => setInviteModal({
+                              musicianId: slot.musicianId,
+                              musicianName: slot.musicianName,
+                              date: slot.date,
+                              startTime: slot.start_time ? undefined : undefined,
+                              endTime: slot.end_time ? undefined : undefined,
+                            })}
+                            className="bg-chestnut text-snow text-xs font-bold px-4 py-2 rounded-xl hover:opacity-90 transition-opacity shadow-sm"
+                          >
+                            Invite →
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ---- MUSICIANS VIEW ---- */}
+            {browseView === 'musicians' && (<>
+
             {/* Radius filter bar */}
             <div className="flex items-center justify-between gap-3 mb-4 bg-white rounded-xl px-4 py-2.5 shadow-sm">
               <div className="flex items-center gap-2">
@@ -1692,7 +1920,7 @@ export default function RestaurantDashboard() {
             {!browseLoading && filteredMusicians.length > 0 && (
               <div className="space-y-3">
                 {filteredMusicians.map(m => (
-                  <div key={m.id} className="bg-white rounded-2xl p-4 shadow-sm">
+                  <div key={m.id} className="bg-white rounded-2xl p-4 shadow-sm" >
                     <div className="flex items-start gap-4 mb-3">
                       <Avatar src={m.avatar} className="w-14 h-14 rounded-full shrink-0" textSize="text-2xl" bg="bg-chestnut/10" />
                       <div className="flex-1 min-w-0">
@@ -1742,6 +1970,7 @@ export default function RestaurantDashboard() {
                 ))}
               </div>
             )}
+            </>)}
           </>
         )}
 
@@ -2044,7 +2273,7 @@ export default function RestaurantDashboard() {
       <div className={activeTab !== 'messages' ? 'hidden' : ''}>
         <div className="max-w-2xl mx-auto px-4" style={{ paddingBottom: '96px' }}>
           {userId && (
-            <MessagingTab ref={messagingRef} userId={userId} onUnreadChange={setMsgUnread} />
+            <MessagingTab ref={messagingRef} userId={userId} currentUserType="restaurant" onUnreadChange={setMsgUnread} />
           )}
         </div>
       </div>
@@ -2132,6 +2361,41 @@ export default function RestaurantDashboard() {
                 <button onClick={handleEditSlot} disabled={savingEdit} className="flex-1 bg-chestnut text-snow py-3 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50">{savingEdit ? 'Saving…' : 'Save Changes'}</button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---- INVITE MODAL (from Availability browse) ---- */}
+      {inviteModal && (
+        <InviteModal
+          musicianId={inviteModal.musicianId}
+          musicianName={inviteModal.musicianName}
+          prefillDate={inviteModal.date}
+          prefillStartTime={inviteModal.startTime}
+          prefillEndTime={inviteModal.endTime}
+          onClose={() => setInviteModal(null)}
+          onSuccess={(bookingId) => {
+            setInviteModal(null)
+            setInviteSuccessBookingId(bookingId)
+          }}
+        />
+      )}
+
+      {/* ---- INVITE SUCCESS ---- */}
+      {inviteSuccessBookingId && (
+        <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-snow w-full max-w-sm rounded-3xl shadow-2xl p-6 text-center">
+            <div className="w-12 h-12 bg-teal/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <svg className="w-6 h-6 text-teal" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            </div>
+            <h3 className="text-graphite text-xl font-black mb-2">Invite Sent!</h3>
+            <p className="text-charcoal/60 text-sm mb-5">The musician has been invited and will receive a notification.</p>
+            <button
+              onClick={() => setInviteSuccessBookingId(null)}
+              className="w-full bg-chestnut text-snow py-3.5 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity"
+            >
+              Done
+            </button>
           </div>
         </div>
       )}

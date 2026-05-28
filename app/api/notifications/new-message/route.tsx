@@ -72,18 +72,31 @@ export async function POST(request: Request) {
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://drum-up.app'
 
-    await sendEmail({
-      to: receiverEmail,
-      subject: `New message from ${senderName}`,
-      emailComponent: (
-        <NewMessageEmail
-          recipientName={recipientName}
-          senderName={senderName}
-          messagePreview={message.content}
-          dashboardUrl={`${appUrl}/dashboard`}
-        />
-      ),
-    })
+    const preview = message.content.length > 80
+      ? message.content.slice(0, 77) + '…'
+      : message.content
+
+    await Promise.all([
+      sendEmail({
+        to: receiverEmail,
+        subject: `New message from ${senderName}`,
+        emailComponent: (
+          <NewMessageEmail
+            recipientName={recipientName}
+            senderName={senderName}
+            messagePreview={message.content}
+            dashboardUrl={`${appUrl}/dashboard`}
+          />
+        ),
+      }),
+      supabaseAdmin.from('notifications').insert({
+        user_id: message.receiver_id,
+        type: 'new_message',
+        title: `New message from ${senderName}`,
+        body: preview,
+        link: '/dashboard',
+      }),
+    ])
 
     return NextResponse.json({ success: true })
   } catch (err) {

@@ -176,10 +176,11 @@ function buildDisplayItems(messages: Message[]): DisplayItem[] {
 
 interface Props {
   userId: string
+  currentUserType?: string
   onUnreadChange?: (n: number) => void
 }
 
-const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ userId, onUnreadChange }, ref) {
+const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ userId, currentUserType, onUnreadChange }, ref) {
   const router = useRouter()
   const { toast } = useToast()
 
@@ -197,6 +198,7 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
   const [deleting, setDeleting] = useState(false)
   const [reporting, setReporting] = useState(false)
   const [composing, setComposing] = useState(false)
+  const [gigOfferOpen, setGigOfferOpen] = useState(false)
   const [composeSearch, setComposeSearch] = useState('')
   const [composeResults, setComposeResults] = useState<ComposeResult[]>([])
 
@@ -494,7 +496,7 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
           return map
         })
         setConversations(prev => prev.map(c =>
-          c.id === selectedConvId ? { ...c, lastMessage: m.content, lastIsoTime: m.created_at } : c
+          c.id === selectedConvId ? { ...c, lastMessage: m.content.startsWith('__GIG_OFFER__:') ? 'Gig Offer' : m.content, lastIsoTime: m.created_at } : c
         ))
       })
       .subscribe()
@@ -547,6 +549,26 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
         body: JSON.stringify({ message_id: newMsg.id }),
       }).catch(err => console.error('[Email] new-message failed:', err))
     })
+  }
+
+  const sendGigOffer = async (bookingId: string) => {
+    const uid = userIdRef.current
+    if (!selectedConvId || !uid || !selectedConv) return
+    const text = `__GIG_OFFER__:${bookingId}`
+    const { data: newMsg, error } = await supabase
+      .from('messages')
+      .insert({ sender_id: uid, receiver_id: selectedConv.otherId, content: text, conversation_id: selectedConvId, read: false })
+      .select().single()
+    if (error) { console.error('Send gig offer failed', error); return }
+    const newMessage: Message = { id: newMsg.id, from: 'me', text, isoTime: newMsg.created_at, reactions: [] }
+    setMessagesByConv(prev => {
+      const map = new Map(prev)
+      map.set(selectedConvId, [...(map.get(selectedConvId) ?? []), newMessage])
+      return map
+    })
+    setConversations(prev => prev.map(c =>
+      c.id === selectedConvId ? { ...c, lastMessage: 'Gig Offer', lastIsoTime: newMsg.created_at } : c
+    ))
   }
 
   // ---- Reactions ----
@@ -735,7 +757,7 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
                       <p className="text-[11px] text-charcoal/40 shrink-0">{formatMessageTime(conv.lastIsoTime)}</p>
                     </div>
                     <p className={`text-[13px] truncate leading-snug ${conv.unread ? 'font-medium text-graphite/80' : 'text-charcoal/55'}`}>
-                      {conv.lastMessage || 'Start a conversation'}
+                      {conv.lastMessage.startsWith('__GIG_OFFER__:') ? 'Gig Offer' : (conv.lastMessage || 'Start a conversation')}
                     </p>
                   </div>
                 </button>
@@ -906,6 +928,8 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
 
             const { msg, showAvatar, showTimestamp, isGroupStart } = item
             const isMe = msg.from === 'me'
+            const isGigOffer = msg.text.startsWith('__GIG_OFFER__:')
+            const gigOfferId = isGigOffer ? msg.text.slice('__GIG_OFFER__:'.length) : null
 
             return (
               <div
@@ -921,6 +945,9 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
                   </div>
                 )}
 
+                {isGigOffer ? (
+                  <GigOfferCard bookingId={gigOfferId!} currentUserType={currentUserType ?? ''} />
+                ) : (
                 <div className={`relative max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                   {/* Reaction picker popover */}
                   {reactionMsgId === msg.id && (
@@ -980,6 +1007,7 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
                     </div>
                   )}
                 </div>
+                )}
               </div>
             )
           })}
@@ -991,6 +1019,17 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
           className="bg-white px-4 py-3 flex items-end gap-2.5 shrink-0"
           style={{ borderTop: '1px solid rgba(94,94,94,0.08)' }}
         >
+          {currentUserType === 'restaurant' && selectedConv?.otherUserType === 'musician' && (
+            <button
+              onClick={() => setGigOfferOpen(true)}
+              className="w-10 h-10 flex items-center justify-center rounded-full bg-white border border-charcoal/15 text-charcoal hover:text-chestnut hover:border-chestnut transition-colors shrink-0 mb-0.5"
+              title="Send a gig offer"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
+            </button>
+          )}
           <textarea
             ref={textareaRef}
             value={chatInput}
@@ -1017,6 +1056,20 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
             </svg>
           </button>
         </div>
+
+        {/* Gig slot modal */}
+        {gigOfferOpen && selectedConv && (
+          <GigSlotModal
+            userId={userId}
+            musicianId={selectedConv.otherId}
+            musicianName={selectedConv.otherName}
+            onClose={() => setGigOfferOpen(false)}
+            onSend={(bookingId) => {
+              setGigOfferOpen(false)
+              void sendGigOffer(bookingId)
+            }}
+          />
+        )}
 
         {/* Delete confirmation modal */}
         {deleteConfirmConvId && (
@@ -1048,6 +1101,388 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
 })
 
 export default MessagingTab
+
+// ---- Time helper ----
+
+function fmtTime(t: string): string {
+  if (!t) return ''
+  const [h, m] = t.split(':').map(Number)
+  return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
+}
+
+// ---- Gig Offer Card ----
+
+function GigOfferCard({ bookingId, currentUserType }: {
+  bookingId: string
+  currentUserType: string
+}) {
+  const [booking, setBooking] = useState<{
+    date: string
+    time: string
+    pay: number
+    inviteAccepted: boolean | null
+  } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [responding, setResponding] = useState(false)
+
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await supabase
+        .from('bookings')
+        .select('pay_amount, invite_accepted, availability:availability_id(date, start_time, end_time)')
+        .eq('id', bookingId)
+        .maybeSingle()
+      if (data) {
+        const avRaw = data.availability
+        const av = (Array.isArray(avRaw) ? avRaw[0] : avRaw) as Record<string, string> | null
+        const rawStart = av?.start_time?.slice(0, 5) ?? ''
+        const rawEnd = av?.end_time?.slice(0, 5) ?? ''
+        setBooking({
+          date: av?.date ? new Date(av.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '—',
+          time: rawStart && rawEnd ? `${fmtTime(rawStart)} – ${fmtTime(rawEnd)}` : '—',
+          pay: Number(data.pay_amount) || 0,
+          inviteAccepted: data.invite_accepted as boolean | null,
+        })
+      }
+      setLoading(false)
+    }
+    void load()
+  }, [bookingId])
+
+  const handleRespond = async (response: 'accept' | 'decline') => {
+    setResponding(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const res = await fetch('/api/bookings/respond-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ booking_id: bookingId, response }),
+      })
+      if (res.ok) {
+        setBooking(prev => prev ? { ...prev, inviteAccepted: response === 'accept' ? true : false } : null)
+      }
+    } finally {
+      setResponding(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="bg-chestnut/5 border border-chestnut/15 rounded-2xl p-4 max-w-[260px] animate-pulse">
+        <div className="h-4 bg-chestnut/20 rounded mb-2 w-3/4" />
+        <div className="h-3 bg-charcoal/10 rounded mb-1.5 w-full" />
+        <div className="h-3 bg-charcoal/10 rounded w-2/3" />
+      </div>
+    )
+  }
+  if (!booking) return null
+
+  const responded = booking.inviteAccepted !== null
+
+  return (
+    <div className="bg-chestnut/5 border border-chestnut/20 rounded-2xl p-4 max-w-[260px]">
+      <div className="flex items-center gap-2.5 mb-3">
+        <div className="w-8 h-8 bg-chestnut/15 rounded-xl flex items-center justify-center shrink-0">
+          <svg className="w-4 h-4 text-chestnut" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+          </svg>
+        </div>
+        <div>
+          <p className="text-chestnut text-[9px] font-black uppercase tracking-[0.2em]">Private Invite</p>
+          <p className="text-graphite text-sm font-bold leading-tight">Gig Offer</p>
+        </div>
+      </div>
+      <div className="space-y-1.5 mb-3">
+        <div className="flex justify-between text-xs">
+          <span className="text-charcoal/60">Date</span>
+          <span className="text-graphite font-semibold">{booking.date}</span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-charcoal/60">Time</span>
+          <span className="text-graphite font-semibold">{booking.time}</span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-charcoal/60">Pay</span>
+          <span className="text-teal font-black">${booking.pay}</span>
+        </div>
+      </div>
+      {currentUserType === 'musician' && !responded && (
+        <div className="flex gap-2">
+          <button
+            onClick={() => handleRespond('accept')}
+            disabled={responding}
+            className="flex-1 bg-teal text-snow py-2 rounded-xl text-xs font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            Accept
+          </button>
+          <button
+            onClick={() => handleRespond('decline')}
+            disabled={responding}
+            className="flex-1 bg-snow text-charcoal py-2 rounded-xl text-xs font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10 disabled:opacity-50"
+          >
+            Decline
+          </button>
+        </div>
+      )}
+      {currentUserType === 'restaurant' && !responded && (
+        <p className="text-center text-xs text-charcoal/50">Waiting for musician to respond</p>
+      )}
+      {responded && (
+        <div className={`text-center text-xs font-bold py-1.5 rounded-xl ${booking.inviteAccepted ? 'bg-teal/10 text-teal' : 'bg-charcoal/10 text-charcoal/60'}`}>
+          {booking.inviteAccepted ? 'Accepted — awaiting payment' : 'Declined'}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---- Slot picker helpers (mirrors RestaurantDashboard) ----
+
+const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
+  const h = Math.floor(i / 2)
+  const m = (i % 2) * 30
+  const period = h < 12 ? 'AM' : 'PM'
+  const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+  return {
+    label: `${hour12}:${m.toString().padStart(2, '0')} ${period}`,
+    value: `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`,
+  }
+})
+
+function getDateOptions() {
+  const options: { value: string; label: string }[] = []
+  const today = new Date()
+  for (let i = 0; i < 90; i++) {
+    const d = new Date(today)
+    d.setDate(today.getDate() + i)
+    const value = d.toISOString().split('T')[0]
+    const prefix = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'long' })
+    options.push({ value, label: `${prefix} · ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` })
+  }
+  return options
+}
+
+function StyledSelect({ value, onChange, options, placeholder, className = '' }: {
+  value: string
+  onChange: (v: string) => void
+  options: { value: string; label: string }[]
+  placeholder?: string
+  className?: string
+}) {
+  return (
+    <div className={`relative ${className}`}>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className={`w-full appearance-none bg-white rounded-xl px-4 py-3 pr-10 shadow-sm border border-charcoal/10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-chestnut/20 cursor-pointer ${value ? 'text-graphite' : 'text-charcoal/40'}`}
+      >
+        {placeholder && <option value="" disabled>{placeholder}</option>}
+        {options.map(opt => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+      <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-charcoal/40">
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </div>
+    </div>
+  )
+}
+
+// ---- Gig Slot Modal ----
+
+function GigSlotModal({ userId, musicianId, musicianName, onClose, onSend }: {
+  userId: string
+  musicianId: string
+  musicianName: string
+  onClose: () => void
+  onSend: (bookingId: string) => void
+}) {
+  const [mode, setMode] = useState<'pick' | 'create'>('pick')
+  const [slots, setSlots] = useState<{ id: string; dateLabel: string; time: string; pay: number }[]>([])
+  const [slotsLoading, setSlotsLoading] = useState(true)
+  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null)
+  const [date, setDate] = useState('')
+  const [startTime, setStartTime] = useState('')
+  const [endTime, setEndTime] = useState('')
+  const [pay, setPay] = useState('')
+  const [note, setNote] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const load = async () => {
+      const today = new Date().toISOString().slice(0, 10)
+      const { data } = await supabase
+        .from('availability')
+        .select('id, date, start_time, end_time, pay')
+        .eq('restaurant_id', userId)
+        .eq('status', 'open')
+        .gte('date', today)
+        .order('date', { ascending: true })
+        .limit(20)
+      if (data) {
+        setSlots(data.map(s => {
+          const rawStart = s.start_time?.slice(0, 5) ?? ''
+          const rawEnd = s.end_time?.slice(0, 5) ?? ''
+          return {
+            id: s.id,
+            dateLabel: new Date(s.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+            time: rawStart && rawEnd ? `${fmtTime(rawStart)} – ${fmtTime(rawEnd)}` : '—',
+            pay: Number(s.pay) || 0,
+          }
+        }))
+      }
+      setSlotsLoading(false)
+    }
+    void load()
+  }, [userId])
+
+  const handleSubmit = async () => {
+    setError('')
+    if (mode === 'pick' && !selectedSlotId) { setError('Select a slot.'); return }
+    if (mode === 'create') {
+      if (!date) { setError('Enter a date.'); return }
+      if (!startTime) { setError('Enter a start time.'); return }
+      if (!endTime) { setError('Enter an end time.'); return }
+      if (!pay || isNaN(Number(pay)) || Number(pay) <= 0) { setError('Enter a valid pay amount.'); return }
+    }
+    setSubmitting(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Not authenticated')
+      const body = mode === 'pick'
+        ? { musician_id: musicianId, availability_id: selectedSlotId, note: note.trim() || undefined }
+        : { musician_id: musicianId, date, start_time: startTime, end_time: endTime, pay: Number(pay), note: note.trim() || undefined }
+      const res = await fetch('/api/bookings/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json() as { booking_id?: string; error?: string }
+      if (!res.ok) throw new Error(data.error ?? 'Failed to send invite')
+      onSend(data.booking_id!)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-[300] flex items-end sm:items-center justify-center p-4">
+      <div className="bg-snow w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
+        <div className="bg-graphite rounded-t-3xl px-6 py-4 flex items-center justify-between relative overflow-hidden">
+          <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-chestnut opacity-20 blur-2xl pointer-events-none" />
+          <div className="relative z-10">
+            <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em]">Gig Offer</p>
+            <h3 className="text-snow text-xl font-black tracking-tight">Send to <span className="text-chestnut italic">{musicianName.split(' ')[0]}.</span></h3>
+          </div>
+          <button onClick={onClose} className="relative z-10 text-snow/60 hover:text-snow transition-colors">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+        <div className="p-6">
+          <div className="flex bg-white rounded-xl p-1 mb-5 shadow-sm">
+            <button onClick={() => setMode('pick')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${mode === 'pick' ? 'bg-chestnut text-snow shadow-sm' : 'text-charcoal hover:text-graphite'}`}>Existing Slot</button>
+            <button onClick={() => setMode('create')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${mode === 'create' ? 'bg-chestnut text-snow shadow-sm' : 'text-charcoal hover:text-graphite'}`}>New Slot</button>
+          </div>
+
+          {mode === 'pick' && (
+            <div className="mb-4">
+              {slotsLoading ? (
+                <div className="space-y-2">
+                  {[1, 2].map(i => <div key={i} className="h-14 bg-white rounded-xl animate-pulse" />)}
+                </div>
+              ) : slots.length === 0 ? (
+                <div className="bg-white rounded-xl p-4 text-center">
+                  <p className="text-charcoal/60 text-sm mb-2">No open slots available.</p>
+                  <button onClick={() => setMode('create')} className="text-chestnut text-sm font-bold hover:opacity-80 transition-opacity">Create a new slot instead →</button>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {slots.map(slot => (
+                    <button
+                      key={slot.id}
+                      onClick={() => setSelectedSlotId(slot.id)}
+                      className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all ${selectedSlotId === slot.id ? 'border-chestnut bg-chestnut/5' : 'border-transparent bg-white hover:border-charcoal/20'}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-graphite text-sm font-bold">{slot.dateLabel}</p>
+                          <p className="text-charcoal text-xs mt-0.5">{slot.time}</p>
+                        </div>
+                        <p className="text-teal font-black text-sm">${slot.pay}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {mode === 'create' && (
+            <div className="space-y-4 mb-4">
+              <div>
+                <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">Date</label>
+                <StyledSelect
+                  value={date}
+                  onChange={setDate}
+                  options={getDateOptions()}
+                  placeholder="Pick a date"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">Start</label>
+                  <StyledSelect
+                    value={startTime}
+                    onChange={setStartTime}
+                    options={TIME_OPTIONS}
+                    placeholder="Start time"
+                  />
+                </div>
+                <div>
+                  <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">End</label>
+                  <StyledSelect
+                    value={endTime}
+                    onChange={setEndTime}
+                    options={TIME_OPTIONS}
+                    placeholder="End time"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">Pay ($)</label>
+                <input type="number" min="0" step="1" placeholder="e.g. 200" value={pay} onChange={e => setPay(e.target.value)} className="w-full bg-white rounded-xl px-4 py-3 text-sm shadow-sm border border-charcoal/10 focus:outline-none focus:ring-2 focus:ring-chestnut/20" />
+              </div>
+            </div>
+          )}
+
+          <div className="mb-5">
+            <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">Note <span className="font-normal normal-case text-charcoal/50">(optional)</span></label>
+            <textarea placeholder={`A note for ${musicianName.split(' ')[0]}…`} value={note} onChange={e => setNote(e.target.value)} rows={2} className="w-full bg-white rounded-xl px-4 py-3 text-sm shadow-sm focus:outline-none focus:shadow-md transition-shadow resize-none placeholder:text-charcoal/40" />
+          </div>
+
+          {error && <div className="bg-red-50 text-red-600 px-4 py-3 rounded-xl mb-4 text-sm">{error}</div>}
+
+          <button
+            onClick={handleSubmit}
+            disabled={submitting || (mode === 'pick' && !selectedSlotId && slots.length > 0)}
+            className="w-full bg-chestnut text-snow py-3.5 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed mb-2"
+          >
+            {submitting
+              ? <span className="flex items-center justify-center gap-2"><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg> Sending…</span>
+              : `Send Offer to ${musicianName.split(' ')[0]}`}
+          </button>
+          <button onClick={onClose} disabled={submitting} className="w-full bg-white text-charcoal py-3 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10 disabled:opacity-50">Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ---- Delete Confirmation Modal ----
 

@@ -71,21 +71,34 @@ export async function POST(request: Request) {
       ? `Booking Cancelled — ${musicianName} · ${gigDate}`
       : `Your Gig Was Cancelled — ${restaurantName} · ${gigDate}`
 
-    await sendEmail({
-      to: recipientAuth.email,
-      subject,
-      emailComponent: (
-        <CancellationEmail
-          recipientName={recipientName}
-          cancelledBy={cancelled_by}
-          musicianName={musicianName}
-          restaurantName={restaurantName}
-          gigDate={gigDate}
-          amount={payAmount}
-          dashboardUrl={`${appUrl}/dashboard`}
-        />
-      ),
-    })
+    const notifBody = cancelled_by === 'musician'
+      ? `${musicianName} cancelled the ${gigDate} booking`
+      : `${restaurantName} cancelled the ${gigDate} booking`
+
+    await Promise.all([
+      sendEmail({
+        to: recipientAuth.email,
+        subject,
+        emailComponent: (
+          <CancellationEmail
+            recipientName={recipientName}
+            cancelledBy={cancelled_by}
+            musicianName={musicianName}
+            restaurantName={restaurantName}
+            gigDate={gigDate}
+            amount={payAmount}
+            dashboardUrl={`${appUrl}/dashboard`}
+          />
+        ),
+      }),
+      supabaseAdmin.from('notifications').insert({
+        user_id: recipientId,
+        type: 'booking_cancelled',
+        title: 'Booking was cancelled',
+        body: notifBody,
+        link: '/dashboard',
+      }),
+    ])
 
     return NextResponse.json({ success: true, sent: true })
   } catch (err) {
