@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/stripe/release-payout",
-      "schedule": "0 0 * * *"
+      "schedule": "0 12 * * *"
     },
     {
       "path": "/api/cron/gig-reminders",

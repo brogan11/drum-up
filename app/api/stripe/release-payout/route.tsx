@@ -21,7 +21,16 @@ export async function POST(request: Request) {
     return new Response('Unauthorized', { status: 401 })
   }
 
-  const today = new Date().toISOString().slice(0, 10)
+  // A gig has truly ended only after its wall-clock end time, but no timezone is
+  // stored for the gig or venue (see availability schema: date + start_time +
+  // end_time are all naive local values). We therefore treat the wall-clock end
+  // as UTC and require it to be this far in the past before releasing. Since every
+  // US zone is BEHIND UTC, the real end instant is always LATER than the treat-as-
+  // UTC value — by at most ~10h (Hawaii, UTC-10). A 12h margin guarantees we never
+  // capture before a gig has ended anywhere in the US, while still being small
+  // enough that the once-daily noon-UTC cron catches the prior night's gigs.
+  const SAFETY_MARGIN_MS = 12 * 60 * 60 * 1000
+  const nowMs = Date.now()
   let released = 0
   let errors = 0
 
@@ -41,19 +50,31 @@ export async function POST(request: Request) {
     const availIds = bookings.map(b => b.availability_id)
     const { data: avails, error: availErr } = await supabaseAdmin
       .from('availability')
-      .select('id, date')
+      .select('id, date, start_time, end_time')
       .in('id', availIds)
-      .lt('date', today)
 
     if (availErr) throw availErr
-    const pastAvailIds = new Set((avails ?? []).map(a => a.id))
-    const due = bookings.filter(b => pastAvailIds.has(b.availability_id))
+    const availById = new Map((avails ?? []).map(a => [a.id, a]))
+
+    // Absolute (treat-as-UTC) instant the gig ended, or null if undeterminable.
+    const gigEndedMs = (a: { date?: string | null; end_time?: string | null } | undefined): number | null => {
+      if (!a?.date) return null
+      const endTime = a.end_time ?? '23:59:59' // missing end => latest plausible, never pays early
+      const ms = Date.parse(`${a.date}T${endTime}Z`)
+      return Number.isNaN(ms) ? null : ms
+    }
+
+    // Only gigs whose end time (+ safety margin) is in the past are due for payout.
+    const due = bookings.filter(b => {
+      const endedMs = gigEndedMs(availById.get(b.availability_id))
+      return endedMs != null && endedMs + SAFETY_MARGIN_MS <= nowMs
+    })
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://drum-up.app'
 
     for (const booking of due) {
       try {
-        const availDate = avails?.find(a => a.id === booking.availability_id)?.date
+        const availDate = availById.get(booking.availability_id)?.date
         console.log('[Payout] Processing booking:', {
           bookingId: booking.id,
           paymentIntentId: booking.stripe_payment_intent_id,

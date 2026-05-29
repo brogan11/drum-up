@@ -21,6 +21,10 @@ import {
   SkeletonMusicianCard,
 } from '@/components/Skeleton'
 
+// localStorage flag so the "You're all set!" modal shows once per completed
+// Stripe onboarding instead of on every reload of the ?stripe=success URL.
+const STRIPE_CELEBRATED_KEY = 'du_stripe_celebrated'
+
 // ---- Types ----
 
 type BookingStatus = 'pending' | 'confirmed' | 'cancelled'
@@ -529,22 +533,28 @@ export default function MusicianDashboard() {
     }
   }
 
-  const checkStripeStatus = async () => {
+  const checkStripeStatus = async (): Promise<boolean> => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
+      if (!session) return false
       const res = await fetch('/api/stripe/connect/status', {
         headers: { Authorization: `Bearer ${session.access_token}` },
       })
       const data = await res.json() as { onboarded: boolean }
-      if (res.ok) setStripeOnboarded(data.onboarded)
+      if (res.ok) {
+        setStripeOnboarded(data.onboarded)
+        return data.onboarded
+      }
     } catch (err) {
       console.error('Stripe status check failed:', err)
     }
+    return false
   }
 
   const connectStripe = async () => {
     setStripeConnecting(true)
+    // Starting a fresh setup — allow the success modal to show once when they return.
+    if (typeof window !== 'undefined') localStorage.removeItem(STRIPE_CELEBRATED_KEY)
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { toast.error('Please log in again.'); return }
@@ -568,8 +578,16 @@ export default function MusicianDashboard() {
     const params = new URLSearchParams(window.location.search)
     const stripeParam = params.get('stripe')
     if (stripeParam === 'success') {
-      checkStripeStatus().then(() => setStripeSuccess(true))
+      // Strip the param immediately so a refresh / tab-restore of this URL can't
+      // re-trigger the modal. We only celebrate once per completed onboarding:
+      // the flag is cleared in connectStripe() when a new setup is started.
       window.history.replaceState({}, '', window.location.pathname)
+      void checkStripeStatus().then(onboarded => {
+        if (onboarded && localStorage.getItem(STRIPE_CELEBRATED_KEY) !== '1') {
+          setStripeSuccess(true)
+          localStorage.setItem(STRIPE_CELEBRATED_KEY, '1')
+        }
+      })
     } else if (stripeParam === 'refresh') {
       setShowStripeRefreshModal(true)
       window.history.replaceState({}, '', window.location.pathname)
