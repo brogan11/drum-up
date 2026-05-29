@@ -23,9 +23,33 @@ export async function GET(request: Request) {
       .maybeSingle()
 
     const accountId = profile?.stripe_account_id as string | null
-    if (!accountId) return NextResponse.json({ onboarded: false })
+    if (!accountId) {
+      // No Stripe account on file (never connected, or it was deleted). Make sure
+      // the cached flag reflects that so the UI prompts re-onboarding.
+      await supabaseAdmin
+        .from('profiles')
+        .update({ stripe_onboarded: false })
+        .eq('id', user.id)
+      return NextResponse.json({ onboarded: false })
+    }
 
-    const account = await stripe.accounts.retrieve(accountId)
+    let account: Awaited<ReturnType<typeof stripe.accounts.retrieve>>
+    try {
+      account = await stripe.accounts.retrieve(accountId)
+    } catch (e: unknown) {
+      // The stored account ID no longer exists on Stripe — clear it and reset the
+      // flag so the musician is sent back through onboarding.
+      const code = (e as { code?: string; statusCode?: number }).code
+      const statusCode = (e as { code?: string; statusCode?: number }).statusCode
+      if (code === 'account_invalid' || statusCode === 404) {
+        await supabaseAdmin
+          .from('profiles')
+          .update({ stripe_account_id: null, stripe_onboarded: false })
+          .eq('id', user.id)
+        return NextResponse.json({ onboarded: false })
+      }
+      throw e
+    }
     const onboarded =
       account.details_submitted === true &&
       account.charges_enabled === true &&

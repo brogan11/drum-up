@@ -303,7 +303,7 @@ export default function MusicianDashboard() {
         // profile. It is used for Stripe Connect pre-fill. Never include legal_name in public queries.
         const { data, error: profileErr } = await supabase
           .from('profiles')
-          .select('full_name, bio, avatar_url, instagram_url, youtube_url, spotify_url, tiktok_url, website, role_metadata, performer_type, band_members, legal_name, stripe_onboarded, latitude, longitude, max_distance_miles')
+          .select('full_name, bio, avatar_url, instagram_url, youtube_url, spotify_url, tiktok_url, website, role_metadata, performer_type, band_members, legal_name, stripe_onboarded, stripe_account_id, latitude, longitude, max_distance_miles')
           .eq('id', user.id).maybeSingle()
         if (profileErr) throw profileErr
         if (!data) return
@@ -324,7 +324,13 @@ export default function MusicianDashboard() {
           performerType: pt === 'solo' || pt === 'band' ? pt : '',
           bandMembers: (data as Record<string, unknown>).band_members as number | null ?? null,
         })
-        setStripeOnboarded((data as Record<string, unknown>).stripe_onboarded as boolean | null ?? false)
+        // Treat the musician as onboarded only if the flag is set AND a Stripe
+        // account ID actually exists. If the ID was removed (e.g. deleted in
+        // Supabase, or cleared because the account became invalid), they must
+        // redo onboarding — so we show the "connect bank" prompts.
+        const hasStripeAccount = !!((data as Record<string, unknown>).stripe_account_id)
+        const onboardedFlag = (data as Record<string, unknown>).stripe_onboarded as boolean | null ?? false
+        setStripeOnboarded(onboardedFlag && hasStripeAccount)
 
         const myLat = data.latitude as number | null
         const myLon = data.longitude as number | null
