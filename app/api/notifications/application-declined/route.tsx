@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { sendEmail } from '@/lib/send-email'
-import { ApplicationDeclinedEmail } from '@/emails/ApplicationDeclinedEmail'
 import { checkRateLimit, standardLimiter } from '@/lib/ratelimit'
+
+// In-app notification only — no email. A "not selected" message is low-urgency,
+// so it lives in the bell rather than the inbox to conserve the email budget.
 
 export async function POST(request: Request) {
   const rl = await checkRateLimit(request, standardLimiter)
@@ -35,55 +36,29 @@ export async function POST(request: Request) {
     const [
       { data: avail },
       { data: restaurant },
-      { data: musician },
     ] = await Promise.all([
       supabaseAdmin.from('availability').select('date').eq('id', booking.availability_id).maybeSingle(),
-      supabaseAdmin.from('profiles').select('id, full_name, role_metadata').eq('id', booking.restaurant_id).maybeSingle(),
-      supabaseAdmin.from('profiles').select('id, full_name').eq('id', booking.musician_id).maybeSingle(),
+      supabaseAdmin.from('profiles').select('full_name, role_metadata').eq('id', booking.restaurant_id).maybeSingle(),
     ])
-
-    const { data: { user: musicianAuth } } = await supabaseAdmin.auth.admin.getUserById(booking.musician_id)
-    const musicianEmail = musicianAuth?.email
-    if (!musicianEmail) {
-      console.error('[Email] application-declined: musician has no email')
-      return NextResponse.json({ success: false, error: 'No musician email' })
-    }
 
     const restMeta = (restaurant?.role_metadata ?? {}) as Record<string, unknown>
     const restaurantName = (restMeta.venue_name as string | undefined) ?? restaurant?.full_name ?? 'The Venue'
-    const musicianName = musician?.full_name ?? 'Musician'
 
     const gigDate = avail
       ? new Date(avail.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
       : 'the requested date'
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://drum-up.app'
-
-    await Promise.all([
-      sendEmail({
-        to: musicianEmail,
-        subject: `Application update from ${restaurantName}`,
-        emailComponent: (
-          <ApplicationDeclinedEmail
-            musicianName={musicianName}
-            restaurantName={restaurantName}
-            gigDate={gigDate}
-            dashboardUrl={`${appUrl}/dashboard`}
-          />
-        ),
-      }),
-      supabaseAdmin.from('notifications').insert({
-        user_id: booking.musician_id,
-        type: 'application_declined',
-        title: 'Application not selected',
-        body: `${restaurantName} filled the ${gigDate} slot with another musician`,
-        link: '/dashboard',
-      }),
-    ])
+    await supabaseAdmin.from('notifications').insert({
+      user_id: booking.musician_id,
+      type: 'application_declined',
+      title: 'Application not selected',
+      body: `${restaurantName} filled the ${gigDate} slot with another musician`,
+      link: '/dashboard',
+    })
 
     return NextResponse.json({ success: true })
   } catch (err) {
-    console.error('[Email] application-declined error:', err)
+    console.error('[application-declined] error:', err)
     return NextResponse.json({ success: false })
   }
 }

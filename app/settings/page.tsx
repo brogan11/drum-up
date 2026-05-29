@@ -42,6 +42,8 @@ interface FormState {
 
   maxDistance: number
 
+  notifyGigAlerts: boolean
+
   username: string
   bio: string
   instagram: string
@@ -58,6 +60,7 @@ const EMPTY: FormState = {
   genres: [], instruments: '', performerType: '', bandMembers: '', legalName: '', yearsPerforming: '',
   favoriteGenres: [],
   maxDistance: 20,
+  notifyGigAlerts: true,
   username: '',
   bio: '', instagram: '', tiktok: '', spotify: '', youtube: '', website: '',
 }
@@ -147,6 +150,7 @@ export default function SettingsPage() {
           yearsPerforming: meta.years_performing != null ? String(meta.years_performing) : '',
           favoriteGenres: Array.isArray(meta.favorite_genres) ? meta.favorite_genres : [],
           maxDistance: typeof profile.max_distance_miles === 'number' ? profile.max_distance_miles : 20,
+          notifyGigAlerts: profile.notify_gig_alerts !== false,
           username: profile.username ?? '',
           bio: profile.bio ?? '',
           instagram: profile.instagram_url ?? '',
@@ -334,6 +338,7 @@ export default function SettingsPage() {
         latitude: form.latitude,
         longitude: form.longitude,
         max_distance_miles: form.maxDistance,
+        notify_gig_alerts: form.notifyGigAlerts,
         bio: form.bio || null,
         instagram_url: form.instagram || null,
         tiktok_url: form.tiktok || null,
@@ -635,6 +640,33 @@ export default function SettingsPage() {
                     : 'Only shows within this radius of your location will appear in your feed.'}
                 </p>
               </div>
+            </Card>
+          )}
+
+          {/* SECTION — Notifications (musicians + fans) */}
+          {userType !== 'restaurant' && (
+            <Card title="Notifications" eyebrow="2.6">
+              <button
+                type="button"
+                onClick={() => update('notifyGigAlerts', !form.notifyGigAlerts)}
+                className="w-full flex items-center justify-between gap-4 text-left"
+              >
+                <div>
+                  <p className="text-graphite font-semibold text-sm">Gig alerts</p>
+                  <p className="text-xs text-charcoal/70 mt-0.5">
+                    {userType === 'musician'
+                      ? 'Get notified when a nearby venue posts a slot that matches your genres.'
+                      : 'Get notified when a venue you follow posts a new show.'}
+                  </p>
+                </div>
+                <span
+                  className={`shrink-0 w-11 h-6 rounded-full transition-colors relative ${form.notifyGigAlerts ? 'bg-chestnut' : 'bg-charcoal/25'}`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.notifyGigAlerts ? 'translate-x-5' : ''}`}
+                  />
+                </span>
+              </button>
             </Card>
           )}
 

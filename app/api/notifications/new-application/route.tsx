@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { sendEmail } from '@/lib/send-email'
-import { NewApplicationEmail } from '@/emails/NewApplicationEmail'
 import { checkRateLimit, standardLimiter } from '@/lib/ratelimit'
+
+// In-app notification only — no email. A popular gig can draw many applications;
+// venues see them in the bell and on their dashboard instead of one email each.
 
 export async function POST(request: Request) {
   const rl = await checkRateLimit(request, standardLimiter)
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
 
     const { data: booking } = await supabaseAdmin
       .from('bookings')
-      .select('id, availability_id, restaurant_id, musician_id, pay_amount, note, status')
+      .select('id, availability_id, restaurant_id, musician_id')
       .eq('id', booking_id)
       .maybeSingle()
 
@@ -34,71 +35,29 @@ export async function POST(request: Request) {
 
     const [
       { data: avail },
-      { data: restaurant },
       { data: musician },
     ] = await Promise.all([
-      supabaseAdmin.from('availability').select('date, start_time, end_time').eq('id', booking.availability_id).maybeSingle(),
-      supabaseAdmin.from('profiles').select('id, full_name, role_metadata').eq('id', booking.restaurant_id).maybeSingle(),
-      supabaseAdmin.from('profiles').select('id, full_name, performer_type').eq('id', booking.musician_id).maybeSingle(),
+      supabaseAdmin.from('availability').select('date').eq('id', booking.availability_id).maybeSingle(),
+      supabaseAdmin.from('profiles').select('full_name').eq('id', booking.musician_id).maybeSingle(),
     ])
 
-    const { data: { user: restaurantAuth } } = await supabaseAdmin.auth.admin.getUserById(booking.restaurant_id)
-    const restaurantEmail = restaurantAuth?.email
-    if (!restaurantEmail) {
-      console.error('[Email] new-application: restaurant has no email')
-      return NextResponse.json({ success: false, error: 'No restaurant email' })
-    }
-
-    const restMeta = (restaurant?.role_metadata ?? {}) as Record<string, unknown>
-    const restaurantName = (restMeta.venue_name as string | undefined) ?? restaurant?.full_name ?? 'Your Venue'
     const musicianName = musician?.full_name ?? 'A Musician'
-    const performerType = ((musician as Record<string, unknown>)?.performer_type as string | null) === 'band' ? 'band' : 'solo'
 
     const gigDate = avail
       ? new Date(avail.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
       : 'TBD'
-    const gigTime = avail
-      ? `${fmtTime(avail.start_time?.slice(0, 5) ?? '')} – ${fmtTime(avail.end_time?.slice(0, 5) ?? '')}`
-      : 'TBD'
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://drum-up.app'
-
-    await Promise.all([
-      sendEmail({
-        to: restaurantEmail,
-        subject: `New application from ${musicianName}`,
-        emailComponent: (
-          <NewApplicationEmail
-            restaurantName={restaurantName}
-            musicianName={musicianName}
-            performerType={performerType as 'solo' | 'band'}
-            applicationNote={booking.note ?? ''}
-            gigDate={gigDate}
-            gigTime={gigTime}
-            payAmount={Number(booking.pay_amount) || 0}
-            dashboardUrl={`${appUrl}/dashboard`}
-          />
-        ),
-      }),
-      supabaseAdmin.from('notifications').insert({
-        user_id: booking.restaurant_id,
-        type: 'new_application',
-        title: `New application from ${musicianName}`,
-        body: `${musicianName} applied for your ${gigDate} slot`,
-        link: '/dashboard',
-      }),
-    ])
+    await supabaseAdmin.from('notifications').insert({
+      user_id: booking.restaurant_id,
+      type: 'new_application',
+      title: `New application from ${musicianName}`,
+      body: `${musicianName} applied for your ${gigDate} slot`,
+      link: '/dashboard',
+    })
 
     return NextResponse.json({ success: true })
   } catch (err) {
-    console.error('[Email] new-application error:', err)
+    console.error('[new-application] error:', err)
     return NextResponse.json({ success: false })
   }
-}
-
-function fmtTime(t: string): string {
-  if (!t) return ''
-  const [h, m] = t.split(':').map(Number)
-  const period = h >= 12 ? 'PM' : 'AM'
-  return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${period}`
 }

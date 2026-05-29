@@ -16,6 +16,8 @@ import { buildSocialUrl } from '@/lib/social-urls'
 import { GENRE_GROUPS } from '@/lib/genres'
 import { GenreSelector } from '@/components/GenreSelector'
 import InviteModal from '@/components/InviteModal'
+import AddToCalendar from '@/components/AddToCalendar'
+import { gigDateTime } from '@/lib/ics'
 
 // ---- Types ----
 
@@ -786,7 +788,7 @@ export default function RestaurantDashboard() {
     setPostingSlot(true)
     setPostSlotError('')
     try {
-      const { error: insertErr } = await supabase.from('availability').insert({
+      const { data: inserted, error: insertErr } = await supabase.from('availability').insert({
         restaurant_id: userId,
         date: newSlot.date,
         start_time: newSlot.startTime,
@@ -797,13 +799,28 @@ export default function RestaurantDashboard() {
         genres: newSlot.genres,
         latitude: restaurantCoords.lat,
         longitude: restaurantCoords.lon,
-      })
+      }).select('id').single()
       if (insertErr) throw insertErr
       setPostSlotOpen(false)
       setNewSlot({ date: '', startTime: '', endTime: '', genres: [], budget: '', notes: '' })
       await loadSlots(userId)
       setActiveTab('slots')
       toast.success('Slot posted! Musicians can now apply.')
+
+      // Fan out gig alerts to nearby matching musicians + venue followers (fire-and-forget)
+      if (inserted?.id) {
+        void supabase.auth.getSession().then(({ data: { session } }) => {
+          if (!session) return
+          fetch('/api/notifications/new-gig', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ availability_id: inserted.id }),
+          }).catch(err => console.error('[Notify] new-gig failed:', err))
+        })
+      }
     } catch (err) {
       console.error('Slot insert failed:', err)
       const msg = err instanceof Error ? err.message : 'Something went wrong'
@@ -1225,6 +1242,19 @@ export default function RestaurantDashboard() {
                             <div className="w-1.5 h-1.5 rounded-full bg-teal" />
                             <span className="text-teal text-[10px] font-bold">Confirmed</span>
                           </div>
+                          <AddToCalendar
+                            className="mt-2"
+                            label="Calendar"
+                            filename={`gig-${slot.rawDate}`}
+                            event={{
+                              uid: `gig-${slot.id}`,
+                              title: `Live music: ${slot.bookedMusician ?? 'Musician'} at ${profile.name}`,
+                              description: slot.notes || '',
+                              location: profile.address || '',
+                              start: gigDateTime(slot.rawDate, slot.rawStartTime),
+                              end: gigDateTime(slot.rawDate, slot.rawEndTime),
+                            }}
+                          />
                         </div>
                       </div>
                     )

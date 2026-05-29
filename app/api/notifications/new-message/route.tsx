@@ -32,7 +32,8 @@ export async function POST(request: Request) {
 
     if (!message) return NextResponse.json({ error: 'Message not found' }, { status: 404 })
 
-    // Cooldown: skip if the receiver sent or received a message in this conversation in the last 5 minutes
+    // Per-conversation cooldown: during an active back-and-forth, skip both the
+    // in-app notification and the email so we don't spam either channel.
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
     const { data: recentMessages } = await supabaseAdmin
       .from('messages')
@@ -46,59 +47,101 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, skipped: true, reason: 'cooldown' })
     }
 
-    const [
-      { data: sender },
-      { data: { user: receiverAuth } },
-    ] = await Promise.all([
-      supabaseAdmin.from('profiles').select('id, full_name, role_metadata').eq('id', message.sender_id).maybeSingle(),
-      supabaseAdmin.auth.admin.getUserById(message.receiver_id),
-    ])
-
-    const { data: receiver } = await supabaseAdmin
-      .from('profiles')
-      .select('id, full_name')
-      .eq('id', message.receiver_id)
-      .maybeSingle()
-
-    const receiverEmail = receiverAuth?.email
-    if (!receiverEmail) {
-      console.error('[Email] new-message: receiver has no email')
-      return NextResponse.json({ success: false, error: 'No receiver email' })
-    }
-
-    const senderMeta = (sender?.role_metadata ?? {}) as Record<string, unknown>
-    const senderName = (senderMeta.venue_name as string | undefined) ?? sender?.full_name ?? 'Someone'
-    const recipientName = receiver?.full_name ?? 'there'
-
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://drum-up.app'
-
     const preview = message.content.length > 80
       ? message.content.slice(0, 77) + '…'
       : message.content
 
-    await Promise.all([
-      sendEmail({
-        to: receiverEmail,
-        subject: `New message from ${senderName}`,
-        emailComponent: (
-          <NewMessageEmail
-            recipientName={recipientName}
-            senderName={senderName}
-            messagePreview={message.content}
-            dashboardUrl={`${appUrl}/dashboard`}
-          />
-        ),
-      }),
-      supabaseAdmin.from('notifications').insert({
-        user_id: message.receiver_id,
-        type: 'new_message',
-        title: `New message from ${senderName}`,
-        body: preview,
-        link: '/dashboard',
-      }),
-    ])
+    // The in-app bell notification is the primary channel — it always fires here.
+    const { data: sender } = await supabaseAdmin
+      .from('profiles')
+      .select('id, full_name, role_metadata')
+      .eq('id', message.sender_id)
+      .maybeSingle()
 
-    return NextResponse.json({ success: true })
+    const senderMeta = (sender?.role_metadata ?? {}) as Record<string, unknown>
+    const senderName = (senderMeta.venue_name as string | undefined) ?? sender?.full_name ?? 'Someone'
+
+    await supabaseAdmin.from('notifications').insert({
+      user_id: message.receiver_id,
+      type: 'new_message',
+      title: `New message from ${senderName}`,
+      body: preview,
+      link: '/dashboard',
+    })
+
+    // ---- Email is a throttled "you have unread messages" nudge, NOT per-message ----
+    // We only email the recipient if they look inactive (haven't sent a message
+    // recently, so they're probably not in the app) AND we haven't already nudged
+    // them within the cooldown. This caps message emails at one per recipient per
+    // cooldown window no matter how many messages or conversations arrive.
+    const ACTIVE_WINDOW_MS = 30 * 60 * 1000   // sent a message in last 30 min => active, skip
+    const EMAIL_COOLDOWN_MS = 6 * 60 * 60 * 1000 // at most one message email per 6h
+
+    const now = Date.now()
+
+    const { data: receiver, error: receiverErr } = await supabaseAdmin
+      .from('profiles')
+      .select('id, full_name, last_message_email_at')
+      .eq('id', message.receiver_id)
+      .maybeSingle()
+
+    // If we can't read the throttle state (e.g. migration not applied yet), skip
+    // the email rather than risk un-throttled per-message sends.
+    if (receiverErr || !receiver) {
+      return NextResponse.json({ success: true, emailed: false, reason: 'no_throttle_state' })
+    }
+
+    // Cooldown: already nudged recently → in-app only.
+    const lastEmailedAt = receiver?.last_message_email_at
+      ? new Date(receiver.last_message_email_at as string).getTime()
+      : 0
+    if (now - lastEmailedAt < EMAIL_COOLDOWN_MS) {
+      return NextResponse.json({ success: true, emailed: false, reason: 'cooldown' })
+    }
+
+    // Activity check: if the recipient has sent any message recently, they're
+    // active in the app and will see the in-app notification — don't email.
+    const activeSince = new Date(now - ACTIVE_WINDOW_MS).toISOString()
+    const { data: recentlySent } = await supabaseAdmin
+      .from('messages')
+      .select('id')
+      .eq('sender_id', message.receiver_id)
+      .gte('created_at', activeSince)
+      .limit(1)
+
+    if (recentlySent && recentlySent.length > 0) {
+      return NextResponse.json({ success: true, emailed: false, reason: 'recipient_active' })
+    }
+
+    const { data: { user: receiverAuth } } = await supabaseAdmin.auth.admin.getUserById(message.receiver_id)
+    const receiverEmail = receiverAuth?.email
+    if (!receiverEmail) {
+      return NextResponse.json({ success: true, emailed: false, reason: 'no_email' })
+    }
+
+    const recipientName = receiver?.full_name ?? 'there'
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://drum-up.app'
+
+    // Record the nudge first so concurrent sends don't double-email.
+    await supabaseAdmin
+      .from('profiles')
+      .update({ last_message_email_at: new Date(now).toISOString() })
+      .eq('id', message.receiver_id)
+
+    await sendEmail({
+      to: receiverEmail,
+      subject: `New message from ${senderName}`,
+      emailComponent: (
+        <NewMessageEmail
+          recipientName={recipientName}
+          senderName={senderName}
+          messagePreview={message.content}
+          dashboardUrl={`${appUrl}/dashboard`}
+        />
+      ),
+    })
+
+    return NextResponse.json({ success: true, emailed: true })
   } catch (err) {
     console.error('[Email] new-message error:', err)
     return NextResponse.json({ success: false })

@@ -11,6 +11,10 @@ import { Avatar } from '@/components/Avatar'
 import MessagingTab, { MessagingTabRef } from '@/components/MessagingTab'
 import { useToast } from '@/components/Toast'
 import NotificationBell from '@/components/NotificationBell'
+import SaveButton from '@/components/SaveButton'
+import AddToCalendar from '@/components/AddToCalendar'
+import { getSavedSet, savedKey } from '@/lib/saved'
+import { gigDateTime } from '@/lib/ics'
 import {
   SkeletonStatCard,
   SkeletonBookingCard,
@@ -34,6 +38,7 @@ interface Gig {
   venue: Venue
   date: string
   rawDate: string
+  rawStartDatetime: string
   rawEndDatetime: string
   time: string
   genres: string[]
@@ -133,11 +138,21 @@ export default function MusicianDashboard() {
   const [gigGenreFilters, setGigGenreFilters] = useState<string[]>([])
   const [gigSortBy, setGigSortBy] = useState<'date' | 'pay-high' | 'pay-low' | 'distance'>('date')
   const [gigGenrePanelOpen, setGigGenrePanelOpen] = useState(false)
+  const [showSavedGigsOnly, setShowSavedGigsOnly] = useState(false)
   const [selectedGig, setSelectedGig] = useState<Gig | null>(null)
 
   // Apply modal
   const [applyGigId, setApplyGigId] = useState<string | null>(null)
   const [applyNote, setApplyNote] = useState('')
+
+  // Saved gigs (bookmarks)
+  const [savedGigs, setSavedGigs] = useState<Set<string>>(new Set())
+  const setSavedKey = (key: string, on: boolean) =>
+    setSavedGigs(prev => {
+      const next = new Set(prev)
+      if (on) next.add(key); else next.delete(key)
+      return next
+    })
 
   // Messaging
   const messagingRef = useRef<MessagingTabRef>(null)
@@ -251,6 +266,7 @@ export default function MusicianDashboard() {
             },
             date: dateLabel,
             rawDate: avail?.date ?? '',
+            rawStartDatetime: avail ? `${avail.date}T${avail.start_time ?? '00:00:00'}` : '',
             rawEndDatetime: avail ? `${avail.date}T${avail.end_time ?? '23:59:00'}` : '',
             time: timeStr,
             genres: Array.isArray(avail?.genres) ? avail.genres : [],
@@ -281,6 +297,7 @@ export default function MusicianDashboard() {
         if (!user) return
 
         setUserId(user.id)
+        void getSavedSet(user.id).then(setSavedGigs)
 
         // NOTE: legal_name is intentionally included here — this is the musician fetching their OWN
         // profile. It is used for Stripe Connect pre-fill. Never include legal_name in public queries.
@@ -387,6 +404,7 @@ export default function MusicianDashboard() {
             },
             date: dateLabel,
             rawDate: s.date,
+            rawStartDatetime: `${s.date}T${s.start_time ?? '00:00:00'}`,
             rawEndDatetime: `${s.date}T${s.end_time ?? '23:59:00'}`,
             time: `${fmt(s.start_time?.slice(0, 5) ?? '')} – ${fmt(s.end_time?.slice(0, 5) ?? '')}`,
             genres: Array.isArray(s.genres) ? s.genres : [],
@@ -816,7 +834,8 @@ export default function MusicianDashboard() {
       const q = gigSearch.toLowerCase()
       const matchSearch = !q || g.venue.name.toLowerCase().includes(q) || g.genres.some(x => x.toLowerCase().includes(q))
       const matchGenre = gigGenreFilters.length === 0 || gigGenreFilters.some(f => g.genres.includes(f))
-      return matchSearch && matchGenre
+      const matchSaved = !showSavedGigsOnly || savedGigs.has(savedKey('gig', g.id))
+      return matchSearch && matchGenre && matchSaved
     })
     .sort((a, b) => {
       if (gigSortBy === 'pay-high') return b.budget - a.budget
@@ -994,6 +1013,19 @@ export default function MusicianDashboard() {
                               <span key={g} className="text-[10px] bg-charcoal/10 text-charcoal px-2.5 py-0.5 rounded-full font-semibold">{g}</span>
                             ))}
                           </div>
+                          <div className="mt-2">
+                            <AddToCalendar
+                              filename={`gig-${b.gig.venue.name}`}
+                              event={{
+                                uid: b.id,
+                                title: `Gig at ${b.gig.venue.name}`,
+                                description: `Live music gig at ${b.gig.venue.name}. Pay: $${b.price}.`,
+                                location: b.gig.venue.name,
+                                start: gigDateTime(b.gig.rawDate, b.gig.rawStartDatetime.slice(11)),
+                                end: gigDateTime(b.gig.rawDate, b.gig.rawEndDatetime.slice(11)),
+                              }}
+                            />
+                          </div>
                         </div>
                         <div className="text-right shrink-0">
                           <p className="text-teal text-lg font-black">${b.price}</p>
@@ -1145,6 +1177,13 @@ export default function MusicianDashboard() {
                     className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${gigSortBy === opt.key ? 'bg-chestnut text-snow shadow-sm' : 'bg-white text-charcoal hover:bg-[#E8E4E0]'}`}
                   >{opt.label}</button>
                 ))}
+                <button
+                  onClick={() => setShowSavedGigsOnly(s => !s)}
+                  className={`shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${showSavedGigsOnly ? 'bg-chestnut text-snow shadow-sm' : 'bg-white text-charcoal hover:bg-[#E8E4E0]'}`}
+                >
+                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill={showSavedGigsOnly ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                  Saved
+                </button>
               </div>
               <button
                 onClick={() => setGigGenrePanelOpen(o => !o)}
@@ -1222,9 +1261,18 @@ export default function MusicianDashboard() {
                           <p className="text-charcoal text-xs">{gig.venue.type} · {gig.venue.distance}</p>
                         </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-teal font-black text-xl">${gig.budget}</p>
-                        <p className="text-charcoal/50 text-[9px] font-semibold uppercase tracking-wide">pay offered</p>
+                      <div className="flex items-start gap-1 shrink-0">
+                        <div className="text-right">
+                          <p className="text-teal font-black text-xl">${gig.budget}</p>
+                          <p className="text-charcoal/50 text-[9px] font-semibold uppercase tracking-wide">pay offered</p>
+                        </div>
+                        <SaveButton
+                          userId={userId}
+                          type="gig"
+                          id={gig.id}
+                          saved={savedGigs.has(savedKey('gig', gig.id))}
+                          onChange={(next) => setSavedKey(savedKey('gig', gig.id), next)}
+                        />
                       </div>
                     </div>
                     <p className="text-charcoal text-xs mb-2">{gig.date} · {gig.time}</p>

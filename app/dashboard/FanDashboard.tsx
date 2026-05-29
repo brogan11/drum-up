@@ -9,6 +9,10 @@ import { Avatar } from '@/components/Avatar'
 import MessagingTab, { MessagingTabRef } from '@/components/MessagingTab'
 import { useToast } from '@/components/Toast'
 import NotificationBell from '@/components/NotificationBell'
+import SaveButton from '@/components/SaveButton'
+import AddToCalendar from '@/components/AddToCalendar'
+import { getSavedSet, savedKey } from '@/lib/saved'
+import { gigDateTime } from '@/lib/ics'
 import {
   SkeletonStatCard,
   SkeletonMusicianCard,
@@ -33,6 +37,7 @@ interface FeedGig {
   rawDate: string
   date: string
   time: string
+  rawStartDatetime: string
   rawEndDatetime: string
   distance: number | null
 }
@@ -125,6 +130,13 @@ export default function FanDashboard() {
 
   // Fan state
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set())
+  const [savedItems, setSavedItems] = useState<Set<string>>(new Set())
+  const setSaved = (key: string, on: boolean) =>
+    setSavedItems(prev => {
+      const next = new Set(prev)
+      if (on) next.add(key); else next.delete(key)
+      return next
+    })
   const [fanCoords, setFanCoords] = useState<{ lat: number | null; lon: number | null }>({ lat: null, lon: null })
   const fanCoordsRef = useRef<{ lat: number | null; lon: number | null }>({ lat: null, lon: null })
 
@@ -229,6 +241,7 @@ export default function FanDashboard() {
               ? new Date(rawDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
               : '',
             time: `${fmt(startTime.slice(0, 5))} – ${fmt(endTime.slice(0, 5))}`,
+            rawStartDatetime: `${rawDate}T${startTime || '00:00:00'}`,
             rawEndDatetime,
             distance,
           } satisfies FeedGig]
@@ -301,6 +314,7 @@ export default function FanDashboard() {
         if (authErr) throw authErr
         if (!user) return
         setUserId(user.id)
+        void getSavedSet(user.id).then(setSavedItems)
 
         // NOTE: Never include legal_name in queries unless fetching the current user's own profile
         // or in server-side Stripe routes. legal_name is private.
@@ -635,6 +649,9 @@ export default function FanDashboard() {
                           onFollow={toggleFollow}
                           onViewProfile={id => router.push('/profile/' + id)}
                           showFollowButtons={false}
+                          userId={userId}
+                          saved={savedItems.has(savedKey('gig', gig.id))}
+                          onSaveChange={(next) => setSaved(savedKey('gig', gig.id), next)}
                         />
                       ))}
                     </div>
@@ -687,6 +704,9 @@ export default function FanDashboard() {
                           onViewProfile={id => router.push('/profile/' + id)}
                           showFollowButtons
                           showDistance
+                          userId={userId}
+                          saved={savedItems.has(savedKey('gig', gig.id))}
+                          onSaveChange={(next) => setSaved(savedKey('gig', gig.id), next)}
                         />
                       ))}
                     </div>
@@ -831,6 +851,17 @@ export default function FanDashboard() {
                                         </p>
                                       )}
                                     </div>
+                                    {userId && (
+                                      <SaveButton
+                                        userId={userId}
+                                        type="gig"
+                                        id={gig.id}
+                                        saved={savedItems.has(savedKey('gig', gig.id))}
+                                        onChange={(next) => setSaved(savedKey('gig', gig.id), next)}
+                                        size="sm"
+                                        className="shrink-0"
+                                      />
+                                    )}
                                   </div>
                                   <div className="flex items-center gap-2 mb-3 pl-14">
                                     <button onClick={() => router.push('/profile/' + gig.musicianId)}>
@@ -949,6 +980,17 @@ export default function FanDashboard() {
                               <p className="text-charcoal text-xs">{[v.type, v.location].filter(Boolean).join(' · ')}</p>
                               <p className="inline-flex items-center gap-0.5 text-teal text-xs font-semibold mt-0.5"><svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>{v.distance}</p>
                             </button>
+                            {userId && (
+                              <SaveButton
+                                userId={userId}
+                                type="venue"
+                                id={v.id}
+                                saved={savedItems.has(savedKey('venue', v.id))}
+                                onChange={(next) => setSaved(savedKey('venue', v.id), next)}
+                                size="sm"
+                                className="shrink-0"
+                              />
+                            )}
                             <button
                               onClick={() => toggleFollow(v.id)}
                               className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${isFollowing ? 'bg-teal text-snow hover:bg-teal/80' : 'border border-teal text-teal hover:bg-teal hover:text-snow'}`}
@@ -984,6 +1026,17 @@ export default function FanDashboard() {
                                 <p className="text-charcoal text-xs">{m.genres.join(' · ')}</p>
                                 <p className="inline-flex items-center gap-0.5 text-teal text-xs font-semibold mt-0.5"><svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>{m.distance}</p>
                               </button>
+                              {userId && (
+                                <SaveButton
+                                  userId={userId}
+                                  type="musician"
+                                  id={m.id}
+                                  saved={savedItems.has(savedKey('musician', m.id))}
+                                  onChange={(next) => setSaved(savedKey('musician', m.id), next)}
+                                  size="sm"
+                                  className="shrink-0"
+                                />
+                              )}
                               <button
                                 onClick={() => toggleFollow(m.id)}
                                 className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all ${isFollowing ? 'bg-teal text-snow hover:bg-teal/80' : 'border border-teal text-teal hover:bg-teal hover:text-snow'}`}
@@ -1182,6 +1235,9 @@ function GigCard({
   onViewProfile,
   showFollowButtons = false,
   showDistance = false,
+  userId = '',
+  saved = false,
+  onSaveChange,
 }: {
   gig: FeedGig
   followedIds: Set<string>
@@ -1189,6 +1245,9 @@ function GigCard({
   onViewProfile: (id: string) => void
   showFollowButtons?: boolean
   showDistance?: boolean
+  userId?: string
+  saved?: boolean
+  onSaveChange?: (next: boolean) => void
 }) {
   const isFollowingRestaurant = followedIds.has(gig.restaurantId)
   const isFollowingMusician = followedIds.has(gig.musicianId)
@@ -1209,6 +1268,16 @@ function GigCard({
         )}
         {!showFollowButtons && isFollowingRestaurant && (
           <span className="text-[10px] font-bold text-teal bg-teal/10 px-2 py-0.5 rounded-full shrink-0">Following</span>
+        )}
+        {userId && onSaveChange && (
+          <SaveButton
+            userId={userId}
+            type="gig"
+            id={gig.id}
+            saved={saved}
+            onChange={onSaveChange}
+            size="sm"
+          />
         )}
       </div>
 
@@ -1262,6 +1331,22 @@ function GigCard({
             </button>
           </>
         )}
+      </div>
+
+      {/* Add to calendar */}
+      <div className="px-4 pb-3 -mt-1 flex justify-end">
+        <AddToCalendar
+          filename={`show-${gig.musicianName}`}
+          label="Add to Calendar"
+          event={{
+            uid: gig.id,
+            title: `${gig.musicianName} at ${gig.restaurantName}`,
+            description: `Live music: ${gig.musicianName} at ${gig.restaurantName}.`,
+            location: gig.restaurantLocation || gig.restaurantName,
+            start: gigDateTime(gig.rawDate, gig.rawStartDatetime.slice(11)),
+            end: gigDateTime(gig.rawDate, gig.rawEndDatetime.slice(11)),
+          }}
+        />
       </div>
     </div>
   )

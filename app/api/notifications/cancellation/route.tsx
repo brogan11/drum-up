@@ -4,6 +4,9 @@ import { sendEmail } from '@/lib/send-email'
 import { CancellationEmail } from '@/emails/CancellationEmail'
 import { checkRateLimit, standardLimiter } from '@/lib/ratelimit'
 
+// Cancellations are time-sensitive (the other party may need to find a
+// replacement or another gig), so this sends an email in addition to the bell.
+
 export async function POST(request: Request) {
   const rl = await checkRateLimit(request, standardLimiter)
   if (rl.limited) return rl.response!
@@ -60,12 +63,9 @@ export async function POST(request: Request) {
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://drum-up.app'
 
-    // Email the party who did NOT cancel
+    // Notify the party who did NOT cancel (email + bell).
     const recipientId = cancelled_by === 'musician' ? booking.restaurant_id : booking.musician_id
     const recipientName = cancelled_by === 'musician' ? restaurantName : musicianName
-
-    const { data: { user: recipientAuth } } = await supabaseAdmin.auth.admin.getUserById(recipientId as string)
-    if (!recipientAuth?.email) return NextResponse.json({ success: true, sent: false })
 
     const subject = cancelled_by === 'musician'
       ? `Booking Cancelled — ${musicianName} · ${gigDate}`
@@ -75,32 +75,41 @@ export async function POST(request: Request) {
       ? `${musicianName} cancelled the ${gigDate} booking`
       : `${restaurantName} cancelled the ${gigDate} booking`
 
-    await Promise.all([
-      sendEmail({
-        to: recipientAuth.email,
-        subject,
-        emailComponent: (
-          <CancellationEmail
-            recipientName={recipientName}
-            cancelledBy={cancelled_by}
-            musicianName={musicianName}
-            restaurantName={restaurantName}
-            gigDate={gigDate}
-            amount={payAmount}
-            dashboardUrl={`${appUrl}/dashboard`}
-          />
-        ),
-      }),
+    const { data: { user: recipientAuth } } = await supabaseAdmin.auth.admin.getUserById(recipientId as string)
+
+    const sends: Promise<unknown>[] = [
       supabaseAdmin.from('notifications').insert({
         user_id: recipientId,
         type: 'booking_cancelled',
         title: 'Booking was cancelled',
         body: notifBody,
         link: '/dashboard',
-      }),
-    ])
+      }) as unknown as Promise<unknown>,
+    ]
 
-    return NextResponse.json({ success: true, sent: true })
+    if (recipientAuth?.email) {
+      sends.push(
+        sendEmail({
+          to: recipientAuth.email,
+          subject,
+          emailComponent: (
+            <CancellationEmail
+              recipientName={recipientName}
+              cancelledBy={cancelled_by}
+              musicianName={musicianName}
+              restaurantName={restaurantName}
+              gigDate={gigDate}
+              amount={payAmount}
+              dashboardUrl={`${appUrl}/dashboard`}
+            />
+          ),
+        }),
+      )
+    }
+
+    await Promise.all(sends)
+
+    return NextResponse.json({ success: true })
   } catch (err) {
     console.error('[Email] cancellation notification error:', err)
     return NextResponse.json({ success: false })
