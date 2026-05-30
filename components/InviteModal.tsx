@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { TIME_OPTIONS, endTimeOptions } from '@/lib/time'
 
 interface OpenSlot {
   id: string
@@ -243,7 +244,7 @@ export default function InviteModal({ musicianId, musicianName, onClose, onSucce
                   <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">Start Time</label>
                   <StyledSelect
                     value={startTime}
-                    onChange={setStartTime}
+                    onChange={v => { setStartTime(v); setEndTime('') }}
                     options={TIME_OPTIONS}
                     placeholder="Start time"
                   />
@@ -253,8 +254,9 @@ export default function InviteModal({ musicianId, musicianName, onClose, onSucce
                   <StyledSelect
                     value={endTime}
                     onChange={setEndTime}
-                    options={TIME_OPTIONS}
-                    placeholder="End time"
+                    options={endTimeOptions(startTime)}
+                    placeholder={startTime ? 'End time' : 'Pick a start first'}
+                    disabled={!startTime}
                   />
                 </div>
               </div>
@@ -323,17 +325,6 @@ export default function InviteModal({ musicianId, musicianName, onClose, onSucce
   )
 }
 
-const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
-  const h = Math.floor(i / 2)
-  const m = (i % 2) * 30
-  const period = h < 12 ? 'AM' : 'PM'
-  const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h
-  return {
-    label: `${hour12}:${m.toString().padStart(2, '0')} ${period}`,
-    value: `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`,
-  }
-})
-
 function getDateOptions() {
   const options: { value: string; label: string }[] = []
   const today = new Date()
@@ -347,19 +338,21 @@ function getDateOptions() {
   return options
 }
 
-function StyledSelect({ value, onChange, options, placeholder, className = '' }: {
+function StyledSelect({ value, onChange, options, placeholder, className = '', disabled = false }: {
   value: string
   onChange: (v: string) => void
   options: { value: string; label: string }[]
   placeholder?: string
   className?: string
+  disabled?: boolean
 }) {
   return (
     <div className={`relative ${className}`}>
       <select
         value={value}
         onChange={e => onChange(e.target.value)}
-        className={`w-full appearance-none bg-white rounded-xl px-4 py-3 pr-10 shadow-sm border border-charcoal/10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-chestnut/20 cursor-pointer ${value ? 'text-graphite' : 'text-charcoal/40'}`}
+        disabled={disabled}
+        className={`w-full appearance-none bg-white rounded-xl px-4 py-3 pr-10 shadow-sm border border-charcoal/10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-chestnut/20 ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${value ? 'text-graphite' : 'text-charcoal/40'}`}
       >
         {placeholder && <option value="" disabled>{placeholder}</option>}
         {options.map(opt => (

@@ -12,7 +12,9 @@ import NotificationBell from '@/components/NotificationBell'
 import SaveButton from '@/components/SaveButton'
 import AddToCalendar from '@/components/AddToCalendar'
 import { getSavedSet, savedKey } from '@/lib/saved'
-import { gigDateTime } from '@/lib/ics'
+import { gigStartEnd } from '@/lib/ics'
+import { groupReputations, type RepSummary } from '@/lib/reviews'
+import { RatingBadge } from '@/components/RatingBadge'
 import {
   SkeletonStatCard,
   SkeletonMusicianCard,
@@ -118,6 +120,8 @@ export default function FanDashboard() {
   // Discover
   const [venues, setVenues] = useState<DiscoverVenue[]>([])
   const [musicians, setMusicians] = useState<DiscoverMusician[]>([])
+  // Aggregate reputation for discovered profiles (musicians + venues), keyed by id.
+  const [discoverReps, setDiscoverReps] = useState<Map<string, RepSummary>>(new Map())
   const [discoverView, setDiscoverView] = useState<DiscoverView>('venues')
   const [discoverSearch, setDiscoverSearch] = useState('')
   const [discoverRadius, setDiscoverRadius] = useState(25)
@@ -210,9 +214,12 @@ export default function FanDashboard() {
           const musician = musicianById.get(b.musician_id)
 
           const rawDate = a.date as string ?? ''
+          const startTime = a.start_time as string ?? ''
           const endTime = a.end_time as string ?? '23:59:00'
           const rawEndDatetime = `${rawDate}T${endTime}`
-          if (new Date(rawEndDatetime) < now) return []
+          // Cross-midnight aware (gigStartEnd): a gig ending after midnight must not be
+          // treated as already past on its start date.
+          if (gigStartEnd(rawDate, startTime || null, endTime).end < now) return []
 
           const meta = (venue?.role_metadata ?? {}) as Record<string, unknown>
           const vLat = venue?.latitude as number | null ?? null
@@ -223,7 +230,6 @@ export default function FanDashboard() {
 
           const pt = musician?.performer_type as string | null
           const performerType: 'solo' | 'band' | null = (pt === 'solo' || pt === 'band') ? pt : null
-          const startTime = a.start_time as string ?? ''
 
           return [{
             id: b.id,
@@ -298,6 +304,15 @@ export default function FanDashboard() {
       }
       setVenues(newVenues)
       setMusicians(newMusicians)
+
+      // Reputation badges for everything in view (one grouped query).
+      const discoverIds = [...newVenues.map(v => v.id), ...newMusicians.map(m => m.id)]
+      if (discoverIds.length > 0) {
+        void supabase.from('reviews').select('reviewee_id, rating, tags').in('reviewee_id', discoverIds)
+          .then(({ data: revRows }) => {
+            if (revRows) setDiscoverReps(groupReputations(revRows as { reviewee_id: string; rating: number; tags: string[] | null }[]))
+          })
+      }
     } catch (err) {
       console.error('Failed to load discover:', err)
       toast.error('Could not load nearby venues and musicians.')
@@ -756,7 +771,7 @@ export default function FanDashboard() {
 
               const eventGigs = feedGigs
                 .filter(g => {
-                  const endDt = new Date(g.rawEndDatetime)
+                  const endDt = gigStartEnd(g.rawDate, g.rawStartDatetime.slice(11) || null, g.rawEndDatetime.slice(11) || '23:59').end
                   if (endDt < now) return false
                   if (g.distance != null && g.distance > eventsDistanceFilter) return false
                   if (eventsDateFilter === 'weekend') {
@@ -979,6 +994,7 @@ export default function FanDashboard() {
                               <p className="text-graphite font-bold text-sm hover:text-chestnut transition-colors">{v.name}</p>
                               <p className="text-charcoal text-xs">{[v.type, v.location].filter(Boolean).join(' · ')}</p>
                               <p className="inline-flex items-center gap-0.5 text-teal text-xs font-semibold mt-0.5"><svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>{v.distance}</p>
+                              <RatingBadge rep={discoverReps.get(v.id)} className="mt-1" />
                             </button>
                             {userId && (
                               <SaveButton
@@ -1025,6 +1041,7 @@ export default function FanDashboard() {
                                 <p className="text-graphite font-bold text-sm hover:text-chestnut transition-colors">{m.name}</p>
                                 <p className="text-charcoal text-xs">{m.genres.join(' · ')}</p>
                                 <p className="inline-flex items-center gap-0.5 text-teal text-xs font-semibold mt-0.5"><svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>{m.distance}</p>
+                                <RatingBadge rep={discoverReps.get(m.id)} className="mt-1" />
                               </button>
                               {userId && (
                                 <SaveButton
@@ -1343,8 +1360,7 @@ function GigCard({
             title: `${gig.musicianName} at ${gig.restaurantName}`,
             description: `Live music: ${gig.musicianName} at ${gig.restaurantName}.`,
             location: gig.restaurantLocation || gig.restaurantName,
-            start: gigDateTime(gig.rawDate, gig.rawStartDatetime.slice(11)),
-            end: gigDateTime(gig.rawDate, gig.rawEndDatetime.slice(11)),
+            ...gigStartEnd(gig.rawDate, gig.rawStartDatetime.slice(11), gig.rawEndDatetime.slice(11)),
           }}
         />
       </div>

@@ -68,3 +68,25 @@ export function gigDateTime(date: string, time: string | null | undefined): Date
   const t = (time ?? '00:00').slice(0, 5)
   return new Date(`${date}T${t}:00`)
 }
+
+// Resolve a gig's true start and end as LOCAL/floating datetimes from a stored
+// `date` + naive `start_time`/`end_time`. A gig whose end_time is strictly earlier
+// than its start_time (e.g. 10 PM–1 AM) runs past midnight, so its end lands on the
+// next day. end == start stays on the same day (zero-length, never wrapped).
+//
+// This is the single source of truth for the cross-midnight rule on the display +
+// calendar-export path. Do NOT replicate release-payout's treat-as-UTC + 12h safety
+// margin here — that is a deliberate timezone hack for the money path only. Display
+// and sorting use the actual local gig time.
+export function gigStartEnd(
+  date: string,
+  startTime: string | null | undefined,
+  endTime: string | null | undefined,
+): { start: Date; end: Date } {
+  const start = gigDateTime(date, startTime)
+  let end = gigDateTime(date, endTime)
+  if (end.getTime() < start.getTime()) {
+    end = new Date(end.getTime() + 24 * 60 * 60 * 1000)
+  }
+  return { start, end }
+}

@@ -14,7 +14,10 @@ import NotificationBell from '@/components/NotificationBell'
 import SaveButton from '@/components/SaveButton'
 import AddToCalendar from '@/components/AddToCalendar'
 import { getSavedSet, savedKey } from '@/lib/saved'
-import { gigDateTime } from '@/lib/ics'
+import { gigStartEnd } from '@/lib/ics'
+import { TIME_OPTIONS, endTimeOptions } from '@/lib/time'
+import { groupReputations, type RepSummary } from '@/lib/reviews'
+import { RatingBadge } from '@/components/RatingBadge'
 import {
   SkeletonStatCard,
   SkeletonBookingCard,
@@ -144,6 +147,8 @@ export default function MusicianDashboard() {
   const [gigGenrePanelOpen, setGigGenrePanelOpen] = useState(false)
   const [showSavedGigsOnly, setShowSavedGigsOnly] = useState(false)
   const [selectedGig, setSelectedGig] = useState<Gig | null>(null)
+  // Aggregate reputation per venue, keyed by venue (restaurant) id, for browse cards.
+  const [venueReps, setVenueReps] = useState<Map<string, RepSummary>>(new Map())
 
   // Apply modal
   const [applyGigId, setApplyGigId] = useState<string | null>(null)
@@ -365,6 +370,7 @@ export default function MusicianDashboard() {
           .from('availability')
           .select('id, restaurant_id, date, start_time, end_time, description, pay, genres, latitude, longitude')
           .eq('status', 'open')
+          .eq('is_private', false)
           .gte('date', today)
           .order('date', { ascending: true })
 
@@ -397,6 +403,12 @@ export default function MusicianDashboard() {
         if (venuesErr) throw venuesErr
 
         const venueById = new Map((venues ?? []).map(v => [v.id, v]))
+
+        // Reputation badges for the venues in view (one query, grouped client-side).
+        void supabase.from('reviews').select('reviewee_id, rating, tags').in('reviewee_id', venueIds)
+          .then(({ data: revRows }) => {
+            if (revRows) setVenueReps(groupReputations(revRows as { reviewee_id: string; rating: number; tags: string[] | null }[]))
+          })
 
         const nearby: Gig[] = inRange.map(({ slot: s, distance }) => {
           const v = venueById.get(s.restaurant_id)
@@ -444,9 +456,14 @@ export default function MusicianDashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, userId])
 
-  // Clear newly-confirmed badge when musician opens bookings tab
+  // Clear newly-confirmed badge and refresh bookings when the musician opens the tab, so
+  // invite responses / confirmations made elsewhere (messages, other party) are reflected.
   useEffect(() => {
-    if (activeTab === 'bookings') setNewlyConfirmed(0)
+    if (activeTab === 'bookings') {
+      setNewlyConfirmed(0)
+      if (userId) void loadMyBookings(userId, profileLat, profileLon)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab])
 
   // Realtime: bookings table changes
@@ -637,6 +654,11 @@ export default function MusicianDashboard() {
         .from('musician_availability')
         .select('id, date, start_time, end_time, genres, min_pay, notes, status')
         .eq('musician_id', uid)
+        // Only the musician's own public, still-open postings belong in this list.
+        // Cancelled slots (via the X) must stay gone on reload, and is_private slots are
+        // one-off offers shared in chat — managed there, not as public availability.
+        .eq('status', 'open')
+        .eq('is_private', false)
         .gte('date', today)
         .order('date', { ascending: true })
       if (data) {
@@ -850,9 +872,20 @@ export default function MusicianDashboard() {
   // ---- Derived ----
 
   const now = new Date()
-  const upcomingGigs = bookings.filter(b => b.status === 'confirmed' && new Date(b.gig.rawEndDatetime || b.gig.rawDate + 'T23:59') >= now).length
+  // Local instant a gig actually ends, cross-midnight aware (see gigStartEnd). rawStart/
+  // rawEndDatetime are `${date}T${time}`; slice(11) pulls the time. Falls back to end-of-
+  // day when end is unknown, matching prior behavior.
+  const gigEndsAt = (g: Gig): Date =>
+    gigStartEnd(g.rawDate, g.rawStartDatetime.slice(11) || null, g.rawEndDatetime.slice(11) || '23:59').end
+  // What the musician actually receives after the 8% platform fee. Mirrors the
+  // per-booking rounding in /api/stripe/release-payout so totals match real payouts.
+  const netPay = (gross: number): number => {
+    const fee = Math.round(gross * 0.08 * 100) / 100
+    return Math.round((gross - fee) * 100) / 100
+  }
+  const upcomingGigs = bookings.filter(b => b.status === 'confirmed' && gigEndsAt(b.gig) >= now).length
   const pendingApps = bookings.filter(b => b.status === 'pending').length
-  const totalEarned = bookings.filter(b => b.status === 'confirmed').reduce((sum, b) => sum + b.price, 0)
+  const totalEarned = bookings.filter(b => b.status === 'confirmed').reduce((sum, b) => sum + netPay(b.price), 0)
   const filteredGigs = gigs
     .filter(g => {
       const q = gigSearch.toLowerCase()
@@ -995,7 +1028,7 @@ export default function MusicianDashboard() {
               <div className="grid grid-cols-3 gap-2.5 mb-7">
                 <StatCard value={upcomingGigs} label="Upcoming" color="text-teal" icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>} />
                 <StatCard value={pendingApps} label="Pending" color="text-chestnut" icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>} />
-                <StatCard value={`$${totalEarned}`} label="Earned" color="text-graphite" icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>} highlight />
+                <StatCard value={`$${totalEarned.toFixed(2)}`} label="Earned" color="text-graphite" icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>} highlight />
               </div>
             )}
 
@@ -1020,7 +1053,7 @@ export default function MusicianDashboard() {
               <>
                 <SectionHeader eyebrow="The Calendar" title="Upcoming" accent="Gigs." />
                 <div className="space-y-3 mb-6">
-                  {bookings.filter(b => b.status === 'confirmed' && new Date(b.gig.rawEndDatetime || b.gig.rawDate + 'T23:59') >= now).map(b => {
+                  {bookings.filter(b => b.status === 'confirmed' && gigEndsAt(b.gig) >= now).map(b => {
                     const [, datePart] = b.gig.date.split(', ')
                     const [mon, day] = (datePart || '').split(' ')
                     return (
@@ -1045,8 +1078,7 @@ export default function MusicianDashboard() {
                                 title: `Gig at ${b.gig.venue.name}`,
                                 description: `Live music gig at ${b.gig.venue.name}. Pay: $${b.price}.`,
                                 location: b.gig.venue.name,
-                                start: gigDateTime(b.gig.rawDate, b.gig.rawStartDatetime.slice(11)),
-                                end: gigDateTime(b.gig.rawDate, b.gig.rawEndDatetime.slice(11)),
+                                ...gigStartEnd(b.gig.rawDate, b.gig.rawStartDatetime.slice(11), b.gig.rawEndDatetime.slice(11)),
                               }}
                             />
                           </div>
@@ -1283,6 +1315,7 @@ export default function MusicianDashboard() {
                         <div>
                           <p className="text-graphite font-bold text-sm">{gig.venue.name}</p>
                           <p className="text-charcoal text-xs">{gig.venue.type} · {gig.venue.distance}</p>
+                          <RatingBadge rep={venueReps.get(gig.venue.id)} className="mt-0.5" />
                         </div>
                       </div>
                       <div className="flex items-start gap-1 shrink-0">
@@ -1401,21 +1434,21 @@ export default function MusicianDashboard() {
           const tabNow = new Date()
           const pendingBookings = bookings.filter(b => b.status === 'pending')
           const upcomingConfirmed = bookings
-            .filter(b => b.status === 'confirmed' && new Date(b.gig.rawEndDatetime || b.gig.rawDate + 'T23:59') >= tabNow)
-            .sort((a, b) => a.gig.rawEndDatetime.localeCompare(b.gig.rawEndDatetime))
+            .filter(b => b.status === 'confirmed' && gigEndsAt(b.gig) >= tabNow)
+            .sort((a, b) => gigEndsAt(a.gig).getTime() - gigEndsAt(b.gig).getTime())
           const pastGigs = bookings
-            .filter(b => b.status === 'confirmed' && new Date(b.gig.rawEndDatetime || b.gig.rawDate + 'T23:59') < tabNow)
-            .sort((a, b) => b.gig.rawEndDatetime.localeCompare(a.gig.rawEndDatetime))
+            .filter(b => b.status === 'confirmed' && gigEndsAt(b.gig) < tabNow)
+            .sort((a, b) => gigEndsAt(b.gig).getTime() - gigEndsAt(a.gig).getTime())
           const cancelledBookings = bookings.filter(b => b.status === 'cancelled')
           const pendingEarnings = bookings
             .filter(b => b.status === 'confirmed' && b.paymentStatus === 'authorized' && !b.payoutReleased)
-            .reduce((s, b) => s + b.price, 0)
+            .reduce((s, b) => s + netPay(b.price), 0)
           const releasedEarnings = bookings
             .filter(b => b.status === 'confirmed' && b.paymentStatus === 'paid' && b.payoutReleased)
-            .reduce((s, b) => s + b.price, 0)
+            .reduce((s, b) => s + netPay(b.price), 0)
           const totalConfirmedEarnings = bookings
             .filter(b => b.status === 'confirmed')
-            .reduce((s, b) => s + b.price, 0)
+            .reduce((s, b) => s + netPay(b.price), 0)
 
           const filteredBookings = (() => {
             switch (bookingFilter) {
@@ -1443,21 +1476,21 @@ export default function MusicianDashboard() {
                   <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">Earnings</p>
                   <div className="grid grid-cols-3 divide-x divide-white/10">
                     <div className="pr-3">
-                      <p className="text-snow text-2xl font-black">${totalConfirmedEarnings}</p>
+                      <p className="text-snow text-2xl font-black">${totalConfirmedEarnings.toFixed(2)}</p>
                       <p className="text-snow/40 text-[10px] font-semibold uppercase tracking-wider mt-0.5">Total</p>
                     </div>
                     <div className="px-3">
-                      <p className="text-chestnut text-2xl font-black">${pendingEarnings}</p>
+                      <p className="text-chestnut text-2xl font-black">${pendingEarnings.toFixed(2)}</p>
                       <p className="text-snow/40 text-[10px] font-semibold uppercase tracking-wider mt-0.5">Authorized</p>
                     </div>
                     <div className="pl-3">
-                      <p className="text-teal text-2xl font-black">${releasedEarnings}</p>
+                      <p className="text-teal text-2xl font-black">${releasedEarnings.toFixed(2)}</p>
                       <p className="text-snow/40 text-[10px] font-semibold uppercase tracking-wider mt-0.5">Released</p>
                     </div>
                   </div>
                   {pendingEarnings > 0 && (
                     <p className="text-snow/50 text-xs mt-3 leading-relaxed">
-                      ${pendingEarnings} is authorized and will be released to your bank after each gig date passes.
+                      ${pendingEarnings.toFixed(2)} is authorized and will be released to your bank after each gig date passes.
                     </p>
                   )}
                 </div>
@@ -1501,7 +1534,7 @@ export default function MusicianDashboard() {
                   <p className="text-charcoal/50 text-xs mb-3">Showing {Math.min(bookingsDisplayCount, filteredBookings.length)} of {filteredBookings.length}</p>
                   <div className="space-y-3 mb-4">
                     {filteredBookings.slice(0, bookingsDisplayCount).map(b => {
-                      const isPast = new Date(b.gig.rawEndDatetime || b.gig.rawDate + 'T23:59') < tabNow
+                      const isPast = gigEndsAt(b.gig) < tabNow
                       const [, datePart] = b.gig.date.split(', ')
                       const [mon, day] = (datePart || '').split(' ')
                       if (b.status === 'pending') {
@@ -1648,6 +1681,13 @@ export default function MusicianDashboard() {
                               </span>
                             </div>
                           </div>
+                          <button
+                            onClick={() => { try { sessionStorage.setItem('drumup_open_review', '1') } catch { /* ignore */ } ; router.push('/profile/' + b.gig.venue.id) }}
+                            className="mt-3 w-full flex items-center justify-center gap-1.5 border border-chestnut/40 text-chestnut py-2 rounded-xl text-xs font-bold hover:bg-chestnut/10 transition-colors"
+                          >
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                            Review {b.gig.venue.name.split(' ')[0]}
+                          </button>
                         </div>
                       ))}
                       {archiveItems.length > 10 && (
@@ -2020,7 +2060,7 @@ export default function MusicianDashboard() {
       <div className={activeTab !== 'messages' ? 'hidden' : ''}>
         <div className="max-w-2xl mx-auto px-4" style={{ paddingBottom: '96px' }}>
           {userId && (
-            <MessagingTab ref={messagingRef} userId={userId} currentUserType="musician" onUnreadChange={setMsgUnread} />
+            <MessagingTab ref={messagingRef} userId={userId} currentUserType="musician" onUnreadChange={setMsgUnread} onBookingsChanged={() => { if (userId) void loadMyBookings(userId, profileLat, profileLon) }} />
           )}
         </div>
       </div>
@@ -2292,17 +2332,6 @@ export default function MusicianDashboard() {
 
 // ---- PostAvailabilityModal ----
 
-const AVAIL_TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
-  const h = Math.floor(i / 2)
-  const m = (i % 2) * 30
-  const period = h < 12 ? 'AM' : 'PM'
-  const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h
-  return {
-    label: `${hour12}:${m.toString().padStart(2, '0')} ${period}`,
-    value: `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`,
-  }
-})
-
 function getAvailDateOptions() {
   const options: { value: string; label: string }[] = []
   const today = new Date()
@@ -2316,18 +2345,20 @@ function getAvailDateOptions() {
   return options
 }
 
-function AvailSelect({ value, onChange, options, placeholder }: {
+function AvailSelect({ value, onChange, options, placeholder, disabled = false }: {
   value: string
   onChange: (v: string) => void
   options: { value: string; label: string }[]
   placeholder?: string
+  disabled?: boolean
 }) {
   return (
     <div className="relative">
       <select
         value={value}
         onChange={e => onChange(e.target.value)}
-        className={`w-full appearance-none bg-white rounded-xl px-4 py-3 pr-10 shadow-sm border border-charcoal/10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-chestnut/20 cursor-pointer ${value ? 'text-graphite' : 'text-charcoal/40'}`}
+        disabled={disabled}
+        className={`w-full appearance-none bg-white rounded-xl px-4 py-3 pr-10 shadow-sm border border-charcoal/10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-chestnut/20 ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${value ? 'text-graphite' : 'text-charcoal/40'}`}
       >
         {placeholder && <option value="" disabled>{placeholder}</option>}
         {options.map(opt => (
@@ -2436,11 +2467,11 @@ function PostAvailabilityModal({ userId, myLat, myLon, onClose, onSuccess }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">Start Time</label>
-              <AvailSelect value={startTime} onChange={setStartTime} options={AVAIL_TIME_OPTIONS} placeholder="Start" />
+              <AvailSelect value={startTime} onChange={v => { setStartTime(v); setEndTime('') }} options={TIME_OPTIONS} placeholder="Start" />
             </div>
             <div>
               <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">End Time</label>
-              <AvailSelect value={endTime} onChange={setEndTime} options={AVAIL_TIME_OPTIONS} placeholder="End" />
+              <AvailSelect value={endTime} onChange={setEndTime} options={endTimeOptions(startTime)} placeholder={startTime ? 'End' : 'Pick a start first'} disabled={!startTime} />
             </div>
           </div>
 

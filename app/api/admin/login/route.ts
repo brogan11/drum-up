@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server'
+import { checkRateLimit, strictLimiter } from '@/lib/ratelimit'
+import { adminCookieValue } from '@/lib/admin-auth'
 
 export async function POST(request: Request) {
+  // Throttle password guessing: 5 attempts / 10 min per IP.
+  const rl = await checkRateLimit(request, strictLimiter)
+  if (rl.limited) return rl.response!
+
   try {
     const { password } = await request.json()
     const adminPassword = process.env.ADMIN_PASSWORD
@@ -14,7 +20,7 @@ export async function POST(request: Request) {
     }
 
     const response = NextResponse.json({ success: true })
-    response.cookies.set('admin_session', adminPassword, {
+    response.cookies.set('admin_session', await adminCookieValue(adminPassword), {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',

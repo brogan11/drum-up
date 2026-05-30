@@ -3,6 +3,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { TIME_OPTIONS, endTimeOptions } from '@/lib/time'
 import { Avatar } from '@/components/Avatar'
 import { useToast } from '@/components/Toast'
 
@@ -135,6 +136,13 @@ function formatDateSeparator(timestamp: string): string {
   return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
 }
 
+// Conversation-list / preview text for special structured messages.
+function previewText(content: string): string {
+  if (content.startsWith('__GIG_OFFER__:')) return 'Gig Offer'
+  if (content.startsWith('__AVAIL_OFFER__:') || content.startsWith('__AVAIL_OFFER_DECLINED__:')) return 'Availability'
+  return content
+}
+
 type DisplayItem =
   | { type: 'date'; label: string }
   | { type: 'message'; msg: Message; showAvatar: boolean; showTimestamp: boolean; isGroupStart: boolean }
@@ -178,9 +186,12 @@ interface Props {
   userId: string
   currentUserType?: string
   onUnreadChange?: (n: number) => void
+  // Called whenever a booking/invite is created or responded to from inside messages, so
+  // the parent dashboard can reload its bookings list and stay in sync with the chat cards.
+  onBookingsChanged?: () => void
 }
 
-const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ userId, currentUserType, onUnreadChange }, ref) {
+const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ userId, currentUserType, onUnreadChange, onBookingsChanged }, ref) {
   const router = useRouter()
   const { toast } = useToast()
 
@@ -199,6 +210,14 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
   const [reporting, setReporting] = useState(false)
   const [composing, setComposing] = useState(false)
   const [gigOfferOpen, setGigOfferOpen] = useState(false)
+  // When a restaurant taps "Book This Date" on a musician's availability offer, we open
+  // the gig-offer modal pre-filled with the proposed date/time/pay (reuses the whole
+  // tested booking + payment pipeline). null = opened fresh via the "+" button.
+  const [gigPrefill, setGigPrefill] = useState<{ date: string; startTime: string; endTime: string; pay: string } | null>(null)
+  const [availOfferOpen, setAvailOfferOpen] = useState(false)
+  // Bumped each time a conversation is (re)opened so offer cards re-fetch their latest
+  // accept/decline/payment state — keeps chat cards in sync with changes made elsewhere.
+  const [convRefreshKey, setConvRefreshKey] = useState(0)
   const [composeSearch, setComposeSearch] = useState('')
   const [composeResults, setComposeResults] = useState<ComposeResult[]>([])
 
@@ -374,6 +393,7 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
       }, ...prev]
     })
     setSelectedConvId(convId)
+    setConvRefreshKey(k => k + 1)
   }, [])
 
   useImperativeHandle(ref, () => ({ openWith: openWithAsync }), [openWithAsync])
@@ -382,7 +402,12 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
 
   const selectConv = async (convId: string) => {
     setSelectedConvId(convId)
-    if (!messagesByConv.has(convId)) await loadMessages(convId)
+    setConvRefreshKey(k => k + 1)
+    // Always refetch on open: a gig/availability offer (or any message) may have arrived
+    // while this thread was cached but not actively subscribed, so a cache check would
+    // leave it stale. loadMessages replaces with DB truth, which includes our own
+    // optimistic sends (they're already persisted).
+    await loadMessages(convId)
     await supabase.from('messages').update({ read: true })
       .eq('conversation_id', convId).eq('receiver_id', userIdRef.current)
     setConversations(prev => prev.map(c => c.id === convId ? { ...c, unread: false } : c))
@@ -496,7 +521,7 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
           return map
         })
         setConversations(prev => prev.map(c =>
-          c.id === selectedConvId ? { ...c, lastMessage: m.content.startsWith('__GIG_OFFER__:') ? 'Gig Offer' : m.content, lastIsoTime: m.created_at } : c
+          c.id === selectedConvId ? { ...c, lastMessage: previewText(m.content), lastIsoTime: m.created_at } : c
         ))
       })
       .subscribe()
@@ -569,6 +594,44 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
     setConversations(prev => prev.map(c =>
       c.id === selectedConvId ? { ...c, lastMessage: 'Gig Offer', lastIsoTime: newMsg.created_at } : c
     ))
+    // A new pending invite/booking now exists — let the dashboard reflect it.
+    onBookingsChanged?.()
+  }
+
+  const sendAvailOffer = async (slotId: string) => {
+    const uid = userIdRef.current
+    if (!selectedConvId || !uid || !selectedConv) return
+    const text = `__AVAIL_OFFER__:${slotId}`
+    const { data: newMsg, error } = await supabase
+      .from('messages')
+      .insert({ sender_id: uid, receiver_id: selectedConv.otherId, content: text, conversation_id: selectedConvId, read: false })
+      .select().single()
+    if (error) { console.error('Send availability failed', error); return }
+    const newMessage: Message = { id: newMsg.id, from: 'me', text, isoTime: newMsg.created_at, reactions: [] }
+    setMessagesByConv(prev => {
+      const map = new Map(prev)
+      map.set(selectedConvId, [...(map.get(selectedConvId) ?? []), newMessage])
+      return map
+    })
+    setConversations(prev => prev.map(c =>
+      c.id === selectedConvId ? { ...c, lastMessage: 'Availability', lastIsoTime: newMsg.created_at } : c
+    ))
+  }
+
+  // Restaurant declines a musician's availability offer. The offer has no booking to
+  // update, so we flip the message itself to a declined marker (the restaurant is the
+  // receiver, which the messages RLS allows to update). Both parties then see "Declined".
+  const declineAvailOffer = async (messageId: string, slotId: string) => {
+    if (!selectedConvId) return
+    const text = `__AVAIL_OFFER_DECLINED__:${slotId}`
+    const { error } = await supabase.from('messages').update({ content: text }).eq('id', messageId)
+    if (error) { console.error('Decline availability failed', error); return }
+    setMessagesByConv(prev => {
+      const map = new Map(prev)
+      const ms = (map.get(selectedConvId) ?? []).map(m => m.id === messageId ? { ...m, text } : m)
+      map.set(selectedConvId, ms)
+      return map
+    })
   }
 
   // ---- Reactions ----
@@ -757,7 +820,7 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
                       <p className="text-[11px] text-charcoal/40 shrink-0">{formatMessageTime(conv.lastIsoTime)}</p>
                     </div>
                     <p className={`text-[13px] truncate leading-snug ${conv.unread ? 'font-medium text-graphite/80' : 'text-charcoal/55'}`}>
-                      {conv.lastMessage.startsWith('__GIG_OFFER__:') ? 'Gig Offer' : (conv.lastMessage || 'Start a conversation')}
+                      {conv.lastMessage ? previewText(conv.lastMessage) : 'Start a conversation'}
                     </p>
                   </div>
                 </button>
@@ -822,7 +885,6 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
             <button onClick={goToProfile} className="flex-1 min-w-0 flex items-center gap-3 text-left group">
               <div className="relative shrink-0">
                 <Avatar src={selectedConv?.otherAvatar ?? ''} className="w-10 h-10 rounded-full border-2 border-chestnut/40 group-hover:border-chestnut transition-colors" textSize="text-lg" />
-                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-teal rounded-full border-2 border-[#333333]" />
               </div>
               <div className="min-w-0">
                 <p className="text-snow font-bold text-sm leading-tight truncate group-hover:text-chestnut transition-colors">
@@ -930,6 +992,11 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
             const isMe = msg.from === 'me'
             const isGigOffer = msg.text.startsWith('__GIG_OFFER__:')
             const gigOfferId = isGigOffer ? msg.text.slice('__GIG_OFFER__:'.length) : null
+            const isAvailOffer = msg.text.startsWith('__AVAIL_OFFER__:')
+            const isAvailDeclined = msg.text.startsWith('__AVAIL_OFFER_DECLINED__:')
+            const availOfferId = isAvailOffer
+              ? msg.text.slice('__AVAIL_OFFER__:'.length)
+              : isAvailDeclined ? msg.text.slice('__AVAIL_OFFER_DECLINED__:'.length) : null
 
             return (
               <div
@@ -946,7 +1013,20 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
                 )}
 
                 {isGigOffer ? (
-                  <GigOfferCard bookingId={gigOfferId!} currentUserType={currentUserType ?? ''} />
+                  <GigOfferCard
+                    bookingId={gigOfferId!}
+                    currentUserType={currentUserType ?? ''}
+                    refreshKey={convRefreshKey}
+                    onResponded={() => onBookingsChanged?.()}
+                  />
+                ) : (isAvailOffer || isAvailDeclined) ? (
+                  <AvailabilityOfferCard
+                    slotId={availOfferId!}
+                    currentUserType={currentUserType ?? ''}
+                    declined={isAvailDeclined}
+                    onBook={(prefill) => { setGigPrefill(prefill); setGigOfferOpen(true) }}
+                    onDecline={() => declineAvailOffer(msg.id, availOfferId!)}
+                  />
                 ) : (
                 <div className={`relative max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                   {/* Reaction picker popover */}
@@ -1021,12 +1101,23 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
         >
           {currentUserType === 'restaurant' && selectedConv?.otherUserType === 'musician' && (
             <button
-              onClick={() => setGigOfferOpen(true)}
+              onClick={() => { setGigPrefill(null); setGigOfferOpen(true) }}
               className="w-10 h-10 flex items-center justify-center rounded-full bg-white border border-charcoal/15 text-charcoal hover:text-chestnut hover:border-chestnut transition-colors shrink-0 mb-0.5"
               title="Send a gig offer"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 5v14M5 12h14"/>
+              </svg>
+            </button>
+          )}
+          {currentUserType === 'musician' && selectedConv?.otherUserType === 'restaurant' && (
+            <button
+              onClick={() => setAvailOfferOpen(true)}
+              className="w-10 h-10 flex items-center justify-center rounded-full bg-white border border-charcoal/15 text-charcoal hover:text-teal hover:border-teal transition-colors shrink-0 mb-0.5"
+              title="Share your availability"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M12 14v4M10 16h4"/>
               </svg>
             </button>
           )}
@@ -1057,16 +1148,31 @@ const MessagingTab = forwardRef<MessagingTabRef, Props>(function MessagingTab({ 
           </button>
         </div>
 
-        {/* Gig slot modal */}
+        {/* Gig slot modal (restaurant → musician). Pre-filled when booking from an availability offer. */}
         {gigOfferOpen && selectedConv && (
           <GigSlotModal
             userId={userId}
             musicianId={selectedConv.otherId}
             musicianName={selectedConv.otherName}
-            onClose={() => setGigOfferOpen(false)}
+            prefill={gigPrefill}
+            onClose={() => { setGigOfferOpen(false); setGigPrefill(null) }}
             onSend={(bookingId) => {
               setGigOfferOpen(false)
+              setGigPrefill(null)
               void sendGigOffer(bookingId)
+            }}
+          />
+        )}
+
+        {/* Availability modal (musician → restaurant) */}
+        {availOfferOpen && selectedConv && (
+          <AvailabilityModal
+            userId={userId}
+            restaurantName={selectedConv.otherName}
+            onClose={() => setAvailOfferOpen(false)}
+            onSend={(slotId) => {
+              setAvailOfferOpen(false)
+              void sendAvailOffer(slotId)
             }}
           />
         )}
@@ -1112,9 +1218,11 @@ function fmtTime(t: string): string {
 
 // ---- Gig Offer Card ----
 
-function GigOfferCard({ bookingId, currentUserType }: {
+function GigOfferCard({ bookingId, currentUserType, refreshKey = 0, onResponded }: {
   bookingId: string
   currentUserType: string
+  refreshKey?: number
+  onResponded?: () => void
 }) {
   const [booking, setBooking] = useState<{
     date: string
@@ -1127,27 +1235,39 @@ function GigOfferCard({ bookingId, currentUserType }: {
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await supabase
+      // Two plain queries instead of a PostgREST embed: the bookings→availability FK
+      // isn't registered in this schema, so `availability:availability_id(...)` errors
+      // and silently blanks the card. Fetching availability by id avoids that entirely.
+      const { data: bk } = await supabase
         .from('bookings')
-        .select('pay_amount, invite_accepted, availability:availability_id(date, start_time, end_time)')
+        .select('pay_amount, invite_accepted, availability_id')
         .eq('id', bookingId)
         .maybeSingle()
-      if (data) {
-        const avRaw = data.availability
-        const av = (Array.isArray(avRaw) ? avRaw[0] : avRaw) as Record<string, string> | null
+      if (bk) {
+        let av: { date?: string | null; start_time?: string | null; end_time?: string | null } | null = null
+        if (bk.availability_id) {
+          const { data: avData } = await supabase
+            .from('availability')
+            .select('date, start_time, end_time')
+            .eq('id', bk.availability_id)
+            .maybeSingle()
+          av = avData
+        }
         const rawStart = av?.start_time?.slice(0, 5) ?? ''
         const rawEnd = av?.end_time?.slice(0, 5) ?? ''
         setBooking({
           date: av?.date ? new Date(av.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '—',
           time: rawStart && rawEnd ? `${fmtTime(rawStart)} – ${fmtTime(rawEnd)}` : '—',
-          pay: Number(data.pay_amount) || 0,
-          inviteAccepted: data.invite_accepted as boolean | null,
+          pay: Number(bk.pay_amount) || 0,
+          inviteAccepted: bk.invite_accepted as boolean | null,
         })
       }
       setLoading(false)
     }
     void load()
-  }, [bookingId])
+    // Re-fetch when the conversation is reopened (refreshKey) so a response made on the
+    // dashboard (or by the other party) is reflected on the card.
+  }, [bookingId, refreshKey])
 
   const handleRespond = async (response: 'accept' | 'decline') => {
     setResponding(true)
@@ -1161,6 +1281,8 @@ function GigOfferCard({ bookingId, currentUserType }: {
       })
       if (res.ok) {
         setBooking(prev => prev ? { ...prev, inviteAccepted: response === 'accept' ? true : false } : null)
+        // Keep the dashboard's bookings list in sync with this response.
+        onResponded?.()
       }
     } finally {
       setResponding(false)
@@ -1239,17 +1361,6 @@ function GigOfferCard({ bookingId, currentUserType }: {
 
 // ---- Slot picker helpers (mirrors RestaurantDashboard) ----
 
-const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
-  const h = Math.floor(i / 2)
-  const m = (i % 2) * 30
-  const period = h < 12 ? 'AM' : 'PM'
-  const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h
-  return {
-    label: `${hour12}:${m.toString().padStart(2, '0')} ${period}`,
-    value: `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`,
-  }
-})
-
 function getDateOptions() {
   const options: { value: string; label: string }[] = []
   const today = new Date()
@@ -1263,19 +1374,21 @@ function getDateOptions() {
   return options
 }
 
-function StyledSelect({ value, onChange, options, placeholder, className = '' }: {
+function StyledSelect({ value, onChange, options, placeholder, className = '', disabled = false }: {
   value: string
   onChange: (v: string) => void
   options: { value: string; label: string }[]
   placeholder?: string
   className?: string
+  disabled?: boolean
 }) {
   return (
     <div className={`relative ${className}`}>
       <select
         value={value}
         onChange={e => onChange(e.target.value)}
-        className={`w-full appearance-none bg-white rounded-xl px-4 py-3 pr-10 shadow-sm border border-charcoal/10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-chestnut/20 cursor-pointer ${value ? 'text-graphite' : 'text-charcoal/40'}`}
+        disabled={disabled}
+        className={`w-full appearance-none bg-white rounded-xl px-4 py-3 pr-10 shadow-sm border border-charcoal/10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-chestnut/20 ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${value ? 'text-graphite' : 'text-charcoal/40'}`}
       >
         {placeholder && <option value="" disabled>{placeholder}</option>}
         {options.map(opt => (
@@ -1293,21 +1406,22 @@ function StyledSelect({ value, onChange, options, placeholder, className = '' }:
 
 // ---- Gig Slot Modal ----
 
-function GigSlotModal({ userId, musicianId, musicianName, onClose, onSend }: {
+function GigSlotModal({ userId, musicianId, musicianName, onClose, onSend, prefill = null }: {
   userId: string
   musicianId: string
   musicianName: string
   onClose: () => void
   onSend: (bookingId: string) => void
+  prefill?: { date: string; startTime: string; endTime: string; pay: string } | null
 }) {
-  const [mode, setMode] = useState<'pick' | 'create'>('pick')
+  const [mode, setMode] = useState<'pick' | 'create'>(prefill ? 'create' : 'pick')
   const [slots, setSlots] = useState<{ id: string; dateLabel: string; time: string; pay: number }[]>([])
   const [slotsLoading, setSlotsLoading] = useState(true)
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null)
-  const [date, setDate] = useState('')
-  const [startTime, setStartTime] = useState('')
-  const [endTime, setEndTime] = useState('')
-  const [pay, setPay] = useState('')
+  const [date, setDate] = useState(prefill?.date ?? '')
+  const [startTime, setStartTime] = useState(prefill?.startTime ?? '')
+  const [endTime, setEndTime] = useState(prefill?.endTime ?? '')
+  const [pay, setPay] = useState(prefill?.pay ?? '')
   const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -1439,7 +1553,7 @@ function GigSlotModal({ userId, musicianId, musicianName, onClose, onSend }: {
                   <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">Start</label>
                   <StyledSelect
                     value={startTime}
-                    onChange={setStartTime}
+                    onChange={v => { setStartTime(v); setEndTime('') }}
                     options={TIME_OPTIONS}
                     placeholder="Start time"
                   />
@@ -1449,8 +1563,9 @@ function GigSlotModal({ userId, musicianId, musicianName, onClose, onSend }: {
                   <StyledSelect
                     value={endTime}
                     onChange={setEndTime}
-                    options={TIME_OPTIONS}
-                    placeholder="End time"
+                    options={endTimeOptions(startTime)}
+                    placeholder={startTime ? 'End time' : 'Pick a start first'}
+                    disabled={!startTime}
                   />
                 </div>
               </div>
@@ -1480,6 +1595,320 @@ function GigSlotModal({ userId, musicianId, musicianName, onClose, onSend }: {
           <button onClick={onClose} disabled={submitting} className="w-full bg-white text-charcoal py-3 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10 disabled:opacity-50">Cancel</button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ---- Availability Modal (musician → restaurant) ----
+// Mirror of GigSlotModal: a musician shares one of their open availability slots, or
+// creates a new private one, and sends it to a restaurant. Uses the same cross-midnight
+// start→end picker. New slots are is_private so they don't surface in the public browse.
+
+function AvailabilityModal({ userId, restaurantName, onClose, onSend }: {
+  userId: string
+  restaurantName: string
+  onClose: () => void
+  onSend: (slotId: string) => void
+}) {
+  const [mode, setMode] = useState<'pick' | 'create'>('pick')
+  const [slots, setSlots] = useState<{ id: string; dateLabel: string; time: string; minPay: number | null }[]>([])
+  const [slotsLoading, setSlotsLoading] = useState(true)
+  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null)
+  const [date, setDate] = useState('')
+  const [startTime, setStartTime] = useState('')
+  const [endTime, setEndTime] = useState('')
+  const [minPay, setMinPay] = useState('')
+  const [note, setNote] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const load = async () => {
+      const today = new Date().toISOString().slice(0, 10)
+      const { data } = await supabase
+        .from('musician_availability')
+        .select('id, date, start_time, end_time, min_pay')
+        .eq('musician_id', userId)
+        .eq('status', 'open')
+        .gte('date', today)
+        .order('date', { ascending: true })
+        .limit(20)
+      if (data) {
+        setSlots(data.map(s => {
+          const rawStart = s.start_time?.slice(0, 5) ?? ''
+          const rawEnd = s.end_time?.slice(0, 5) ?? ''
+          return {
+            id: s.id,
+            dateLabel: new Date(s.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+            time: rawStart && rawEnd ? `${fmtTime(rawStart)} – ${fmtTime(rawEnd)}` : '—',
+            minPay: s.min_pay != null ? Number(s.min_pay) : null,
+          }
+        }))
+      }
+      setSlotsLoading(false)
+    }
+    void load()
+  }, [userId])
+
+  const handleSubmit = async () => {
+    setError('')
+    if (mode === 'pick' && !selectedSlotId) { setError('Select a slot.'); return }
+    if (mode === 'create') {
+      if (!date) { setError('Pick a date.'); return }
+      if (!startTime) { setError('Pick a start time.'); return }
+      if (!endTime) { setError('Pick an end time.'); return }
+    }
+    setSubmitting(true)
+    try {
+      let slotId = selectedSlotId
+      if (mode === 'create') {
+        const { data, error: dbErr } = await supabase
+          .from('musician_availability')
+          .insert({
+            musician_id: userId,
+            date,
+            start_time: startTime,
+            end_time: endTime,
+            min_pay: minPay ? Number(minPay) : null,
+            notes: note.trim() || null,
+            status: 'open',
+            is_private: true,
+          })
+          .select('id')
+          .single()
+        if (dbErr) throw dbErr
+        slotId = data.id
+      }
+      if (!slotId) throw new Error('Could not create the slot.')
+      onSend(slotId)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-[300] flex items-end sm:items-center justify-center p-4">
+      <div className="bg-snow w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
+        <div className="bg-graphite rounded-t-3xl px-6 py-4 flex items-center justify-between relative overflow-hidden">
+          <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-teal opacity-20 blur-2xl pointer-events-none" />
+          <div className="relative z-10">
+            <p className="text-teal text-[10px] font-semibold uppercase tracking-[0.3em]">Availability</p>
+            <h3 className="text-snow text-xl font-black tracking-tight">Share with <span className="text-teal italic">{restaurantName.split(' ')[0]}.</span></h3>
+          </div>
+          <button onClick={onClose} className="relative z-10 text-snow/60 hover:text-snow transition-colors">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+        <div className="p-6">
+          <div className="flex bg-white rounded-xl p-1 mb-5 shadow-sm">
+            <button onClick={() => setMode('pick')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${mode === 'pick' ? 'bg-teal text-snow shadow-sm' : 'text-charcoal hover:text-graphite'}`}>Existing Slot</button>
+            <button onClick={() => setMode('create')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${mode === 'create' ? 'bg-teal text-snow shadow-sm' : 'text-charcoal hover:text-graphite'}`}>New Slot</button>
+          </div>
+
+          {mode === 'pick' && (
+            <div className="mb-4">
+              {slotsLoading ? (
+                <div className="space-y-2">
+                  {[1, 2].map(i => <div key={i} className="h-14 bg-white rounded-xl animate-pulse" />)}
+                </div>
+              ) : slots.length === 0 ? (
+                <div className="bg-white rounded-xl p-4 text-center">
+                  <p className="text-charcoal/60 text-sm mb-2">You have no open availability slots.</p>
+                  <button onClick={() => setMode('create')} className="text-teal text-sm font-bold hover:opacity-80 transition-opacity">Create a new one instead →</button>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {slots.map(slot => (
+                    <button
+                      key={slot.id}
+                      onClick={() => setSelectedSlotId(slot.id)}
+                      className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all ${selectedSlotId === slot.id ? 'border-teal bg-teal/5' : 'border-transparent bg-white hover:border-charcoal/20'}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-graphite text-sm font-bold">{slot.dateLabel}</p>
+                          <p className="text-charcoal text-xs mt-0.5">{slot.time}</p>
+                        </div>
+                        <p className="text-teal font-black text-sm">{slot.minPay != null ? `From $${slot.minPay}` : 'Open'}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {mode === 'create' && (
+            <div className="space-y-4 mb-4">
+              <div>
+                <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">Date</label>
+                <StyledSelect value={date} onChange={setDate} options={getDateOptions()} placeholder="Pick a date" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">Start</label>
+                  <StyledSelect
+                    value={startTime}
+                    onChange={v => { setStartTime(v); setEndTime('') }}
+                    options={TIME_OPTIONS}
+                    placeholder="Start time"
+                  />
+                </div>
+                <div>
+                  <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">End</label>
+                  <StyledSelect
+                    value={endTime}
+                    onChange={setEndTime}
+                    options={endTimeOptions(startTime)}
+                    placeholder={startTime ? 'End time' : 'Pick a start first'}
+                    disabled={!startTime}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">Min Pay <span className="font-normal normal-case text-charcoal/50">(optional)</span></label>
+                <input type="number" min="0" step="1" placeholder="e.g. 150" value={minPay} onChange={e => setMinPay(e.target.value.replace(/[^0-9]/g, ''))} className="w-full bg-white rounded-xl px-4 py-3 text-sm shadow-sm border border-charcoal/10 focus:outline-none focus:ring-2 focus:ring-teal/20" />
+              </div>
+            </div>
+          )}
+
+          <div className="mb-5">
+            <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">Note <span className="font-normal normal-case text-charcoal/50">(optional)</span></label>
+            <textarea placeholder={`A note for ${restaurantName.split(' ')[0]}…`} value={note} onChange={e => setNote(e.target.value)} rows={2} className="w-full bg-white rounded-xl px-4 py-3 text-sm shadow-sm focus:outline-none focus:shadow-md transition-shadow resize-none placeholder:text-charcoal/40" />
+          </div>
+
+          {error && <div className="bg-red-50 text-red-600 px-4 py-3 rounded-xl mb-4 text-sm">{error}</div>}
+
+          <button
+            onClick={handleSubmit}
+            disabled={submitting || (mode === 'pick' && !selectedSlotId && slots.length > 0)}
+            className="w-full bg-teal text-snow py-3.5 rounded-xl font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed mb-2"
+          >
+            {submitting
+              ? <span className="flex items-center justify-center gap-2"><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg> Sending…</span>
+              : `Share with ${restaurantName.split(' ')[0]}`}
+          </button>
+          <button onClick={onClose} disabled={submitting} className="w-full bg-white text-charcoal py-3 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10 disabled:opacity-50">Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---- Availability Offer Card (in-conversation) ----
+// Mirror of GigOfferCard for a musician's shared availability slot. The restaurant can
+// turn it into a real gig offer via "Book This Date", which pre-fills GigSlotModal.
+
+function AvailabilityOfferCard({ slotId, currentUserType, declined, onBook, onDecline }: {
+  slotId: string
+  currentUserType: string
+  declined: boolean
+  onBook: (prefill: { date: string; startTime: string; endTime: string; pay: string }) => void
+  onDecline: () => void
+}) {
+  const [slot, setSlot] = useState<{
+    rawDate: string
+    rawStart: string
+    rawEnd: string
+    dateLabel: string
+    time: string
+    genres: string[]
+    minPay: number | null
+  } | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await supabase
+        .from('musician_availability')
+        .select('date, start_time, end_time, genres, min_pay')
+        .eq('id', slotId)
+        .maybeSingle()
+      if (data) {
+        const rawStart = (data.start_time as string | null)?.slice(0, 5) ?? ''
+        const rawEnd = (data.end_time as string | null)?.slice(0, 5) ?? ''
+        setSlot({
+          rawDate: (data.date as string) ?? '',
+          rawStart,
+          rawEnd,
+          dateLabel: data.date ? new Date(data.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '—',
+          time: rawStart && rawEnd ? `${fmtTime(rawStart)} – ${fmtTime(rawEnd)}` : '—',
+          genres: Array.isArray(data.genres) ? data.genres as string[] : [],
+          minPay: data.min_pay != null ? Number(data.min_pay) : null,
+        })
+      }
+      setLoading(false)
+    }
+    void load()
+  }, [slotId])
+
+  if (loading) {
+    return (
+      <div className="bg-teal/5 border border-teal/15 rounded-2xl p-4 max-w-[260px] animate-pulse">
+        <div className="h-4 bg-teal/20 rounded mb-2 w-3/4" />
+        <div className="h-3 bg-charcoal/10 rounded mb-1.5 w-full" />
+        <div className="h-3 bg-charcoal/10 rounded w-2/3" />
+      </div>
+    )
+  }
+  if (!slot) return null
+
+  return (
+    <div className="bg-teal/5 border border-teal/20 rounded-2xl p-4 max-w-[260px]">
+      <div className="flex items-center gap-2.5 mb-3">
+        <div className="w-8 h-8 bg-teal/15 rounded-xl flex items-center justify-center shrink-0">
+          <svg className="w-4 h-4 text-teal" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
+          </svg>
+        </div>
+        <div>
+          <p className="text-teal text-[9px] font-black uppercase tracking-[0.2em]">Availability</p>
+          <p className="text-graphite text-sm font-bold leading-tight">Open to Play</p>
+        </div>
+      </div>
+      <div className="space-y-1.5 mb-3">
+        <div className="flex justify-between text-xs">
+          <span className="text-charcoal/60">Date</span>
+          <span className="text-graphite font-semibold">{slot.dateLabel}</span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-charcoal/60">Time</span>
+          <span className="text-graphite font-semibold">{slot.time}</span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-charcoal/60">Asking</span>
+          <span className="text-teal font-black">{slot.minPay != null ? `From $${slot.minPay}` : 'Open to offers'}</span>
+        </div>
+      </div>
+      {slot.genres.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-3">
+          {slot.genres.slice(0, 3).map(g => (
+            <span key={g} className="text-[10px] bg-teal/10 text-teal px-2 py-0.5 rounded-full font-semibold">{g}</span>
+          ))}
+        </div>
+      )}
+      {declined ? (
+        <div className="text-center text-xs font-bold py-1.5 rounded-xl bg-charcoal/10 text-charcoal/60">Declined</div>
+      ) : currentUserType === 'restaurant' ? (
+        <div className="flex gap-2">
+          <button
+            onClick={() => onBook({ date: slot.rawDate, startTime: slot.rawStart, endTime: slot.rawEnd, pay: slot.minPay != null ? String(slot.minPay) : '' })}
+            className="flex-1 bg-teal text-snow py-2 rounded-xl text-xs font-bold hover:opacity-90 transition-opacity"
+          >
+            Book This Date
+          </button>
+          <button
+            onClick={onDecline}
+            className="flex-1 bg-snow text-charcoal py-2 rounded-xl text-xs font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10"
+          >
+            Decline
+          </button>
+        </div>
+      ) : (
+        <p className="text-center text-xs text-charcoal/50">Availability shared</p>
+      )}
     </div>
   )
 }

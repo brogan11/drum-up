@@ -17,7 +17,10 @@ import { GENRE_GROUPS } from '@/lib/genres'
 import { GenreSelector } from '@/components/GenreSelector'
 import InviteModal from '@/components/InviteModal'
 import AddToCalendar from '@/components/AddToCalendar'
-import { gigDateTime } from '@/lib/ics'
+import { gigStartEnd } from '@/lib/ics'
+import { TIME_OPTIONS, endTimeOptions } from '@/lib/time'
+import { groupReputations, type RepSummary } from '@/lib/reviews'
+import { RatingBadge } from '@/components/RatingBadge'
 
 // ---- Types ----
 
@@ -340,6 +343,8 @@ export default function RestaurantDashboard() {
   const [radiusSaved, setRadiusSaved] = useState(false)
   const [profileSaved, setProfileSaved] = useState(false)
   const [liveMusicians, setLiveMusicians] = useState<LiveMusician[]>([])
+  // Aggregate reputation per musician, keyed by musician id, for browse cards.
+  const [musicianReps, setMusicianReps] = useState<Map<string, RepSummary>>(new Map())
   const [browseLoading, setBrowseLoading] = useState(false)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
 
@@ -382,7 +387,7 @@ export default function RestaurantDashboard() {
     const mapped: Slot[] = data.map(row => {
       const dateLabel = new Date(row.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
       const dbStatus = row.status as string
-      const endDatetime = new Date(`${row.date}T${row.end_time ?? '23:59:00'}`)
+      const endDatetime = gigStartEnd(row.date, row.start_time, row.end_time ?? '23:59:00').end
       const isPast = endDatetime < new Date()
       const status: SlotStatus = isPast ? 'past' : dbStatus === 'filled' ? 'booked' : dbStatus === 'cancelled' ? 'cancelled' : 'open'
       const rawStart = row.start_time?.slice(0, 5) ?? ''
@@ -501,6 +506,15 @@ export default function RestaurantDashboard() {
       .sort((a, b) => a.distance - b.distance)
 
     setLiveMusicians(results)
+
+    // Reputation badges for the musicians in view (one grouped query).
+    const musIds = results.map(m => m.id)
+    if (musIds.length > 0) {
+      void supabase.from('reviews').select('reviewee_id, rating, tags').in('reviewee_id', musIds)
+        .then(({ data: revRows }) => {
+          if (revRows) setMusicianReps(groupReputations(revRows as { reviewee_id: string; rating: number; tags: string[] | null }[]))
+        })
+    }
     } catch (err) {
       console.error('Failed to load musicians:', err)
       toast.error('Could not load musicians. Please try again.')
@@ -517,6 +531,7 @@ export default function RestaurantDashboard() {
         .from('musician_availability')
         .select('id, date, start_time, end_time, genres, min_pay, notes, status, latitude, longitude, musician_id, musician:musician_id(id, full_name, avatar_url, bio, location_text, latitude, longitude, role_metadata, performer_type)')
         .eq('status', 'open')
+        .eq('is_private', false)
         .gte('date', today)
         .order('date', { ascending: true })
       if (error) throw error
@@ -617,9 +632,12 @@ export default function RestaurantDashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Realtime: new booking applications on any of this restaurant's slots
+  // Realtime: new applications (INSERT) and invite responses / status changes (UPDATE)
+  // on any of this restaurant's bookings. Re-fetch slots so the applications list stays
+  // in sync — e.g. a musician accepting an invite flips it to "awaiting payment".
   useEffect(() => {
     if (!userId) return
+    const reload = () => loadSlots(userId)
     const sub = supabase
       .channel(`bookings-restaurant-${userId}`)
       .on('postgres_changes', {
@@ -627,10 +645,13 @@ export default function RestaurantDashboard() {
         schema: 'public',
         table: 'bookings',
         filter: `restaurant_id=eq.${userId}`,
-      }, () => {
-        // Re-fetch all slots so the new application is reflected immediately
-        loadSlots(userId)
-      })
+      }, reload)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'bookings',
+        filter: `restaurant_id=eq.${userId}`,
+      }, reload)
       .subscribe()
     return () => { void supabase.removeChannel(sub) }
   }, [userId])
@@ -1251,8 +1272,7 @@ export default function RestaurantDashboard() {
                               title: `Live music: ${slot.bookedMusician ?? 'Musician'} at ${profile.name}`,
                               description: slot.notes || '',
                               location: profile.address || '',
-                              start: gigDateTime(slot.rawDate, slot.rawStartTime),
-                              end: gigDateTime(slot.rawDate, slot.rawEndTime),
+                              ...gigStartEnd(slot.rawDate, slot.rawStartTime, slot.rawEndTime),
                             }}
                           />
                         </div>
@@ -1680,6 +1700,15 @@ export default function RestaurantDashboard() {
                               </div>
                               <p className="text-charcoal/50 font-black shrink-0">${slot.budget}</p>
                             </div>
+                            {isPast && confirmedApp && (
+                              <button
+                                onClick={() => { try { sessionStorage.setItem('drumup_open_review', '1') } catch { /* ignore */ } ; router.push('/profile/' + confirmedApp.musicianId) }}
+                                className="mt-3 w-full flex items-center justify-center gap-1.5 border border-chestnut/40 text-chestnut py-2 rounded-xl text-xs font-bold hover:bg-chestnut/10 transition-colors"
+                              >
+                                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                                Review {confirmedApp.musicianName.split(' ')[0]}
+                              </button>
+                            )}
                           </div>
                         )
                       })}
@@ -1967,6 +1996,7 @@ export default function RestaurantDashboard() {
                         </div>
                         {m.location && <p className="text-charcoal text-xs mt-0.5">{m.location}</p>}
                         <p className="inline-flex items-center gap-0.5 text-chestnut text-xs font-semibold mt-0.5"><svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>{m.distanceStr}</p>
+                        <RatingBadge rep={musicianReps.get(m.id)} className="mt-1" />
                         {m.bio && <p className="text-charcoal/70 text-xs mt-1.5 line-clamp-2 leading-relaxed">{m.bio}</p>}
                       </div>
                     </div>
@@ -2303,7 +2333,7 @@ export default function RestaurantDashboard() {
       <div className={activeTab !== 'messages' ? 'hidden' : ''}>
         <div className="max-w-2xl mx-auto px-4" style={{ paddingBottom: '96px' }}>
           {userId && (
-            <MessagingTab ref={messagingRef} userId={userId} currentUserType="restaurant" onUnreadChange={setMsgUnread} />
+            <MessagingTab ref={messagingRef} userId={userId} currentUserType="restaurant" onUnreadChange={setMsgUnread} onBookingsChanged={() => { if (userId) void loadSlots(userId) }} />
           )}
         </div>
       </div>
@@ -2527,7 +2557,7 @@ export default function RestaurantDashboard() {
                   <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Start Time</label>
                   <StyledSelect
                     value={newSlot.startTime}
-                    onChange={v => setNewSlot(p => ({ ...p, startTime: v }))}
+                    onChange={v => setNewSlot(p => ({ ...p, startTime: v, endTime: '' }))}
                     options={TIME_OPTIONS}
                     placeholder="Start"
                   />
@@ -2537,8 +2567,9 @@ export default function RestaurantDashboard() {
                   <StyledSelect
                     value={newSlot.endTime}
                     onChange={v => setNewSlot(p => ({ ...p, endTime: v }))}
-                    options={TIME_OPTIONS}
-                    placeholder="End"
+                    options={endTimeOptions(newSlot.startTime)}
+                    placeholder={newSlot.startTime ? 'End' : 'Pick a start first'}
+                    disabled={!newSlot.startTime}
                   />
                 </div>
               </div>
@@ -2935,16 +2966,6 @@ function SlotCalendar({ slots, calendarMonth, setCalendarMonth, calendarSelected
   )
 }
 
-const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
-  const h = Math.floor(i / 2)
-  const m = (i % 2) * 30
-  const period = h < 12 ? 'AM' : 'PM'
-  const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h
-  return {
-    label: `${hour12}:${m.toString().padStart(2, '0')} ${period}`,
-    value: `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`,
-  }
-})
 
 function getDateOptions(currentValue?: string) {
   const options: { value: string; label: string }[] = []
@@ -2966,19 +2987,21 @@ function getDateOptions(currentValue?: string) {
   return options
 }
 
-function StyledSelect({ value, onChange, options, placeholder, className = '' }: {
+function StyledSelect({ value, onChange, options, placeholder, className = '', disabled = false }: {
   value: string
   onChange: (v: string) => void
   options: { value: string; label: string }[]
   placeholder?: string
   className?: string
+  disabled?: boolean
 }) {
   return (
     <div className={`relative ${className}`}>
       <select
         value={value}
         onChange={e => onChange(e.target.value)}
-        className={`w-full appearance-none bg-white rounded-xl px-4 py-3 pr-10 shadow-sm border border-charcoal/10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-chestnut/20 cursor-pointer ${value ? 'text-graphite' : 'text-charcoal/40'}`}
+        disabled={disabled}
+        className={`w-full appearance-none bg-white rounded-xl px-4 py-3 pr-10 shadow-sm border border-charcoal/10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-chestnut/20 ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${value ? 'text-graphite' : 'text-charcoal/40'}`}
       >
         {placeholder && <option value="" disabled>{placeholder}</option>}
         {options.map(opt => (

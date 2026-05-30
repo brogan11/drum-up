@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { milesBetween } from '@/lib/distance'
@@ -8,7 +8,12 @@ import { Avatar } from '@/components/Avatar'
 import { useToast } from '@/components/Toast'
 import { SkeletonProfilePageMusician, SkeletonProfilePageLight } from '@/components/Skeleton'
 import { buildSocialUrl } from '@/lib/social-urls'
+import { gigStartEnd } from '@/lib/ics'
 import InviteModal from '@/components/InviteModal'
+import {
+  REVIEW_ASPECTS, REVIEW_TAGS, aspectAverages, ratingDistribution, topTags,
+  type RevieweeType,
+} from '@/lib/reviews'
 
 // ---- Types ----
 
@@ -49,6 +54,8 @@ interface Review {
   reviewer_name: string
   reviewer_avatar: string | null
   reviewer_id: string
+  aspects: Record<string, number> | null
+  tags: string[]
 }
 
 interface PastGig {
@@ -195,12 +202,33 @@ export default function ProfilePage() {
 
   const [inviteModalOpen, setInviteModalOpen] = useState(false)
 
+  // A completed (past) confirmed gig between the two parties makes the viewer eligible to
+  // review. myReviewId is set when the viewer has ALREADY reviewed this profile — they may
+  // then edit that one review rather than leave another (one review per pair).
   const [eligibleBookingId, setEligibleBookingId] = useState<string | null>(null)
-  const [hasReviewed, setHasReviewed] = useState(false)
+  const [myReviewId, setMyReviewId] = useState<string | null>(null)
   const [reviewModalOpen, setReviewModalOpen] = useState(false)
   const [reviewRating, setReviewRating] = useState(5)
   const [reviewText, setReviewText] = useState('')
+  const [reviewAspects, setReviewAspects] = useState<Record<string, number>>({})
+  const [reviewTags, setReviewTags] = useState<string[]>([])
   const [submittingReview, setSubmittingReview] = useState(false)
+
+  // Open the review composer with a clean slate (new review).
+  const openReviewModal = () => {
+    setReviewRating(5); setReviewText(''); setReviewAspects({}); setReviewTags([])
+    setReviewModalOpen(true)
+  }
+
+  // Open the composer pre-filled with the viewer's existing review (edit mode).
+  const openReviewEditor = () => {
+    const mine = reviews.find(r => r.id === myReviewId)
+    setReviewRating(mine?.rating ?? 5)
+    setReviewText(mine?.review_text ?? '')
+    setReviewAspects(mine?.aspects ?? {})
+    setReviewTags(mine?.tags ?? [])
+    setReviewModalOpen(true)
+  }
 
   // Check if we navigated here from a messages conversation
   useEffect(() => {
@@ -354,7 +382,7 @@ export default function ProfilePage() {
       }
 
       const { data: rws, error: rwErr } = await supabase
-        .from('reviews').select('id, rating, review_text, created_at, verified, reviewer_id, booking_id')
+        .from('reviews').select('id, rating, review_text, created_at, verified, reviewer_id, booking_id, aspects, tags')
         .eq('reviewee_id', pid).order('created_at', { ascending: false })
       if (!rwErr && rws && rws.length > 0) {
         const rIds2 = [...new Set(rws.map(r => r.reviewer_id))]
@@ -362,11 +390,15 @@ export default function ProfilePage() {
         const rpMap = new Map((rProfs ?? []).map(p => [p.id, p]))
         setReviews(rws.map(r => {
           const rp = rpMap.get(r.reviewer_id)
+          const rawAspects = (r as { aspects?: unknown }).aspects
+          const rawTags = (r as { tags?: unknown }).tags
           return {
             id: r.id, rating: r.rating, review_text: r.review_text ?? null,
             created_at: r.created_at, verified: r.verified,
             reviewer_name: rp?.full_name ?? 'Anonymous',
             reviewer_avatar: rp?.avatar_url ?? null, reviewer_id: r.reviewer_id,
+            aspects: rawAspects && typeof rawAspects === 'object' ? rawAspects as Record<string, number> : null,
+            tags: Array.isArray(rawTags) ? rawTags as string[] : [],
           }
         }))
       }
@@ -375,16 +407,30 @@ export default function ProfilePage() {
         const isRestViewer = vp?.user_type === 'restaurant' && pd.user_type === 'musician'
         const isMusiViewer = vp?.user_type === 'musician' && pd.user_type === 'restaurant'
         if (isRestViewer || isMusiViewer) {
-          let bq = supabase.from('bookings').select('id').eq('status', 'confirmed').limit(1)
+          // Has the viewer already reviewed this profile? If so they edit that one.
+          const { data: existRev } = await supabase.from('reviews').select('id')
+            .eq('reviewer_id', user.id).eq('reviewee_id', pid).maybeSingle()
+          if (existRev) setMyReviewId(existRev.id)
+
+          // Eligible to review only once a confirmed gig between the two has actually
+          // finished (its end time is in the past — cross-midnight aware via gigStartEnd).
+          let bq = supabase.from('bookings').select('id, availability_id').eq('status', 'confirmed')
           bq = isRestViewer
             ? bq.eq('restaurant_id', user.id).eq('musician_id', pid)
             : bq.eq('musician_id', user.id).eq('restaurant_id', pid)
-          const { data: eb } = await bq
-          if (eb && eb.length > 0) {
-            const { data: existRev } = await supabase.from('reviews').select('id')
-              .eq('reviewer_id', user.id).eq('reviewee_id', pid).maybeSingle()
-            if (existRev) setHasReviewed(true)
-            else setEligibleBookingId(eb[0].id)
+          const { data: ebs } = await bq
+          if (ebs && ebs.length > 0) {
+            const aIds = ebs.map(b => b.availability_id)
+            const { data: avs } = await supabase
+              .from('availability').select('id, date, start_time, end_time').in('id', aIds)
+            const avMap = new Map((avs ?? []).map(a => [a.id, a]))
+            const nowD = new Date()
+            const completed = ebs.find(b => {
+              const a = avMap.get(b.availability_id)
+              if (!a?.date) return false
+              return gigStartEnd(a.date, a.start_time, a.end_time).end < nowD
+            })
+            if (completed) setEligibleBookingId(completed.id)
           }
         }
       }
@@ -396,6 +442,20 @@ export default function ProfilePage() {
     }
     load()
   }, [slug, router])
+
+  // When a dashboard "Review" CTA routes here, auto-open the composer once eligibility has
+  // resolved — in edit mode if they've already reviewed, otherwise as a fresh review.
+  useEffect(() => {
+    if (!eligibleBookingId && !myReviewId) return
+    try {
+      if (sessionStorage.getItem('drumup_open_review') === '1') {
+        sessionStorage.removeItem('drumup_open_review')
+        if (myReviewId) openReviewEditor()
+        else openReviewModal()
+      }
+    } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eligibleBookingId, myReviewId])
 
   const handleToggleFollow = async () => {
     if (!viewerId || !profile) return
@@ -432,21 +492,44 @@ export default function ProfilePage() {
   }
 
   const handleSubmitReview = async () => {
-    if (!viewerId || !profile || !eligibleBookingId) return
+    if (!viewerId || !profile) return
+    if (!myReviewId && !eligibleBookingId) return
     setSubmittingReview(true)
     try {
-      const { error } = await supabase.from('reviews').insert({
-        reviewer_id: viewerId, reviewee_id: profile.id, booking_id: eligibleBookingId,
-        rating: reviewRating, review_text: reviewText.trim() || null, verified: true,
-      })
-      if (error) throw error
-      setReviewModalOpen(false); setHasReviewed(true); setEligibleBookingId(null)
-      setReviews(prev => [{
-        id: 'new-' + Date.now(), rating: reviewRating, review_text: reviewText.trim() || null,
-        created_at: new Date().toISOString(), verified: true,
-        reviewer_name: 'You', reviewer_avatar: null, reviewer_id: viewerId,
-      }, ...prev])
-      toast.success('Review submitted!')
+      const cleanAspects = Object.fromEntries(
+        Object.entries(reviewAspects).filter(([, v]) => v > 0),
+      )
+      const aspectsForState = Object.keys(cleanAspects).length > 0 ? cleanAspects : null
+      const textValue = reviewText.trim() || null
+
+      if (myReviewId) {
+        // Edit the viewer's existing review (RLS: reviewer can update their own row).
+        const { error } = await supabase.from('reviews').update({
+          rating: reviewRating, review_text: textValue, aspects: cleanAspects, tags: reviewTags,
+        }).eq('id', myReviewId)
+        if (error) throw error
+        setReviews(prev => prev.map(r => r.id === myReviewId
+          ? { ...r, rating: reviewRating, review_text: textValue, aspects: aspectsForState, tags: reviewTags }
+          : r))
+        toast.success('Review updated!')
+      } else {
+        // First review for this pair.
+        const { data: inserted, error } = await supabase.from('reviews').insert({
+          reviewer_id: viewerId, reviewee_id: profile.id, booking_id: eligibleBookingId,
+          rating: reviewRating, review_text: textValue, verified: true,
+          aspects: cleanAspects, tags: reviewTags,
+        }).select('id').single()
+        if (error) throw error
+        setMyReviewId(inserted.id)
+        setReviews(prev => [{
+          id: inserted.id, rating: reviewRating, review_text: textValue,
+          created_at: new Date().toISOString(), verified: true,
+          reviewer_name: 'You', reviewer_avatar: null, reviewer_id: viewerId,
+          aspects: aspectsForState, tags: reviewTags,
+        }, ...prev])
+        toast.success('Review submitted!')
+      }
+      setReviewModalOpen(false)
     } catch (err) {
       console.error('Review submit failed:', err)
       toast.error('Could not submit your review. Please try again.')
@@ -503,6 +586,8 @@ export default function ProfilePage() {
   const musicNights = Array.isArray(meta.music_nights) ? meta.music_nights as string[] : []
   const displayName = profile.user_type === 'restaurant' ? venueName : (profile.full_name ?? 'User')
   const avgRating = reviews.length > 0 ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : null
+  const revieweeType: RevieweeType | null = profile.user_type === 'musician'
+    ? 'musician' : profile.user_type === 'restaurant' ? 'restaurant' : null
   const embedUrl = profile.youtube_url ? getYouTubeEmbedUrl(profile.youtube_url) : null
   const memberSince = new Date(profile.created_at).getFullYear()
 
@@ -818,13 +903,23 @@ export default function ProfilePage() {
                   </div>
                 )}
               </div>
-              {eligibleBookingId && !hasReviewed && (
-                <button onClick={() => { setReviewRating(5); setReviewText(''); setReviewModalOpen(true) }}
+              {myReviewId ? (
+                <button onClick={openReviewEditor}
+                  className="border border-chestnut/50 text-chestnut px-4 py-2 rounded-xl text-sm font-bold hover:bg-chestnut/10 transition-colors">
+                  Edit your review
+                </button>
+              ) : eligibleBookingId && (
+                <button onClick={openReviewModal}
                   className="border border-chestnut/50 text-chestnut px-4 py-2 rounded-xl text-sm font-bold hover:bg-chestnut/10 transition-colors">
                   + Leave a Review
                 </button>
               )}
             </div>
+            {revieweeType && reviews.length > 0 && avgRating != null && (
+              <div className="mb-4">
+                <RatingSummary reviews={reviews} revieweeType={revieweeType} avgRating={avgRating} dark />
+              </div>
+            )}
             {reviews.length === 0 ? (
               <div className="p-6 rounded-2xl text-center" style={{ background: '#3D3D3D', border: '1px solid rgba(255,255,255,0.06)' }}>
                 <p className="text-snow/30 text-sm">No reviews yet.</p>
@@ -847,6 +942,13 @@ export default function ProfilePage() {
                       </div>
                     </div>
                     {r.review_text && <p className="text-snow/70 text-sm leading-relaxed pl-12">{r.review_text}</p>}
+                    {r.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pl-12 mt-2">
+                        {r.tags.map(t => (
+                          <span key={t} className="text-[11px] font-semibold px-2.5 py-1 rounded-full" style={{ background: 'rgba(108,154,139,0.18)', color: '#6C9A8B' }}>{t}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -854,10 +956,13 @@ export default function ProfilePage() {
           </section>
         </div>
 
-        {reviewModalOpen && (
-          <ReviewModal displayName={displayName} reviewRating={reviewRating} reviewText={reviewText}
-            submitting={submittingReview} onClose={() => setReviewModalOpen(false)}
-            onRating={setReviewRating} onText={setReviewText} onSubmit={handleSubmitReview} />
+        {reviewModalOpen && revieweeType && (
+          <ReviewModal displayName={displayName} revieweeType={revieweeType} reviewRating={reviewRating} reviewText={reviewText}
+            aspects={reviewAspects} tags={reviewTags} submitting={submittingReview} editing={!!myReviewId} onClose={() => setReviewModalOpen(false)}
+            onRating={setReviewRating} onText={setReviewText}
+            onAspect={(k, v) => setReviewAspects(p => ({ ...p, [k]: v }))}
+            onToggleTag={t => setReviewTags(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t])}
+            onSubmit={handleSubmitReview} />
         )}
 
         {inviteModalOpen && profile && (
@@ -1237,15 +1342,27 @@ export default function ProfilePage() {
                 <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-1">· Reputation</p>
                 <h2 className="text-graphite text-xl font-black tracking-tight">Reviews</h2>
               </div>
-              {eligibleBookingId && !hasReviewed && (
+              {myReviewId ? (
                 <button
-                  onClick={() => { setReviewRating(5); setReviewText(''); setReviewModalOpen(true) }}
+                  onClick={openReviewEditor}
+                  className="bg-white text-chestnut border border-chestnut/30 px-4 py-2 rounded-xl text-sm font-bold hover:bg-chestnut/10 transition-colors shadow-sm"
+                >
+                  Edit your review
+                </button>
+              ) : eligibleBookingId && (
+                <button
+                  onClick={openReviewModal}
                   className="bg-chestnut text-snow px-4 py-2 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity shadow-sm"
                 >
                   + Leave a Review
                 </button>
               )}
             </div>
+            {revieweeType && reviews.length > 0 && avgRating != null && (
+              <div className="mb-4">
+                <RatingSummary reviews={reviews} revieweeType={revieweeType} avgRating={avgRating} />
+              </div>
+            )}
             {reviews.length === 0 ? (
               <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
                 <p className="text-3xl mb-2">⭐</p>
@@ -1274,6 +1391,13 @@ export default function ProfilePage() {
                     {r.review_text && (
                       <p className="text-charcoal text-sm leading-relaxed pl-12">{r.review_text}</p>
                     )}
+                    {r.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pl-12 mt-2">
+                        {r.tags.map(t => (
+                          <span key={t} className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-teal/10 text-teal">{t}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1281,15 +1405,21 @@ export default function ProfilePage() {
           </section>
         </main>
 
-        {reviewModalOpen && (
+        {reviewModalOpen && revieweeType && (
           <ReviewModal
             displayName={displayName}
+            revieweeType={revieweeType}
             reviewRating={reviewRating}
             reviewText={reviewText}
+            aspects={reviewAspects}
+            tags={reviewTags}
             submitting={submittingReview}
+            editing={!!myReviewId}
             onClose={() => setReviewModalOpen(false)}
             onRating={setReviewRating}
             onText={setReviewText}
+            onAspect={(k, v) => setReviewAspects(p => ({ ...p, [k]: v }))}
+            onToggleTag={t => setReviewTags(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t])}
             onSubmit={handleSubmitReview}
           />
         )}
@@ -1385,33 +1515,186 @@ export default function ProfilePage() {
   )
 }
 
+// ---- Review aspect icon ----
+
+function AspectIcon({ k, className = 'w-4 h-4' }: { k: string; className?: string }) {
+  const paths: Record<string, ReactNode> = {
+    punctuality: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
+    sound: <><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></>,
+    professionalism: <><path d="M20 6 9 17l-5-5"/></>,
+    engagement: <><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>,
+    communication: <><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></>,
+    payment: <><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></>,
+    hospitality: <><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></>,
+    atmosphere: <><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></>,
+    setup: <><rect x="4" y="2" width="16" height="20" rx="2"/><circle cx="12" cy="13" r="4"/></>,
+  }
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      {paths[k] ?? <circle cx="12" cy="12" r="9"/>}
+    </svg>
+  )
+}
+
+// ---- Rating Summary (aggregate: distribution + aspect bars + top tags) ----
+
+function RatingSummary({ reviews, revieweeType, avgRating, dark }: {
+  reviews: Review[]
+  revieweeType: RevieweeType
+  avgRating: number
+  dark?: boolean
+}) {
+  const dist = ratingDistribution(reviews)
+  const aspects = aspectAverages(reviews, revieweeType)
+  const tags = topTags(reviews, 6)
+  const total = reviews.length
+  const cardCls = dark ? 'rounded-2xl p-5' : 'bg-white rounded-2xl p-5 shadow-sm'
+  const cardStyle = dark ? { background: '#3D3D3D', border: '1px solid rgba(255,255,255,0.06)' } : undefined
+  const muted = dark ? 'text-snow/40' : 'text-charcoal/50'
+  const strong = dark ? 'text-snow' : 'text-graphite'
+  const divider = dark ? 'border-white/[0.06]' : 'border-charcoal/[0.07]'
+  const track = dark ? 'rgba(255,255,255,0.10)' : 'rgba(94,94,94,0.12)'
+
+  return (
+    <div className={cardCls} style={cardStyle}>
+      {/* Average + distribution */}
+      <div className="flex gap-5">
+        <div className="text-center shrink-0">
+          <p className="text-chestnut text-5xl font-black leading-none">{avgRating.toFixed(1)}</p>
+          <div className="flex justify-center mt-1.5"><Stars rating={Math.round(avgRating)} dark={dark} /></div>
+          <p className={`${muted} text-xs mt-1`}>{total} review{total !== 1 ? 's' : ''}</p>
+        </div>
+        <div className="flex-1 flex flex-col justify-center gap-1">
+          {dist.map(d => (
+            <div key={d.stars} className="flex items-center gap-2">
+              <span className={`${muted} text-[11px] w-3 text-right`}>{d.stars}</span>
+              <svg className="w-3 h-3 text-chestnut shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: track }}>
+                <div className="h-full rounded-full bg-chestnut transition-all" style={{ width: total > 0 ? `${(d.count / total) * 100}%` : '0%' }} />
+              </div>
+              <span className={`${muted} text-[11px] w-4`}>{d.count}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Aspect breakdown */}
+      {aspects.length > 0 && (
+        <div className={`mt-5 pt-5 border-t ${divider}`}>
+          <p className={`${muted} text-[10px] font-bold uppercase tracking-[0.2em] mb-3`}>What stood out</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-2.5">
+            {aspects.map(a => (
+              <div key={a.key} className="flex items-center gap-2.5">
+                <span className="text-teal shrink-0"><AspectIcon k={a.key} /></span>
+                <span className={`${strong} text-xs font-semibold flex-1 min-w-0 truncate`}>{a.label}</span>
+                <div className="w-16 h-1.5 rounded-full overflow-hidden shrink-0" style={{ background: track }}>
+                  <div className="h-full rounded-full bg-teal" style={{ width: `${(a.avg / 5) * 100}%` }} />
+                </div>
+                <span className="text-teal text-xs font-black w-6 text-right shrink-0">{a.avg.toFixed(1)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Most-mentioned highlight tags */}
+      {tags.length > 0 && (
+        <div className={`mt-5 pt-5 border-t ${divider}`}>
+          <p className={`${muted} text-[10px] font-bold uppercase tracking-[0.2em] mb-3`}>Most mentioned</p>
+          <div className="flex flex-wrap gap-2">
+            {tags.map(t => (
+              <span key={t.tag} className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full"
+                style={{ background: dark ? 'rgba(220,127,65,0.18)' : 'rgba(220,127,65,0.10)', color: '#DC7F41' }}>
+                {t.tag}<span className="opacity-60">{t.count}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ---- Review Modal (shared) ----
 
-function ReviewModal({ displayName, reviewRating, reviewText, submitting, onClose, onRating, onText, onSubmit }: {
+const RATING_WORDS = ['', 'Poor', 'Fair', 'Good', 'Great', 'Amazing']
+
+function ReviewModal({ displayName, revieweeType, reviewRating, reviewText, aspects, tags, submitting, editing = false, onClose, onRating, onText, onAspect, onToggleTag, onSubmit }: {
   displayName: string
+  revieweeType: RevieweeType
   reviewRating: number
   reviewText: string
+  aspects: Record<string, number>
+  tags: string[]
   submitting: boolean
+  editing?: boolean
   onClose: () => void
   onRating: (r: number) => void
   onText: (t: string) => void
+  onAspect: (key: string, v: number) => void
+  onToggleTag: (tag: string) => void
   onSubmit: () => void
 }) {
+  const aspectDefs = REVIEW_ASPECTS[revieweeType]
+  const tagOptions = REVIEW_TAGS[revieweeType]
+  const firstName = displayName.split(' ')[0]
   return (
     <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
-      <div className="bg-snow w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
-        <div className="bg-graphite rounded-t-3xl px-6 py-4 flex items-center justify-between">
-          <div>
-            <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em]">Your Experience</p>
-            <h3 className="text-snow text-xl font-black tracking-tight">Leave a Review</h3>
+      <div className="bg-snow w-full max-w-md rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+        <div className="bg-graphite rounded-t-3xl px-6 py-4 flex items-center justify-between shrink-0 relative overflow-hidden">
+          <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-chestnut opacity-25 blur-2xl pointer-events-none" />
+          <div className="relative z-10">
+            <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em]">{editing ? 'Update Your Review' : 'Your Experience'}</p>
+            <h3 className="text-snow text-xl font-black tracking-tight">{editing ? 'Edit' : 'Review'} <span className="text-chestnut italic">{firstName}.</span></h3>
           </div>
-          <button onClick={onClose} className="text-snow/60 hover:text-snow transition-colors"><svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+          <button onClick={onClose} className="relative z-10 text-snow/60 hover:text-snow transition-colors"><svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
         </div>
-        <div className="p-6">
-          <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-3">Rating</p>
-          <div className="mb-5">
-            <Stars rating={reviewRating} interactive onSelect={onRating} />
+
+        <div className="p-6 overflow-y-auto">
+          {/* Overall rating */}
+          <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-2">Overall rating</p>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="scale-110 origin-left"><Stars rating={reviewRating} interactive onSelect={onRating} /></div>
+            <span className="text-graphite font-black text-sm">{RATING_WORDS[reviewRating] ?? ''}</span>
           </div>
+
+          {/* Per-aspect ratings */}
+          <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-1">
+            Rate the details <span className="text-charcoal/40 font-normal normal-case">(optional)</span>
+          </p>
+          <p className="text-charcoal/45 text-[11px] mb-3">Tap stars for what matters most.</p>
+          <div className="space-y-3 mb-6">
+            {aspectDefs.map(a => (
+              <div key={a.key} className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="w-8 h-8 rounded-xl bg-teal/10 text-teal flex items-center justify-center shrink-0"><AspectIcon k={a.key} /></span>
+                  <div className="min-w-0">
+                    <p className="text-graphite text-sm font-semibold leading-tight truncate">{a.label}</p>
+                    <p className="text-charcoal/45 text-[11px] leading-tight truncate">{a.hint}</p>
+                  </div>
+                </div>
+                <div className="shrink-0"><Stars rating={aspects[a.key] ?? 0} interactive onSelect={v => onAspect(a.key, v)} /></div>
+              </div>
+            ))}
+          </div>
+
+          {/* Highlight tags */}
+          <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-3">
+            Highlights <span className="text-charcoal/40 font-normal normal-case">(pick any)</span>
+          </p>
+          <div className="flex flex-wrap gap-2 mb-6">
+            {tagOptions.map(t => {
+              const active = tags.includes(t)
+              return (
+                <button key={t} type="button" onClick={() => onToggleTag(t)}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-all ${active ? 'bg-chestnut text-snow border-chestnut shadow-sm' : 'bg-white text-charcoal border-charcoal/15 hover:border-chestnut/40'}`}>
+                  {active && <span className="mr-1">✓</span>}{t}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Free text */}
           <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">
             Review <span className="text-charcoal/40 font-normal normal-case">(optional, max 500 chars)</span>
           </p>
@@ -1419,18 +1702,19 @@ function ReviewModal({ displayName, reviewRating, reviewText, submitting, onClos
             value={reviewText}
             onChange={e => onText(e.target.value.slice(0, 500))}
             rows={4}
-            placeholder={`Share your experience with ${displayName}…`}
+            placeholder={`Share your experience with ${firstName}…`}
             className="w-full bg-white rounded-xl px-4 py-3 shadow-sm focus:outline-none text-sm resize-none border border-charcoal/10 mb-1"
           />
-          <p className="text-charcoal/40 text-xs text-right mb-5">{reviewText.length}/500</p>
-          <div className="flex gap-3">
-            <button onClick={onClose} className="flex-1 bg-snow text-charcoal py-3 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10">
-              Cancel
-            </button>
-            <button onClick={onSubmit} disabled={submitting} className="flex-1 bg-chestnut text-snow py-3 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50">
-              {submitting ? 'Submitting…' : 'Submit Review'}
-            </button>
-          </div>
+          <p className="text-charcoal/40 text-xs text-right">{reviewText.length}/500</p>
+        </div>
+
+        <div className="p-6 pt-0 flex gap-3 shrink-0">
+          <button onClick={onClose} className="flex-1 bg-white text-charcoal py-3 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10">
+            Cancel
+          </button>
+          <button onClick={onSubmit} disabled={submitting} className="flex-1 bg-chestnut text-snow py-3 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50">
+            {submitting ? 'Saving…' : editing ? 'Save Changes' : 'Submit Review'}
+          </button>
         </div>
       </div>
     </div>
