@@ -292,10 +292,11 @@ export default function ProfilePage() {
       // Upserts one row per viewer; re-visits (incl. the redirected canonical load)
       // just refresh viewed_at for accurate 7d/30d windows.
       if (user.id !== pid) {
-        void supabase.from('profile_views').upsert(
+        const { error: viewErr } = await supabase.from('profile_views').upsert(
           { profile_id: pid, viewer_id: user.id, viewed_at: new Date().toISOString() },
           { onConflict: 'profile_id,viewer_id' }
         )
+        if (viewErr) console.error('Failed to record profile view:', viewErr.message)
       }
 
       // Redirect UUID-based URLs to the canonical /profile/[username]

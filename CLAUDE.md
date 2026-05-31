@@ -15,12 +15,14 @@ Drum Up is a two-sided marketplace platform (web + mobile) that connects restaur
 
 ## Tech Stack
 
-- **Framework:** Next.js 16 (App Router, TypeScript)
-- **Hosting:** Vercel (Hobby tier)
+- **Framework:** Next.js 16 (App Router, TypeScript, React 19)
+- **Hosting:** Vercel (Hobby tier) — cron jobs defined in `vercel.json`
 - **Database & Auth:** Supabase (with PostGIS extension for location queries)
 - **Styling:** Tailwind CSS v3 with custom config
-- **Payments:** Stripe Connect (planned, not yet integrated)
-- **Messaging:** Stream or Sendbird (planned)
+- **Payments:** ✅ Stripe Connect — **LIVE**. Connect Express onboarding for restaurants & musicians, payment intents with platform fee, delayed payouts released by cron, webhooks. (`stripe`, `@stripe/stripe-js`, `@stripe/react-stripe-js`)
+- **Transactional Email:** ✅ Resend + React Email (`resend`, `react-email`, `@react-email/render`). Templates live in `emails/`.
+- **Rate Limiting:** Upstash Redis + `@upstash/ratelimit` (`lib/ratelimit.ts`)
+- **Messaging:** ✅ Built in-app (Supabase tables + realtime), see `components/MessagingTab.tsx`. Stream/Sendbird no longer planned.
 - **Video:** Link to YouTube/Instagram for MVP, Cloudinary later
 - **Geocoding:** Google Places Autocomplete + Browser Geolocation API
 
@@ -60,12 +62,13 @@ Also: `#E8E4E0` is used as the darker right-side background on auth pages and as
 
 All tables have **Row Level Security (RLS) enabled**.
 PostGIS extension is enabled for location-based queries (`CREATE EXTENSION IF NOT EXISTS postgis;`).
+Schema changes are tracked as SQL files in `supabase/migrations/` — add a new dated migration rather than editing old ones.
 
 ### `profiles`
 Stores all users — restaurants, musicians, and fans.
 - `id` (uuid, FK → auth.users) — default `auth.uid()`
 - `created_at` (timestamptz) — default `now()`
-- `username` (text)
+- `username` (text) — **UNIQUE** constraint
 - `full_name` (text)
 - `avatar_url` (text)
 - `bio` (text)
@@ -78,6 +81,11 @@ Stores all users — restaurants, musicians, and fans.
 - `tiktok_url` (text)
 - `spotify_url` (text)
 - `youtube_url` (text)
+- `discovery_radius_miles` (integer) — saved browse-radius preference
+- `stripe_account_id` (text) — Stripe Connect Express account
+- `stripe_onboarded` (bool) — default `false`
+- `notify_gig_alerts` (bool) — default `true` (gig-alert email opt-out)
+- `last_message_email_at` (timestamptz) — throttles "new message" nudge emails
 
 ### `availability`
 Restaurants post open slots for musicians.
@@ -92,6 +100,7 @@ Restaurants post open slots for musicians.
 - `status` (text) — `"open"`, `"filled"`, `"cancelled"`
 - `latitude` (numeric)
 - `longitude` (numeric)
+- `is_private` (bool) — default `false`; private invite slots hidden from public gig browse
 
 ### `bookings`
 Confirmed gigs between restaurants and musicians. Tracks payment.
@@ -104,6 +113,13 @@ Confirmed gigs between restaurants and musicians. Tracks payment.
 - `pay_amount` (numeric)
 - `platform_fee` (numeric)
 - `stripe_payment_id` (text)
+- `stripe_payment_intent_id` (text)
+- `stripe_transfer_id` (text)
+- `payment_status` (text) — default `"unpaid"`
+- `payout_released` (bool) — default `false`
+- `source` (text) — default `"application"` (vs `"invite"`)
+- `invite_accepted` (bool) — musician's accept/decline on a private invite (null = pending)
+- `note` (text) — optional note attached to an invite
 
 ### `messages`
 Direct messages between users, grouped into conversations.
@@ -115,12 +131,59 @@ Direct messages between users, grouped into conversations.
 - `read` (bool) — default `false`
 - `conversation_id` (uuid)
 
+### `message_reactions`
+Emoji reactions on messages.
+- `id` (uuid) — default `gen_random_uuid()`
+- `message_id` (uuid, FK → messages.id, ON DELETE CASCADE)
+- `user_id` (uuid, FK → profiles.id)
+- `emoji` (text) — UNIQUE per (message, user, emoji)
+
 ### `follows`
 Tracks fans/users following restaurants and musicians.
 - `id` (uuid) — default `gen_random_uuid()`
 - `created_at` (timestamptz) — default `now()`
 - `follower_id` (uuid, FK → profiles.id)
 - `following_id` (uuid, FK → profiles.id)
+
+### `reviews`
+Ratings + written reviews left after a booking. One review per (reviewer → reviewee).
+- `id` (uuid) — default `gen_random_uuid()`
+- `reviewer_id` / `reviewee_id` (uuid, FK → profiles.id)
+- `booking_id` (uuid, FK → bookings.id)
+- `rating` (integer 1–5)
+- `review_text` (text)
+- `verified` (bool) — default `false`
+- `aspects` (jsonb) — per-category star ratings; keys depend on reviewee type (see `lib/reviews.ts`)
+- `tags` (text[]) — selected highlight chips ("Paid promptly", "Crowd favorite"…)
+
+### `musician_availability`
+Musicians post dates/times they're open to play — the inverse of `availability`. Restaurants browse and invite.
+- `id` (uuid) — default `gen_random_uuid()`
+- `musician_id` (uuid, FK → profiles.id, ON DELETE CASCADE)
+- `date` (date), `start_time` (time), `end_time` (time)
+- `genres` (text[]), `min_pay` (numeric), `notes` (text)
+- `status` (text) — default `"open"`
+- `latitude` / `longitude` (numeric)
+
+### `notifications`
+In-app notification bell feed.
+- `id` (uuid) — default `gen_random_uuid()`
+- `user_id` (uuid, FK → profiles.id, ON DELETE CASCADE)
+- `type` (text), `title` (text), `body` (text), `link` (text)
+- `read` (bool) — default `false`
+
+### `profile_views`
+Tracks who viewed a profile (for analytics). UNIQUE per (profile, viewer).
+- `id` (uuid) — default `gen_random_uuid()`
+- `profile_id` / `viewer_id` (uuid, FK → profiles.id)
+- `viewed_at` (timestamptz)
+
+### `saved_items`
+Personal bookmark list (retention feature).
+- `id` (uuid) — default `gen_random_uuid()`
+- `user_id` (uuid, FK → profiles.id, ON DELETE CASCADE)
+- `item_type` (text) — `"gig"`, `"venue"`, or `"musician"`
+- `item_id` (uuid) — UNIQUE per (user, item_type, item_id)
 
 ---
 
@@ -135,7 +198,7 @@ Tracks fans/users following restaurants and musicians.
 7. Routes user to RestaurantDashboard, MusicianDashboard, or FanDashboard
 8. Logout via `supabase.auth.signOut()` then `router.push('/')`
 
-**Note:** Email confirmation is currently disabled for development. Re-enable before going live.
+**Note:** Email confirmation pages exist (`/auth/confirm`, `/api/auth/check-email-confirmed`). Confirm the Supabase email-confirmation setting before going live.
 
 ---
 
@@ -197,42 +260,89 @@ AND ST_DWithin(
 
 - All client components must start with `'use client'`
 - Use `next/navigation`'s `useRouter` for client-side routing
-- Supabase client is imported from `@/lib/supabase`
+- Supabase client is imported from `@/lib/supabase` (browser, anon key). For server/API routes that bypass RLS use `@/lib/supabase-admin` (service role).
 - The Supabase URL and anon key are in `.env.local` (never commit this file)
-- Environment variables: `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - User type is stored in `auth.users.raw_user_meta_data.user_type` and must match the `user_type` column on the `profiles` row
 - Use TypeScript — files end in .tsx for components, .ts for utilities
 - Stick to the brand colors defined in tailwind.config.ts
 - Match the existing design system — shadows not borders, rounded-xl, Inter font
 
+### Environment Variables (`.env.local`)
+- **Supabase:** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
+- **Stripe:** `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`
+- **Email:** `RESEND_API_KEY`, `FROM_EMAIL`
+- **Rate limiting (Upstash):** `KV_REST_API_URL`, `KV_REST_API_TOKEN`
+- **App:** `APP_URL`, `NEXT_PUBLIC_APP_URL`
+- **Cron / Admin:** `CRON_SECRET` (guards cron routes), `ADMIN_PASSWORD` (admin panel login)
+
+### Key lib helpers
+- `lib/stripe.ts` (server SDK), `lib/stripe-client.ts` (browser)
+- `lib/resend.ts` + `lib/send-email.ts` — transactional email senders; templates in `emails/`
+- `lib/reviews.ts` — canonical review aspect/tag definitions per reviewee type
+- `lib/distance.ts` — haversine/distance helpers; `lib/ics.ts` — calendar (.ics) generation
+- `lib/admin-auth.ts` — hashes/verifies the admin session cookie (used by `middleware.ts`)
+- `lib/genres.ts`, `lib/social-urls.ts`, `lib/generate-username.ts`, `lib/time.ts`, `lib/saved.ts`, `lib/ratelimit.ts`
+
 ---
 
 ## Built So Far
 
-- ✅ Next.js project scaffolded and deployed to Vercel
-- ✅ Supabase connected with all 5 tables
-- ✅ Tailwind configured with brand colors
-- ✅ Homepage with hero, how-it-works, features, pricing, footer
-- ✅ Signup page with split screen layout and animated wave divider
-- ✅ Login page matching signup style
-- ✅ Google OAuth callback handler
-- ✅ Dashboard router that detects user_type
-- ✅ Three dashboard variants (restaurant, musician, fan) with bottom tab bar navigation
-- ✅ DU logo created and added to project
+### Foundation & Auth
+- ✅ Next.js 16 / React 19 project scaffolded and deployed to Vercel
+- ✅ Supabase connected; full schema across 11 tables with RLS + dated migrations in `supabase/migrations/`
+- ✅ Tailwind configured with brand colors; shared design system + shimmer/fade animations
+- ✅ Homepage (hero, how-it-works, features, pricing, footer), Terms (`/terms`) & Privacy (`/privacy`) pages
+- ✅ Signup & login pages (split screen, animated wave divider), Google OAuth callback, email-confirm flow
+- ✅ Dashboard router detecting user_type → three dashboards (restaurant/musician/fan) with bottom tab bar
+- ✅ DU logo in project
+
+### Onboarding & Profiles
+- ✅ 3-step onboarding flow (`/onboarding`) with progress bar, skip, and save-as-you-go
+- ✅ Location capture (browser geolocation + Google Places autocomplete), stored as text + lat/lng
+- ✅ PostGIS distance queries for nearby gigs/talent; radius filter with saved `discovery_radius_miles`
+- ✅ Public profile pages (`/profile/[username]`) with reviews, profile-view tracking
+- ✅ Settings page (`/settings`) — profile editing, notification prefs, Stripe management
+
+### Marketplace Core
+- ✅ Restaurant availability posting; musician browse/apply flow with distance filtering
+- ✅ Musician availability calendar — musicians post open dates; restaurants browse & invite
+- ✅ Gig invite flow (private slots): `/api/bookings/invite` + `/api/bookings/respond-invite`
+- ✅ Booking lifecycle (apply → accept/decline → confirm → cancel) with realtime updates
+- ✅ Fan events discovery tab; follow venues/artists; saved/bookmark items
+- ✅ Genre selector, Add-to-Calendar (.ics), avatars, save buttons, skeletons, toasts
+
+### Messaging & Notifications
+- ✅ In-app direct messaging (`components/MessagingTab.tsx`) with Supabase realtime + emoji reactions
+- ✅ Notification bell (`components/NotificationBell.tsx`) backed by `notifications` table
+- ✅ Notification API routes for new gig, new application, application accepted/declined, booking confirmed, cancellation, new message
+- ✅ Transactional emails via Resend + React Email (`emails/`): new gig, new application, application accepted/declined, booking confirmed, cancellation, gig reminder, payout released, new message (throttled)
+
+### Payments (Stripe Connect — LIVE)
+- ✅ Stripe Connect Express onboarding (`/api/stripe/connect`, `/connect/status`, `/verify`) with re-onboarding when account id is null
+- ✅ Payment intents with platform fee (`/api/stripe/payment-intent`)
+- ✅ Delayed payout release via daily cron (`/api/stripe/release-payout`, 12:00 UTC)
+- ✅ Stripe webhook handler (`/api/stripe/webhook`)
+
+### Reviews
+- ✅ Full review system: overall rating + per-aspect category ratings + highlight tag chips (aspects/tags differ for musician vs restaurant reviewees — see `lib/reviews.ts`), one review per reviewer→reviewee, reputation summaries + rating badges
+
+### Admin
+- ✅ Password-protected admin panel (`/admin`) guarded by `middleware.ts` + signed cookie
+- ✅ Admin login/logout and dashboard with stats, users, bookings, and reports API routes
+
+### Ops
+- ✅ Vercel cron jobs (`vercel.json`): daily payout release + daily gig reminders (`/api/cron/gig-reminders`, 09:00 UTC), guarded by `CRON_SECRET`
+- ✅ Upstash rate limiting (`lib/ratelimit.ts`)
+- ✅ Error boundaries (`app/error.tsx`, `app/global-error.tsx`, `app/not-found.tsx`)
 
 ## What's Next
 
-- Onboarding flow (3-step profile setup after signup)
-- Location capture during onboarding (geolocation + Google Places)
-- PostGIS setup in Supabase for distance queries
-- Profile editing page for each user type
-- Availability posting form for restaurants
-- Browse/apply flow for musicians with distance filtering
-- Feed view for fans
-- Direct messaging UI
-- Stripe Connect integration for payments
-- Reviews and ratings system
+- Pro tier subscriptions (Pro Musician / Pro Venue billing)
+- Featured/promoted placement for Pro accounts
+- Analytics dashboards (beyond profile views)
 - Apple OAuth (requires Apple Developer account)
+- Native mobile app
+- Re-verify Supabase email confirmation before public launch
 
 ---
 
