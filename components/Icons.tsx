@@ -456,6 +456,24 @@ export function Link({ className, ...p }: P) {
   )
 }
 
+export function Eye({ className, ...p }: P) {
+  return (
+    <svg className={className} {...base} {...p}>
+      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  )
+}
+
+export function TrendingUp({ className, ...p }: P) {
+  return (
+    <svg className={className} {...base} {...p}>
+      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+      <polyline points="16 7 22 7 22 13" />
+    </svg>
+  )
+}
+
 // Reaction icons for messaging
 export function ReactionHeart({ className, ...p }: P) {
   return <HeartFilled className={className} {...p} />

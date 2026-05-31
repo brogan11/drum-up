@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation'
 import { eqBarStyle } from '@/lib/eq'
 import { milesBetween } from '@/lib/distance'
 import { GENRE_GROUPS } from '@/lib/genres'
-import { buildSocialUrl } from '@/lib/social-urls'
 import { Avatar } from '@/components/Avatar'
 import MessagingTab, { MessagingTabRef } from '@/components/MessagingTab'
 import { useToast } from '@/components/Toast'
@@ -1785,116 +1784,6 @@ export default function MusicianDashboard() {
               </button>
             </div>
 
-            {/* Social links */}
-            {(profile.instagram || profile.youtube || profile.spotify || profile.tiktok || profile.website) ? (
-              <div className="bg-white rounded-2xl shadow-sm mb-4 overflow-hidden">
-                <div className="px-5 pt-4 pb-1">
-                  <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em]">Links</p>
-                </div>
-                <div className="divide-y divide-charcoal/[0.06]">
-                  {profile.instagram && (
-                    <a
-                      href={buildSocialUrl('instagram', profile.instagram)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 px-5 py-3.5 hover:bg-snow transition-colors group"
-                    >
-                      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 flex items-center justify-center shrink-0 shadow-sm">
-                        <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-graphite font-bold text-sm">Instagram</p>
-                        <p className="text-charcoal/50 text-xs truncate">@{profile.instagram.replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\/?/, '')}</p>
-                      </div>
-                      <svg className="w-4 h-4 text-charcoal/30 group-hover:text-chestnut transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                    </a>
-                  )}
-                  {profile.youtube && (
-                    <a
-                      href={buildSocialUrl('youtube', profile.youtube)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 px-5 py-3.5 hover:bg-snow transition-colors group"
-                    >
-                      <div className="w-9 h-9 rounded-xl bg-red-600 flex items-center justify-center shrink-0 shadow-sm">
-                        <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-graphite font-bold text-sm">YouTube</p>
-                        <p className="text-charcoal/50 text-xs truncate">@{profile.youtube.replace(/^@/, '').replace(/^https?:\/\/(www\.)?youtube\.com\/@?/, '')}</p>
-                      </div>
-                      <svg className="w-4 h-4 text-charcoal/30 group-hover:text-chestnut transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                    </a>
-                  )}
-                  {profile.tiktok && (
-                    <a
-                      href={buildSocialUrl('tiktok', profile.tiktok)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 px-5 py-3.5 hover:bg-snow transition-colors group"
-                    >
-                      <div className="w-9 h-9 rounded-xl bg-black flex items-center justify-center shrink-0 shadow-sm">
-                        <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.27 8.27 0 0 0 4.84 1.56V6.79a4.85 4.85 0 0 1-1.07-.1z"/></svg>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-graphite font-bold text-sm">TikTok</p>
-                        <p className="text-charcoal/50 text-xs truncate">@{profile.tiktok.replace(/^@/, '').replace(/^https?:\/\/(www\.)?tiktok\.com\/@?/, '')}</p>
-                      </div>
-                      <svg className="w-4 h-4 text-charcoal/30 group-hover:text-chestnut transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                    </a>
-                  )}
-                  {profile.spotify && (
-                    <a
-                      href={buildSocialUrl('spotify', profile.spotify)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 px-5 py-3.5 hover:bg-snow transition-colors group"
-                    >
-                      <div className="w-9 h-9 rounded-xl bg-[#1DB954] flex items-center justify-center shrink-0 shadow-sm">
-                        <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-graphite font-bold text-sm">Spotify</p>
-                        <p className="text-charcoal/50 text-xs truncate">{profile.spotify.replace(/^https?:\/\/open\.spotify\.com\/artist\//, '')}</p>
-                      </div>
-                      <svg className="w-4 h-4 text-charcoal/30 group-hover:text-chestnut transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                    </a>
-                  )}
-                  {profile.website && (
-                    <a
-                      href={buildSocialUrl('website', profile.website)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 px-5 py-3.5 hover:bg-snow transition-colors group"
-                    >
-                      <div className="w-9 h-9 rounded-xl bg-graphite flex items-center justify-center shrink-0 shadow-sm">
-                        <svg className="w-4 h-4 text-snow" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-graphite font-bold text-sm">Website</p>
-                        <p className="text-charcoal/50 text-xs truncate">{profile.website.replace(/^https?:\/\/(www\.)?/, '')}</p>
-                      </div>
-                      <svg className="w-4 h-4 text-charcoal/30 group-hover:text-chestnut transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                    </a>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <button
-                onClick={() => router.push('/settings')}
-                className="w-full bg-white rounded-2xl shadow-sm mb-4 px-5 py-4 flex items-center gap-3 hover:shadow-md transition-shadow border border-dashed border-charcoal/20 text-left"
-              >
-                <div className="w-10 h-10 rounded-xl bg-chestnut/10 flex items-center justify-center shrink-0 text-chestnut">
-                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                </div>
-                <div className="flex-1">
-                  <p className="text-graphite font-bold text-sm">Add your links</p>
-                  <p className="text-charcoal/50 text-xs mt-0.5">Instagram, Spotify, YouTube — help venues discover you</p>
-                </div>
-                <svg className="w-4 h-4 text-charcoal/30 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-              </button>
-            )}
-
             {/* Stripe Connect status */}
             {stripeOnboarded === false && (
               <button
@@ -1923,6 +1812,21 @@ export default function MusicianDashboard() {
               </div>
             )}
 
+            {/* Payment history */}
+            <button
+              onClick={() => router.push('/dashboard/payments')}
+              className="w-full bg-white rounded-2xl shadow-sm px-5 py-4 mb-4 flex items-center gap-3 hover:shadow-md transition-shadow text-left"
+            >
+              <div className="w-10 h-10 rounded-xl bg-teal/15 flex items-center justify-center shrink-0 text-teal">
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+              </div>
+              <div className="flex-1">
+                <p className="text-graphite font-bold text-sm">Payment history</p>
+                <p className="text-charcoal/50 text-xs mt-0.5">View earnings, payouts & receipts</p>
+              </div>
+              <svg className="w-4 h-4 text-charcoal/30 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+            </button>
+
             {/* Visibility analytics */}
             <div className="bg-graphite rounded-2xl p-5 shadow-sm mb-4 relative overflow-hidden">
               <div className="absolute inset-x-0 bottom-0 top-1/3 flex items-end justify-around opacity-[0.08] pointer-events-none">
@@ -1930,7 +1834,16 @@ export default function MusicianDashboard() {
                   <div key={i} className="eq-bar w-1.5 bg-chestnut rounded-t" style={eqBarStyle(i, 41)} />
                 ))}
               </div>
-              <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">Visibility</p>
+              <div className="flex items-center justify-between mb-3 relative z-10">
+                <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em]">Visibility</p>
+                <button
+                  onClick={() => router.push('/dashboard/analytics')}
+                  className="text-snow/70 text-xs font-bold hover:text-chestnut transition-colors flex items-center gap-1"
+                >
+                  Full analytics
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="M9 5l7 7-7 7" /></svg>
+                </button>
+              </div>
               {analyticsLoading ? (
                 <div className="flex gap-6">
                   {[0, 1, 2].map(i => <div key={i} className="h-10 w-16 bg-white/10 rounded-xl animate-pulse" />)}

@@ -89,7 +89,7 @@ export async function POST(request: Request) {
         })
         await supabaseAdmin
           .from('bookings')
-          .update({ payment_status: 'paid', payout_released: true })
+          .update({ payment_status: 'paid', payout_released: true, payout_released_at: new Date().toISOString() })
           .eq('id', booking.id)
         released++
 

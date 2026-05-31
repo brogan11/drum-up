@@ -115,8 +115,9 @@ Confirmed gigs between restaurants and musicians. Tracks payment.
 - `stripe_payment_id` (text)
 - `stripe_payment_intent_id` (text)
 - `stripe_transfer_id` (text)
-- `payment_status` (text) — default `"unpaid"`
+- `payment_status` (text) — default `"unpaid"` (→ `"authorized"` on charge hold → `"paid"` on capture)
 - `payout_released` (bool) — default `false`
+- `payout_released_at` (timestamptz) — when the cron captured/released the payout (null if never/legacy)
 - `source` (text) — default `"application"` (vs `"invite"`)
 - `invite_accepted` (bool) — musician's accept/decline on a private invite (null = pending)
 - `note` (text) — optional note attached to an invite
@@ -278,10 +279,19 @@ AND ST_DWithin(
 ### Key lib helpers
 - `lib/stripe.ts` (server SDK), `lib/stripe-client.ts` (browser)
 - `lib/resend.ts` + `lib/send-email.ts` — transactional email senders; templates in `emails/`
-- `lib/reviews.ts` — canonical review aspect/tag definitions per reviewee type
+- `lib/reviews.ts` — canonical review aspect/tag definitions + aggregate helpers per reviewee type
+- `lib/analytics.ts` — time-bucketing, money formatting & deltas shared by the analytics pages
 - `lib/distance.ts` — haversine/distance helpers; `lib/ics.ts` — calendar (.ics) generation
 - `lib/admin-auth.ts` — hashes/verifies the admin session cookie (used by `middleware.ts`)
 - `lib/genres.ts`, `lib/social-urls.ts`, `lib/generate-username.ts`, `lib/time.ts`, `lib/saved.ts`, `lib/ratelimit.ts`
+
+### Shared analytics/chart components
+- `components/Charts.tsx` — dependency-free SVG/HTML charts (AreaChart, BarChart, Donut, HBars, Radar, Sparkline), all with hover tooltips. Brand palette in the exported `CHART` object.
+- `components/AnalyticsUI.tsx` — KPI card, section card, range tabs, header, insights card (shared by both analytics pages).
+
+### Database access & connections
+- **Always use `@supabase/supabase-js`** (anon client `@/lib/supabase`, or service-role `@/lib/supabase-admin`). It talks to Supabase over the **REST API (PostgREST)**, Auth, and Realtime — all of which **pool** their own DB connections, so user traffic does NOT map 1:1 to Postgres connections. The Supabase "Database Connections" graph baseline (~20, ceiling scales with compute tier) is mostly internal services and stays flat under load.
+- **Do NOT add a direct-connection driver** (`pg`, Prisma, Drizzle, `postgres.js`) in Vercel serverless functions — each invocation opens its own connection and exhausts the limit under load. If direct SQL is ever required, use the **Supavisor pooler** connection string (port **6543**, transaction mode), never the direct `5432` string.
 
 ---
 
@@ -319,9 +329,17 @@ AND ST_DWithin(
 
 ### Payments (Stripe Connect — LIVE)
 - ✅ Stripe Connect Express onboarding (`/api/stripe/connect`, `/connect/status`, `/verify`) with re-onboarding when account id is null
-- ✅ Payment intents with platform fee (`/api/stripe/payment-intent`)
-- ✅ Delayed payout release via daily cron (`/api/stripe/release-payout`, 12:00 UTC)
+- ✅ Payment intents with **8% platform fee** (`/api/stripe/payment-intent`) — musician nets 92%, restaurant pays the full amount
+- ✅ Delayed payout release via daily cron (`/api/stripe/release-payout`, 12:00 UTC); stamps `payout_released_at` on capture
 - ✅ Stripe webhook handler (`/api/stripe/webhook`)
+- ✅ **Payment history & receipts** (`/dashboard/payments`) — income ledger for musicians / spend ledger for venues, with status filters + summary totals; printable per-gig receipts at `/dashboard/payments/receipt/[id]` (browser print-to-PDF, no deps)
+
+### Analytics (`/dashboard/analytics` — routes by user_type)
+- ✅ **Musician analytics** — net earnings, pending payouts, gigs played, profile views (+Δ), avg rating, followers; charts for earnings, views, follower growth, booking breakdown, rating distribution, performance-by-aspect radar, top venues, review-tag chips; auto-generated insights
+- ✅ **Restaurant analytics** — talent spend, committed spend, **fill rate**, **applications (per slot)**, views, venue rating; charts for spend, applications, views, follower growth, slot-status donut, venue-rating radar, rating distribution, top talent; auto-generated insights
+- ✅ All charts have interactive hover tooltips; shared chart + UI + math via `components/Charts.tsx`, `components/AnalyticsUI.tsx`, `lib/analytics.ts`
+- ✅ Profile-view tracking fixed — the `/profile/[username]` upsert is now `await`ed and runs before the UUID→username redirect (was a silent no-op)
+- ✅ Social/website "Links" cards removed from the musician & restaurant **own-dashboard** profile tabs (still shown on public profiles; editable via Settings)
 
 ### Reviews
 - ✅ Full review system: overall rating + per-aspect category ratings + highlight tag chips (aspects/tags differ for musician vs restaurant reviewees — see `lib/reviews.ts`), one review per reviewer→reviewee, reputation summaries + rating badges
@@ -337,11 +355,14 @@ AND ST_DWithin(
 
 ## What's Next
 
-- Pro tier subscriptions (Pro Musician / Pro Venue billing)
+- Pro tier subscriptions (Pro Musician / Pro Venue billing via Stripe Billing — separate from Connect)
 - Featured/promoted placement for Pro accounts
-- Analytics dashboards (beyond profile views)
+- Verification badges (musician/venue) — `reviews.verified` + admin tooling exist; needs UI
+- Richer search/filters + map view (genre, pay range, date — uses existing PostGIS lat/lng)
 - Apple OAuth (requires Apple Developer account)
 - Native mobile app
+- Error monitoring (Sentry) + a basic test suite (no `test` script yet)
+- **Security — lock down `profiles` column access:** `anon`/`authenticated` can currently SELECT *all* columns of `profiles` directly via PostgREST (RLS allows the row read and can't restrict columns), so sensitive fields like `stripe_account_id` and `legal_name` are reachable by a crafted query. The app only avoids this by convention (selecting safe columns). Fix with column-level `REVOKE SELECT (...) ON profiles FROM anon, authenticated`, or expose public reads via a `security_invoker` view of safe columns and revoke direct base-table SELECT from `anon`. (Found 2026-05-31 during Supabase advisor review; see `supabase/migrations/2026_05_31_security_advisor.sql` which dropped the related leaky `public_profiles` view.)
 - Re-verify Supabase email confirmation before public launch
 
 ---
