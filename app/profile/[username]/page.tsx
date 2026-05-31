@@ -284,20 +284,24 @@ export default function ProfilePage() {
       if (!pd) return
       setProfile(pd as ProfileData)
 
-      // Redirect UUID-based URLs to the canonical /profile/[username]
-      if (UUID_RE.test(slug) && pd.username) {
-        router.replace('/profile/' + pd.username)
-        return
-      }
-
       const pid = pd.id
 
-      // Track profile view — upserts one row per viewer; re-visits refresh viewed_at for accurate 7d/30d windows
+      // Track profile view BEFORE the canonical redirect below. Every in-app link
+      // navigates by UUID (router.push('/profile/' + id)), so the UUID→username
+      // redirect's early return used to skip this entirely and no view was ever recorded.
+      // Upserts one row per viewer; re-visits (incl. the redirected canonical load)
+      // just refresh viewed_at for accurate 7d/30d windows.
       if (user.id !== pid) {
         void supabase.from('profile_views').upsert(
           { profile_id: pid, viewer_id: user.id, viewed_at: new Date().toISOString() },
           { onConflict: 'profile_id,viewer_id' }
         )
+      }
+
+      // Redirect UUID-based URLs to the canonical /profile/[username]
+      if (UUID_RE.test(slug) && pd.username) {
+        router.replace('/profile/' + pd.username)
+        return
       }
 
       const [{ count: fc }, { count: fng }, { data: frow }] = await Promise.all([
