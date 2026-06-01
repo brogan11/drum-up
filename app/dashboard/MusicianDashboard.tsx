@@ -17,6 +17,7 @@ import { gigStartEnd } from '@/lib/ics'
 import { TIME_OPTIONS, endTimeOptions } from '@/lib/time'
 import { groupReputations, type RepSummary } from '@/lib/reviews'
 import { RatingBadge } from '@/components/RatingBadge'
+import InvitePeopleModal from '@/components/InvitePeopleModal'
 import {
   SkeletonStatCard,
   SkeletonBookingCard,
@@ -131,6 +132,7 @@ export default function MusicianDashboard() {
   const router = useRouter()
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState('home')
+  const [invitePeopleOpen, setInvitePeopleOpen] = useState(false)
   const [gigs, setGigs] = useState<Gig[]>([])
   const [bookings, setBookings] = useState<Booking[]>([])
   const [profile, setProfile] = useState<MusicianProfile>(INITIAL_PROFILE)
@@ -307,14 +309,18 @@ export default function MusicianDashboard() {
         setUserId(user.id)
         void getSavedSet(user.id).then(setSavedGigs)
 
-        // NOTE: legal_name is intentionally included here — this is the musician fetching their OWN
-        // profile. It is used for Stripe Connect pre-fill. Never include legal_name in public queries.
+        // legal_name and stripe_account_id are column-revoked from the client role
+        // (see migration 2026_06_01_profiles_column_security.sql) — they must be read
+        // through the get_my_private_profile() RPC, which returns only the caller's own row.
         const { data, error: profileErr } = await supabase
           .from('profiles')
-          .select('full_name, bio, avatar_url, instagram_url, youtube_url, spotify_url, tiktok_url, website, role_metadata, performer_type, band_members, legal_name, stripe_onboarded, stripe_account_id, latitude, longitude, max_distance_miles')
+          .select('full_name, bio, avatar_url, instagram_url, youtube_url, spotify_url, tiktok_url, website, role_metadata, performer_type, band_members, latitude, longitude, max_distance_miles')
           .eq('id', user.id).maybeSingle()
         if (profileErr) throw profileErr
         if (!data) return
+
+        const { data: priv } = await supabase.rpc('get_my_private_profile').maybeSingle()
+        const privateFields = (priv ?? {}) as { legal_name?: string | null; stripe_account_id?: string | null; stripe_onboarded?: boolean | null }
 
         const meta = (data.role_metadata ?? {}) as Record<string, unknown>
         const pt = (data as Record<string, unknown>).performer_type as string | null
@@ -328,7 +334,7 @@ export default function MusicianDashboard() {
           spotify: data.spotify_url ?? '',
           tiktok: (data as Record<string, unknown>).tiktok_url as string ?? '',
           website: data.website ?? '',
-          legalName: (data as Record<string, unknown>).legal_name as string ?? '',
+          legalName: privateFields.legal_name ?? '',
           performerType: pt === 'solo' || pt === 'band' ? pt : '',
           bandMembers: (data as Record<string, unknown>).band_members as number | null ?? null,
         })
@@ -336,8 +342,8 @@ export default function MusicianDashboard() {
         // account ID actually exists. If the ID was removed (e.g. deleted in
         // Supabase, or cleared because the account became invalid), they must
         // redo onboarding — so we show the "connect bank" prompts.
-        const hasStripeAccount = !!((data as Record<string, unknown>).stripe_account_id)
-        const onboardedFlag = (data as Record<string, unknown>).stripe_onboarded as boolean | null ?? false
+        const hasStripeAccount = !!privateFields.stripe_account_id
+        const onboardedFlag = privateFields.stripe_onboarded ?? false
         setStripeOnboarded(onboardedFlag && hasStripeAccount)
 
         const myLat = data.latitude as number | null
@@ -1783,6 +1789,21 @@ export default function MusicianDashboard() {
                 Edit Profile
               </button>
             </div>
+
+            {/* Invite a venue you already play */}
+            <button
+              onClick={() => setInvitePeopleOpen(true)}
+              className="w-full flex items-center justify-center gap-2 bg-teal text-snow py-3.5 rounded-2xl font-bold text-sm hover:opacity-90 transition-opacity shadow-sm mb-3"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+              </svg>
+              Invite a venue you play
+            </button>
+
+            {invitePeopleOpen && (
+              <InvitePeopleModal invitedRole="restaurant" onClose={() => setInvitePeopleOpen(false)} />
+            )}
 
             {/* Stripe Connect status */}
             {stripeOnboarded === false && (

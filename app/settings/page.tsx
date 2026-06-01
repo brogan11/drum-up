@@ -109,12 +109,12 @@ export default function SettingsPage() {
         setUserId(user.id)
         setEmail(user.email ?? '')
 
-        // NOTE: legal_name is intentionally included here — this is the user fetching their OWN
-        // profile in their settings. Never include legal_name in public queries or when viewing
-        // another user's profile. legal_name is private and only for Stripe Connect pre-fill.
+        // legal_name / stripe_account_id are column-revoked from the client role
+        // (migration 2026_06_01_profiles_column_security.sql); we therefore select an
+        // explicit safe column list and read legal_name via the get_my_private_profile() RPC.
         const { data: profile, error: pErr } = await supabase
           .from('profiles')
-          .select('*')
+          .select('user_type, username, full_name, avatar_url, role_metadata, location_text, latitude, longitude, performer_type, band_members, max_distance_miles, notify_gig_alerts, bio, instagram_url, tiktok_url, spotify_url, youtube_url, website')
           .eq('id', user.id)
           .maybeSingle()
 
@@ -123,6 +123,9 @@ export default function SettingsPage() {
           router.push('/onboarding')
           return
         }
+
+        const { data: priv } = await supabase.rpc('get_my_private_profile').maybeSingle()
+        const legalName = (priv as { legal_name?: string | null } | null)?.legal_name ?? ''
 
         const t = (profile.user_type as UserType) || (user.user_metadata?.user_type as UserType) || 'fan'
         setUserType(t)
@@ -146,7 +149,7 @@ export default function SettingsPage() {
           instruments: meta.instruments ?? '',
           performerType: (['solo', 'band'].includes(profile.performer_type ?? '') ? profile.performer_type : '') as 'solo' | 'band' | '',
           bandMembers: profile.band_members != null ? String(profile.band_members) : '',
-          legalName: profile.legal_name ?? '',
+          legalName,
           yearsPerforming: meta.years_performing != null ? String(meta.years_performing) : '',
           favoriteGenres: Array.isArray(meta.favorite_genres) ? meta.favorite_genres : [],
           maxDistance: typeof profile.max_distance_miles === 'number' ? profile.max_distance_miles : 20,

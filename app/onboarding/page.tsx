@@ -367,6 +367,30 @@ export default function OnboardingPage() {
     setError('')
     try {
       const avatarUrl = await saveProfileToSupabase()
+
+      // If the user arrived from an invite link, finalize the connection now that a
+      // profile row exists (auto-connects them with the inviter). Best-effort.
+      try {
+        const inviteToken = sessionStorage.getItem('drumup_invite_token')
+        if (inviteToken) {
+          const { data: { session } } = await supabase.auth.getSession()
+          if (session) {
+            await fetch('/api/invitations/accept', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${session.access_token}`,
+              },
+              body: JSON.stringify({ token: inviteToken }),
+            })
+          }
+          sessionStorage.removeItem('drumup_invite_token')
+          sessionStorage.removeItem('drumup_invite_role')
+        }
+      } catch (inviteErr) {
+        console.error('Invite accept failed (non-blocking):', inviteErr)
+      }
+
       setSavedAvatarUrl(avatarUrl)
       setShowSuccess(true)
       setSubmitting(false)

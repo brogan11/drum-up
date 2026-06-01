@@ -7,7 +7,10 @@ const inter = Inter({
   subsets: ["latin"],
 });
 
+const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://drum-up.app";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(appUrl),
   title: "Drum Up",
   description: "Connecting restaurants and live music",
 };

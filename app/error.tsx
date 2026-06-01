@@ -19,7 +19,7 @@ export default function Error({
     <div className="min-h-screen bg-graphite flex flex-col items-center justify-center px-6 text-center">
       <div className="mb-6 flex items-center gap-3">
         <div className="bg-white/10 rounded-xl p-2">
-          <Image src="/logo.png" alt="Drum Up" width={32} height={32} className="object-contain" />
+          <Image src="/orange-drum-up.png" alt="Drum Up" width={32} height={32} className="object-contain" />
         </div>
         <span className="text-snow text-xl font-black tracking-tight">Drum Up</span>
       </div>

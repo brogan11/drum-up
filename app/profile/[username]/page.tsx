@@ -10,6 +10,7 @@ import { SkeletonProfilePageMusician, SkeletonProfilePageLight } from '@/compone
 import { buildSocialUrl } from '@/lib/social-urls'
 import { gigStartEnd } from '@/lib/ics'
 import InviteModal from '@/components/InviteModal'
+import { ShareButton } from '@/components/ShareButton'
 import {
   REVIEW_ASPECTS, REVIEW_TAGS, aspectAverages, ratingDistribution, topTags,
   type RevieweeType,
@@ -260,17 +261,21 @@ export default function ProfilePage() {
   useEffect(() => {
     const load = async () => {
       try {
+      // Public profiles are viewable logged-out (shareable "Book me on Drum Up" links).
+      // `user` is null for anonymous visitors; every viewer-dependent block below is guarded.
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/auth/login'); return }
-      const user = session.user
-      setViewerId(user.id)
+      const user = session?.user ?? null
+      if (user) setViewerId(user.id)
 
       // NOTE: Never include legal_name in queries unless fetching the current user's own profile
       // or in server-side Stripe routes. legal_name is private.
-      const { data: vp, error: vpErr } = await supabase.from('profiles')
-        .select('id, user_type, latitude, longitude').eq('id', user.id).maybeSingle()
-      if (vpErr) throw vpErr
-      if (vp) setViewer(vp as ViewerData)
+      let vp: ViewerData | null = null
+      if (user) {
+        const { data: vpData, error: vpErr } = await supabase.from('profiles')
+          .select('id, user_type, latitude, longitude').eq('id', user.id).maybeSingle()
+        if (vpErr) throw vpErr
+        if (vpData) { vp = vpData as ViewerData; setViewer(vp) }
+      }
 
       // NOTE: Never include legal_name here — this is a public query readable by any logged-in user.
       // legal_name is private and only allowed in the user's own settings page or server-side Stripe routes.
@@ -291,7 +296,7 @@ export default function ProfilePage() {
       // redirect's early return used to skip this entirely and no view was ever recorded.
       // Upserts one row per viewer; re-visits (incl. the redirected canonical load)
       // just refresh viewed_at for accurate 7d/30d windows.
-      if (user.id !== pid) {
+      if (user && user.id !== pid) {
         const { error: viewErr } = await supabase.from('profile_views').upsert(
           { profile_id: pid, viewer_id: user.id, viewed_at: new Date().toISOString() },
           { onConflict: 'profile_id,viewer_id' }
@@ -305,18 +310,24 @@ export default function ProfilePage() {
         return
       }
 
-      const [{ count: fc }, { count: fng }, { data: frow }] = await Promise.all([
+      // Follower counts are public (anon RLS); the viewer's own follow-state needs a session.
+      const [{ count: fc }, { count: fng }] = await Promise.all([
         supabase.from('follows').select('id', { count: 'exact', head: true }).eq('following_id', pid),
         supabase.from('follows').select('id', { count: 'exact', head: true }).eq('follower_id', pid),
-        supabase.from('follows').select('id').eq('follower_id', user.id).eq('following_id', pid).maybeSingle(),
       ])
       setFollowersCount(fc ?? 0)
       setFollowingCount(fng ?? 0)
-      setIsFollowing(!!frow)
+      if (user) {
+        const { data: frow } = await supabase.from('follows').select('id')
+          .eq('follower_id', user.id).eq('following_id', pid).maybeSingle()
+        setIsFollowing(!!frow)
+      }
 
       const today = new Date().toISOString().slice(0, 10)
 
-      if (pd.user_type === 'musician') {
+      // Gig history reads the bookings table, which carries payment data and is not
+      // exposed to anon — so it only loads for signed-in viewers.
+      if (user && pd.user_type === 'musician') {
         const { data: bks } = await supabase
           .from('bookings').select('id, availability_id, restaurant_id')
           .eq('musician_id', pid).eq('status', 'confirmed')
@@ -408,7 +419,7 @@ export default function ProfilePage() {
         }))
       }
 
-      if (user.id !== pid && pd.user_type !== 'fan' && vp?.user_type !== 'fan') {
+      if (user && user.id !== pid && pd.user_type !== 'fan' && vp?.user_type !== 'fan') {
         const isRestViewer = vp?.user_type === 'restaurant' && pd.user_type === 'musician'
         const isMusiViewer = vp?.user_type === 'musician' && pd.user_type === 'restaurant'
         if (isRestViewer || isMusiViewer) {
@@ -463,7 +474,8 @@ export default function ProfilePage() {
   }, [eligibleBookingId, myReviewId])
 
   const handleToggleFollow = async () => {
-    if (!viewerId || !profile) return
+    if (!viewerId) { router.push('/auth/signup'); return }
+    if (!profile) return
     setFollowLoading(true)
     try {
       if (isFollowing) {
@@ -484,6 +496,7 @@ export default function ProfilePage() {
   }
 
   const handleMessage = () => {
+    if (!viewerId) { router.push('/auth/signup'); return }
     if (!profile) return
     const meta = (profile.role_metadata ?? {}) as Record<string, unknown>
     const name = profile.user_type === 'restaurant'
@@ -590,6 +603,12 @@ export default function ProfilePage() {
   const cuisineType = (meta.cuisine_type as string | undefined) ?? ''
   const musicNights = Array.isArray(meta.music_nights) ? meta.music_nights as string[] : []
   const displayName = profile.user_type === 'restaurant' ? venueName : (profile.full_name ?? 'User')
+  const shareUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/profile/${profile.username ?? profile.id}`
+    : ''
+  const shareText = profile.user_type === 'musician'
+    ? `Check out ${displayName} on Drum Up`
+    : `Check out ${displayName} on Drum Up`
   const avgRating = reviews.length > 0 ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : null
   const revieweeType: RevieweeType | null = profile.user_type === 'musician'
     ? 'musician' : profile.user_type === 'restaurant' ? 'restaurant' : null
@@ -705,7 +724,7 @@ export default function ProfilePage() {
                     style={isFollowing
                       ? { background: 'rgba(108,154,139,0.2)', color: '#6C9A8B', border: '1px solid rgba(108,154,139,0.35)' }
                       : { background: '#DC7F41', color: '#FCFAF9' }}>
-                    {followLoading ? '…' : isFollowing ? '✓ Following' : '+ Follow'}
+                    {followLoading ? '…' : isFollowing ? '✓ Following' : viewerId ? '+ Follow' : 'Sign up to follow'}
                   </button>
                   <button onClick={handleMessage}
                     className="px-5 py-2.5 rounded-xl font-bold text-sm"
@@ -714,6 +733,9 @@ export default function ProfilePage() {
                   </button>
                 </>
               )}
+              <ShareButton url={shareUrl} title={`${displayName} · Drum Up`} text={shareText}
+                label={isOwnProfile ? 'Copy your link' : 'Share'}
+                className="px-5 py-2.5 rounded-xl text-sm bg-white/10 text-snow border border-white/20 backdrop-blur" />
             </div>
             {/* Platform pill links — scrollable branded row */}
             {(profile.instagram_url || profile.tiktok_url || profile.spotify_url || profile.youtube_url || profile.website) && (
@@ -1101,7 +1123,7 @@ export default function ProfilePage() {
                       : 'bg-chestnut text-snow hover:opacity-90'
                   }`}
                 >
-                  {followLoading ? '…' : isFollowing ? '✓ Following' : '+ Follow'}
+                  {followLoading ? '…' : isFollowing ? '✓ Following' : viewerId ? '+ Follow' : 'Sign up to follow'}
                 </button>
                 {viewer?.user_type === 'musician' && (
                   <button
@@ -1113,6 +1135,9 @@ export default function ProfilePage() {
                 )}
               </>
             )}
+            <ShareButton url={shareUrl} title={`${displayName} · Drum Up`} text={shareText}
+              label={isOwnProfile ? 'Copy link' : 'Share'}
+              className="bg-white text-chestnut border border-chestnut/25 px-4 py-2 rounded-xl text-sm shadow-sm" />
           </div>
         </div>
 
@@ -1474,14 +1499,19 @@ export default function ProfilePage() {
               <span className="text-charcoal text-sm"><span className="font-bold text-graphite">{followingCount}</span> following</span>
             </div>
           </div>
-          {!isOwnProfile && (
-            <button onClick={handleToggleFollow} disabled={followLoading}
-              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-50 ${
-                isFollowing ? 'bg-white text-chestnut border border-chestnut/30' : 'bg-chestnut text-snow hover:opacity-90'
-              }`}>
-              {followLoading ? '…' : isFollowing ? '✓' : '+ Follow'}
-            </button>
-          )}
+          <div className="flex flex-col gap-2 shrink-0">
+            {!isOwnProfile && (
+              <button onClick={handleToggleFollow} disabled={followLoading}
+                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-50 ${
+                  isFollowing ? 'bg-white text-chestnut border border-chestnut/30' : 'bg-chestnut text-snow hover:opacity-90'
+                }`}>
+                {followLoading ? '…' : isFollowing ? '✓' : viewerId ? '+ Follow' : 'Sign up'}
+              </button>
+            )}
+            <ShareButton url={shareUrl} title={`${displayName} · Drum Up`} text={shareText}
+              label={isOwnProfile ? 'Copy link' : 'Share'}
+              className="justify-center bg-white text-chestnut border border-chestnut/25 px-4 py-2 rounded-xl text-sm shadow-sm" />
+          </div>
         </div>
 
         {profile.bio && (

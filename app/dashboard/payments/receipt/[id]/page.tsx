@@ -125,7 +125,7 @@ export default function ReceiptPage() {
       <div className="max-w-xl mx-auto bg-white rounded-2xl shadow-sm print:shadow-none print:rounded-none overflow-hidden">
         <div className="bg-graphite px-7 py-6 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <Image src="/logo.png" alt="Drum Up" width={32} height={32} className="w-8 h-8 object-contain" />
+            <Image src="/orange-drum-up.png" alt="Drum Up" width={32} height={32} className="w-8 h-8 object-contain" />
             <span className="text-snow font-black text-lg">Drum Up</span>
           </div>
           <div className="text-right">

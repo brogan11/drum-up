@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { eqBarStyle } from '@/lib/eq'
 import { WaveDivider } from '@/components/WaveDivider'
@@ -46,6 +46,14 @@ export default function SignupPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+
+  // When arriving from an invite link (/join), preselect the role the inviter chose.
+  useEffect(() => {
+    try {
+      const role = sessionStorage.getItem('drumup_invite_role')
+      if (role === 'restaurant' || role === 'musician') setUserType(role)
+    } catch { /* ignore */ }
+  }, [])
 
   const handleSignup = async () => {
     if (!userType) {
