@@ -6,6 +6,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { logAdminAction } from '@/lib/admin-audit'
 
 function adminClient() {
   return createClient(
@@ -75,6 +76,8 @@ export async function POST(request: Request) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    await logAdminAction({ action: 'resolve_report', target_type: 'report', target_id: reportId, summary: 'Resolved a report' })
 
     return NextResponse.json({ success: true })
   } catch {

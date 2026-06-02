@@ -38,6 +38,8 @@ interface AdminUser {
   user_type: string
   created_at: string
   is_banned: boolean
+  location_text: string | null
+  stripe_onboarded: boolean | null
 }
 
 interface AdminBooking {
@@ -48,6 +50,8 @@ interface AdminBooking {
   payment_status: string | null
   payout_released: boolean
   created_at: string
+  gig_date: string | null
+  source: string
   restaurant_username: string
   restaurant_name: string
   musician_username: string
@@ -102,9 +106,23 @@ interface Insights {
 interface AdminReview {
   id: string; rating: number; review_text: string | null; verified: boolean; created_at: string
   reviewer_name: string; reviewer_username: string; reviewee_name: string; reviewee_username: string
+  reviewee_type: string
 }
 
 interface ConvoMessage { id: string; content: string; created_at: string; sender_name: string; sender_username: string }
+
+interface AuditAction {
+  id: string; created_at: string; actor: string; action: string
+  target_type: string | null; target_id: string | null; summary: string | null
+  metadata: Record<string, unknown> | null
+}
+
+interface Dispute {
+  id: string; amount: number; currency: string; reason: string; status: string
+  created: string; evidence_due_by: string | null; evidence_submitted: boolean
+  is_refundable: boolean; payment_intent: string | null; booking_id: string | null
+  restaurant_name: string | null; musician_name: string | null
+}
 
 // ---- Helpers ----
 
@@ -196,11 +214,133 @@ function Badge({ value }: { value: string }) {
   return <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${cls}`}>{capitalize(value)}</span>
 }
 
+// ---- Filter / sort primitives ----
+
+type SortDir = 'asc' | 'desc'
+interface SortState { key: string; dir: SortDir }
+
+// Generic comparator: numbers numerically, dates by time, everything else case-insensitive string.
+function compareValues(a: unknown, b: unknown): number {
+  if (a == null && b == null) return 0
+  if (a == null) return 1
+  if (b == null) return -1
+  if (typeof a === 'number' && typeof b === 'number') return a - b
+  if (typeof a === 'boolean' && typeof b === 'boolean') return a === b ? 0 : a ? 1 : -1
+  return String(a).toLowerCase().localeCompare(String(b).toLowerCase())
+}
+
+function sortRows<T>(rows: T[], sort: SortState, accessors: Record<string, (row: T) => unknown>): T[] {
+  const get = accessors[sort.key]
+  if (!get) return rows
+  const sorted = [...rows].sort((a, b) => compareValues(get(a), get(b)))
+  return sort.dir === 'asc' ? sorted : sorted.reverse()
+}
+
+// Date-range presets → cutoff in ms (null = no lower bound).
+const RANGE_OPTIONS: { value: string; label: string; days: number | null }[] = [
+  { value: 'all', label: 'Any time', days: null },
+  { value: '1', label: 'Last 24h', days: 1 },
+  { value: '7', label: 'Last 7 days', days: 7 },
+  { value: '30', label: 'Last 30 days', days: 30 },
+  { value: '90', label: 'Last 90 days', days: 90 },
+  { value: '365', label: 'Last year', days: 365 },
+]
+function withinRange(iso: string | null, rangeValue: string): boolean {
+  if (rangeValue === 'all' || !iso) return true
+  const days = Number(rangeValue)
+  if (!days) return true
+  return new Date(iso).getTime() >= Date.now() - days * 86400_000
+}
+
+// Sortable table header cell — click to toggle asc/desc on this column.
+function SortableTh({ label, sortKey, sort, setSort, align = 'left', className = '' }: {
+  label: string; sortKey: string; sort: SortState; setSort: (s: SortState) => void; align?: 'left' | 'right'; className?: string
+}) {
+  const active = sort.key === sortKey
+  return (
+    <th className={`px-4 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider ${align === 'right' ? 'text-right' : 'text-left'} ${className}`}>
+      <button
+        onClick={() => setSort({ key: sortKey, dir: active && sort.dir === 'asc' ? 'desc' : 'asc' })}
+        className={`inline-flex items-center gap-1 hover:text-graphite transition-colors ${active ? 'text-chestnut' : ''}`}
+      >
+        {label}
+        <span className="text-[9px] leading-none">{active ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
+      </button>
+    </th>
+  )
+}
+
+// Labeled dropdown for a single-choice filter.
+function FilterSelect({ label, value, onChange, options }: {
+  label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[]
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[9px] font-semibold uppercase tracking-widest text-charcoal/70 px-1">{label}</span>
+      <select value={value} onChange={e => onChange(e.target.value)}
+        className="px-3 py-2 rounded-lg bg-snow text-sm text-graphite shadow-sm focus:shadow-md focus:outline-none transition-shadow">
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </label>
+  )
+}
+
+// Min/max numeric range filter.
+function RangeFilter({ label, min, max, onMin, onMax, prefix }: {
+  label: string; min: string; max: string; onMin: (v: string) => void; onMax: (v: string) => void; prefix?: string
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[9px] font-semibold uppercase tracking-widest text-charcoal/70 px-1">{label}</span>
+      <div className="flex items-center gap-1">
+        <div className="relative">
+          {prefix && <span className="absolute left-2 top-1/2 -translate-y-1/2 text-charcoal/50 text-sm">{prefix}</span>}
+          <input type="number" inputMode="decimal" value={min} onChange={e => onMin(e.target.value)} placeholder="min"
+            className={`w-20 py-2 rounded-lg bg-snow text-sm text-graphite shadow-sm focus:shadow-md focus:outline-none transition-shadow ${prefix ? 'pl-5 pr-2' : 'px-2'}`} />
+        </div>
+        <span className="text-charcoal/40 text-xs">–</span>
+        <div className="relative">
+          {prefix && <span className="absolute left-2 top-1/2 -translate-y-1/2 text-charcoal/50 text-sm">{prefix}</span>}
+          <input type="number" inputMode="decimal" value={max} onChange={e => onMax(e.target.value)} placeholder="max"
+            className={`w-20 py-2 rounded-lg bg-snow text-sm text-graphite shadow-sm focus:shadow-md focus:outline-none transition-shadow ${prefix ? 'pl-5 pr-2' : 'px-2'}`} />
+        </div>
+      </div>
+    </label>
+  )
+}
+
+// Immutable Set toggle for selection state.
+function toggleInSet(set: Set<string>, id: string): Set<string> {
+  const next = new Set(set)
+  if (next.has(id)) next.delete(id); else next.add(id)
+  return next
+}
+
+// Checkbox styled to the brand (chestnut accent).
+function RowCheck({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  return (
+    <input type="checkbox" checked={checked} onChange={onChange} onClick={e => e.stopPropagation()}
+      className="w-4 h-4 rounded border-charcoal/30 text-chestnut accent-chestnut cursor-pointer" />
+  )
+}
+
+// Sticky bulk-action toolbar shown above a table when rows are selected.
+function BulkBar({ count, onClear, children }: { count: number; onClear: () => void; children: React.ReactNode }) {
+  if (count === 0) return null
+  return (
+    <div className="px-6 py-3 bg-graphite flex items-center gap-3 flex-wrap">
+      <span className="text-snow text-sm font-bold">{count} selected</span>
+      <div className="flex items-center gap-2 flex-wrap">{children}</div>
+      <button onClick={onClear} className="ml-auto text-snow/60 hover:text-snow text-xs font-semibold">Clear</button>
+    </div>
+  )
+}
+
 // ---- Main ----
 
 export default function AdminDashboard() {
   const router = useRouter()
-  const [tab, setTab] = useState<'overview' | 'growth' | 'attention' | 'users' | 'bookings' | 'reviews' | 'reports'>('overview')
+  const [tab, setTab] = useState<'overview' | 'growth' | 'attention' | 'users' | 'bookings' | 'reviews' | 'reports' | 'audit' | 'disputes'>('overview')
 
   const [stats, setStats] = useState<Stats | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
@@ -212,6 +352,25 @@ export default function AdminDashboard() {
   const [adminReviews, setAdminReviews] = useState<AdminReview[]>([])
   const [reviewsLoading, setReviewsLoading] = useState(false)
   const [reviewActingId, setReviewActingId] = useState<string | null>(null)
+  const [auditActions, setAuditActions] = useState<AuditAction[]>([])
+  const [auditLoading, setAuditLoading] = useState(false)
+  const [disputes, setDisputes] = useState<Dispute[]>([])
+  const [disputesMeta, setDisputesMeta] = useState<{ openCount: number; totalDisputed: number } | null>(null)
+  const [disputesLoading, setDisputesLoading] = useState(false)
+  const [disputesError, setDisputesError] = useState<string | null>(null)
+
+  // Bulk selection — a Set of ids per table.
+  const [selUsers, setSelUsers] = useState<Set<string>>(new Set())
+  const [selBookings, setSelBookings] = useState<Set<string>>(new Set())
+  const [selReviews, setSelReviews] = useState<Set<string>>(new Set())
+  const [selReports, setSelReports] = useState<Set<string>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+
+  // Admin email composer
+  const [emailModal, setEmailModal] = useState<{ ids: string[]; label: string } | null>(null)
+  const [emailSubject, setEmailSubject] = useState('')
+  const [emailBody, setEmailBody] = useState('')
+  const [emailSending, setEmailSending] = useState(false)
   const [runningJob, setRunningJob] = useState<string | null>(null)
   const [convo, setConvo] = useState<{ id: string; messages: ConvoMessage[] | null } | null>(null)
   const [globalQuery, setGlobalQuery] = useState('')
@@ -222,9 +381,43 @@ export default function AdminDashboard() {
   const [reportsLoading, setReportsLoading] = useState(false)
   const [attentionLoading, setAttentionLoading] = useState(false)
 
+  // Users filters + sort
   const [userSearch, setUserSearch] = useState('')
+  const [userTypeFilter, setUserTypeFilter] = useState('all')
+  const [userStatusFilter, setUserStatusFilter] = useState('all')
+  const [userOnboardFilter, setUserOnboardFilter] = useState('all')
+  const [userRange, setUserRange] = useState('all')
+  const [userSort, setUserSort] = useState<SortState>({ key: 'created_at', dir: 'desc' })
+
+  // Bookings filters + sort
   const [bookingStatusFilter, setBookingStatusFilter] = useState('all')
+  const [bookingPaymentFilter, setBookingPaymentFilter] = useState('all')
+  const [bookingPayoutFilter, setBookingPayoutFilter] = useState('all')
+  const [bookingSourceFilter, setBookingSourceFilter] = useState('all')
   const [bookingSearch, setBookingSearch] = useState('')
+  const [bookingPayMin, setBookingPayMin] = useState('')
+  const [bookingPayMax, setBookingPayMax] = useState('')
+  const [bookingRange, setBookingRange] = useState('all')
+  const [bookingRangeField, setBookingRangeField] = useState('created_at')
+  const [bookingSort, setBookingSort] = useState<SortState>({ key: 'created_at', dir: 'desc' })
+
+  // Reviews filters + sort
+  const [reviewSearch, setReviewSearch] = useState('')
+  const [reviewRatingFilter, setReviewRatingFilter] = useState('all')
+  const [reviewVerifiedFilter, setReviewVerifiedFilter] = useState('all')
+  const [reviewTextFilter, setReviewTextFilter] = useState('all')
+  const [reviewTypeFilter, setReviewTypeFilter] = useState('all')
+  const [reviewRange, setReviewRange] = useState('all')
+  const [reviewSort, setReviewSort] = useState<SortState>({ key: 'created_at', dir: 'desc' })
+
+  // Reports filters + sort
+  const [reportSearch, setReportSearch] = useState('')
+  const [reportReasonFilter, setReportReasonFilter] = useState('all')
+  const [reportStatusFilter, setReportStatusFilter] = useState('all')
+  const [reportConvoFilter, setReportConvoFilter] = useState('all')
+  const [reportRange, setReportRange] = useState('all')
+  const [reportSort, setReportSort] = useState<SortState>({ key: 'created_at', dir: 'desc' })
+
   const [banningId, setBanningId] = useState<string | null>(null)
   const [resolvingId, setResolvingId] = useState<string | null>(null)
   const [actingId, setActingId] = useState<string | null>(null)
@@ -263,8 +456,8 @@ export default function AdminDashboard() {
     fetch('/api/admin/bookings').then(r => r.json()).then(d => setBookings(d.bookings ?? [])).catch(() => {}).finally(() => setBookingsLoading(false))
   }, [bookings.length])
 
-  const loadReports = useCallback(() => {
-    if (reports.length > 0) return
+  const loadReports = useCallback((force = false) => {
+    if (reports.length > 0 && !force) return
     setReportsLoading(true)
     fetch('/api/admin/reports').then(r => r.json()).then(d => setReports(d.reports ?? [])).catch(() => {}).finally(() => setReportsLoading(false))
   }, [reports.length])
@@ -280,11 +473,27 @@ export default function AdminDashboard() {
     fetch('/api/admin/insights').then(r => r.json()).then(setInsights).catch(() => {}).finally(() => setInsightsLoading(false))
   }, [insights])
 
-  const loadReviews = useCallback(() => {
-    if (adminReviews.length > 0) return
+  const loadReviews = useCallback((force = false) => {
+    if (adminReviews.length > 0 && !force) return
     setReviewsLoading(true)
     fetch('/api/admin/reviews').then(r => r.json()).then(d => setAdminReviews(d.reviews ?? [])).catch(() => {}).finally(() => setReviewsLoading(false))
   }, [adminReviews.length])
+
+  const loadAudit = useCallback((force = false) => {
+    if (auditActions.length > 0 && !force) return
+    setAuditLoading(true)
+    fetch('/api/admin/audit').then(r => r.json()).then(d => setAuditActions(d.actions ?? [])).catch(() => {}).finally(() => setAuditLoading(false))
+  }, [auditActions.length])
+
+  const loadDisputes = useCallback((force = false) => {
+    if (disputes.length > 0 && !force) return
+    setDisputesLoading(true); setDisputesError(null)
+    fetch('/api/admin/disputes').then(r => r.json()).then(d => {
+      if (d.error) { setDisputesError(d.error); return }
+      setDisputes(d.disputes ?? [])
+      setDisputesMeta({ openCount: d.openCount ?? 0, totalDisputed: d.totalDisputed ?? 0 })
+    }).catch(() => setDisputesError('Failed to load disputes')).finally(() => setDisputesLoading(false))
+  }, [disputes.length])
 
   // For the overview activity feed, pull the (cached) users + bookings on mount.
   useEffect(() => { loadUsers(); loadBookings() }, [loadUsers, loadBookings])
@@ -296,7 +505,9 @@ export default function AdminDashboard() {
     if (tab === 'attention') loadAttention()
     if (tab === 'growth') loadInsights()
     if (tab === 'reviews') loadReviews()
-  }, [tab, loadUsers, loadBookings, loadReports, loadAttention, loadInsights, loadReviews])
+    if (tab === 'audit') loadAudit()
+    if (tab === 'disputes') loadDisputes()
+  }, [tab, loadUsers, loadBookings, loadReports, loadAttention, loadInsights, loadReviews, loadAudit, loadDisputes])
 
   // ---- Actions ----
   const handleLogout = async () => {
@@ -395,6 +606,51 @@ export default function AdminDashboard() {
     } finally { setReviewActingId(null) }
   }
 
+  const runBulk = async (entity: 'users' | 'reports' | 'reviews' | 'bookings', action: string, ids: string[], confirmMsg: string) => {
+    if (ids.length === 0) return
+    if (!window.confirm(confirmMsg)) return
+    setBulkBusy(true)
+    try {
+      const res = await fetch('/api/admin/bulk', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entity, action, ids }),
+      })
+      const data = await res.json() as { success?: boolean; processed?: number; failed?: number; error?: string }
+      if (!res.ok || !data.success) throw new Error(data.error ?? 'Bulk action failed')
+      showFlash(`Done — ${data.processed ?? 0} updated${data.failed ? `, ${data.failed} skipped` : ''}.`)
+      // Refresh affected data + clear selection.
+      if (entity === 'users') { loadUsers(true); setSelUsers(new Set()) }
+      if (entity === 'reports') { loadReports(true); setSelReports(new Set()); loadStats() }
+      if (entity === 'reviews') { loadReviews(true); setSelReviews(new Set()) }
+      if (entity === 'bookings') { loadBookings(true); setSelBookings(new Set()); loadStats() }
+      if (auditActions.length) loadAudit(true)
+    } catch (e) {
+      showFlash(e instanceof Error ? e.message : 'Bulk action failed', false)
+    } finally { setBulkBusy(false) }
+  }
+
+  const openEmail = (ids: string[], label: string) => {
+    setEmailModal({ ids, label }); setEmailSubject(''); setEmailBody('')
+  }
+
+  const handleSendEmail = async () => {
+    if (!emailModal || !emailSubject.trim() || !emailBody.trim()) return
+    setEmailSending(true)
+    try {
+      const res = await fetch('/api/admin/email', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userIds: emailModal.ids, subject: emailSubject, message: emailBody }),
+      })
+      const data = await res.json() as { success?: boolean; sent?: number; failed?: number; error?: string }
+      if (!res.ok || !data.success) throw new Error(data.error ?? 'Failed to send')
+      showFlash(`Sent to ${data.sent ?? 0} user(s)${data.failed ? `, ${data.failed} failed` : ''}.`)
+      setEmailModal(null)
+      if (auditActions.length) loadAudit(true)
+    } catch (e) {
+      showFlash(e instanceof Error ? e.message : 'Failed to send', false)
+    } finally { setEmailSending(false) }
+  }
+
   const handleRunJob = async (job: 'payouts' | 'reminders') => {
     if (!window.confirm(job === 'payouts' ? 'Run the payout-release job now?' : 'Send gig reminders now?')) return
     setRunningJob(job)
@@ -424,17 +680,106 @@ export default function AdminDashboard() {
   }
 
   // ---- Derived ----
-  const filteredUsers = users.filter(u => {
-    const q = userSearch.toLowerCase()
-    return !q || u.username?.toLowerCase().includes(q) || u.full_name?.toLowerCase().includes(q) || u.user_type?.toLowerCase().includes(q)
-  })
+  const filteredUsers = sortRows(
+    users.filter(u => {
+      const q = userSearch.toLowerCase().trim()
+      if (q && !(u.username?.toLowerCase().includes(q) || u.full_name?.toLowerCase().includes(q)
+        || u.user_type?.toLowerCase().includes(q) || u.location_text?.toLowerCase().includes(q))) return false
+      if (userTypeFilter !== 'all' && u.user_type !== userTypeFilter) return false
+      if (userStatusFilter === 'active' && u.is_banned) return false
+      if (userStatusFilter === 'banned' && !u.is_banned) return false
+      if (userOnboardFilter === 'onboarded' && !u.stripe_onboarded) return false
+      if (userOnboardFilter === 'not' && u.stripe_onboarded) return false
+      if (!withinRange(u.created_at, userRange)) return false
+      return true
+    }),
+    userSort,
+    {
+      full_name: u => u.full_name || u.username || '',
+      user_type: u => u.user_type,
+      created_at: u => new Date(u.created_at).getTime(),
+      is_banned: u => u.is_banned,
+      location_text: u => u.location_text || '',
+    },
+  )
 
-  const filteredBookings = bookings.filter(b => {
-    if (bookingStatusFilter !== 'all' && b.status !== bookingStatusFilter) return false
-    const q = bookingSearch.toLowerCase()
-    return !q || b.restaurant_name?.toLowerCase().includes(q) || b.musician_name?.toLowerCase().includes(q)
-      || b.restaurant_username?.toLowerCase().includes(q) || b.musician_username?.toLowerCase().includes(q)
-  })
+  const filteredBookings = sortRows(
+    bookings.filter(b => {
+      if (bookingStatusFilter !== 'all' && b.status !== bookingStatusFilter) return false
+      if (bookingPaymentFilter !== 'all' && (b.payment_status ?? 'unpaid') !== bookingPaymentFilter) return false
+      if (bookingPayoutFilter === 'released' && !b.payout_released) return false
+      if (bookingPayoutFilter === 'held' && b.payout_released) return false
+      if (bookingSourceFilter !== 'all' && b.source !== bookingSourceFilter) return false
+      const min = parseFloat(bookingPayMin), max = parseFloat(bookingPayMax)
+      if (!isNaN(min) && (b.pay_amount ?? 0) < min) return false
+      if (!isNaN(max) && (b.pay_amount ?? 0) > max) return false
+      if (!withinRange(bookingRangeField === 'gig_date' ? b.gig_date : b.created_at, bookingRange)) return false
+      const q = bookingSearch.toLowerCase().trim()
+      return !q || b.restaurant_name?.toLowerCase().includes(q) || b.musician_name?.toLowerCase().includes(q)
+        || b.restaurant_username?.toLowerCase().includes(q) || b.musician_username?.toLowerCase().includes(q)
+    }),
+    bookingSort,
+    {
+      restaurant_name: b => b.restaurant_name,
+      musician_name: b => b.musician_name,
+      pay_amount: b => b.pay_amount ?? 0,
+      platform_fee: b => b.platform_fee ?? 0,
+      status: b => b.status,
+      payment_status: b => b.payment_status ?? '',
+      created_at: b => new Date(b.created_at).getTime(),
+      gig_date: b => (b.gig_date ? new Date(b.gig_date).getTime() : 0),
+    },
+  )
+
+  const filteredReviews = sortRows(
+    adminReviews.filter(r => {
+      const q = reviewSearch.toLowerCase().trim()
+      if (q && !(r.reviewer_name?.toLowerCase().includes(q) || r.reviewee_name?.toLowerCase().includes(q)
+        || r.reviewer_username?.toLowerCase().includes(q) || r.reviewee_username?.toLowerCase().includes(q)
+        || r.review_text?.toLowerCase().includes(q))) return false
+      if (reviewRatingFilter !== 'all' && r.rating !== Number(reviewRatingFilter)) return false
+      if (reviewVerifiedFilter === 'verified' && !r.verified) return false
+      if (reviewVerifiedFilter === 'unverified' && r.verified) return false
+      if (reviewTextFilter === 'with' && !r.review_text?.trim()) return false
+      if (reviewTextFilter === 'without' && r.review_text?.trim()) return false
+      if (reviewTypeFilter !== 'all' && r.reviewee_type !== reviewTypeFilter) return false
+      if (!withinRange(r.created_at, reviewRange)) return false
+      return true
+    }),
+    reviewSort,
+    {
+      rating: r => r.rating,
+      created_at: r => new Date(r.created_at).getTime(),
+      reviewer_name: r => r.reviewer_name,
+      reviewee_name: r => r.reviewee_name,
+      verified: r => r.verified,
+    },
+  )
+
+  const reportReasons = [...new Set(reports.map(r => r.reason).filter(Boolean))].sort()
+  const filteredReports = sortRows(
+    reports.filter(r => {
+      const q = reportSearch.toLowerCase().trim()
+      if (q && !(r.reporter_name?.toLowerCase().includes(q) || r.reported_name?.toLowerCase().includes(q)
+        || r.reporter_username?.toLowerCase().includes(q) || r.reported_username?.toLowerCase().includes(q)
+        || r.details?.toLowerCase().includes(q) || r.reason?.toLowerCase().includes(q))) return false
+      if (reportReasonFilter !== 'all' && r.reason !== reportReasonFilter) return false
+      if (reportStatusFilter === 'open' && r.resolved) return false
+      if (reportStatusFilter === 'resolved' && !r.resolved) return false
+      if (reportConvoFilter === 'with' && !r.conversation_id) return false
+      if (reportConvoFilter === 'without' && r.conversation_id) return false
+      if (!withinRange(r.created_at, reportRange)) return false
+      return true
+    }),
+    reportSort,
+    {
+      reporter_name: r => r.reporter_name,
+      reported_name: r => r.reported_name,
+      reason: r => r.reason,
+      created_at: r => new Date(r.created_at).getTime(),
+      resolved: r => r.resolved,
+    },
+  )
 
   const attentionTotal = stats ? stats.attention.unonboardedWithGigs + stats.attention.overduePayouts + stats.attention.openReports : 0
 
@@ -590,6 +935,8 @@ export default function AdminDashboard() {
           <TabBtn id="bookings" label="Bookings" />
           <TabBtn id="reviews" label="Reviews" />
           <TabBtn id="reports" label="Reports" badge={stats?.openReports} />
+          <TabBtn id="disputes" label="Disputes" badge={disputesMeta?.openCount} />
+          <TabBtn id="audit" label="Audit Log" />
         </div>
 
         {/* ---- OVERVIEW ---- */}
@@ -855,42 +1202,88 @@ export default function AdminDashboard() {
         {/* ---- USERS ---- */}
         {tab === 'users' && (
           <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-charcoal/10 flex flex-col sm:flex-row sm:items-center gap-3">
-              <h2 className="text-sm font-black text-graphite uppercase tracking-widest">
-                All Users {users.length > 0 && <span className="text-charcoal font-normal normal-case tracking-normal">({users.length.toLocaleString()})</span>}
-              </h2>
-              <div className="sm:ml-auto flex items-center gap-2 w-full sm:w-auto">
-                <input
-                  type="text" placeholder="Search name, username, type…" value={userSearch} onChange={e => setUserSearch(e.target.value)}
-                  className="flex-1 sm:w-64 px-3 py-2 rounded-lg bg-snow text-sm text-graphite placeholder-charcoal/40 shadow-sm focus:shadow-md focus:outline-none transition-shadow"
-                />
-                <button onClick={() => downloadCsv('users.csv', filteredUsers as unknown as Record<string, unknown>[])} className="px-3 py-2 rounded-lg text-xs font-bold bg-charcoal/10 text-charcoal hover:bg-charcoal/20 whitespace-nowrap">Export CSV</button>
+            <div className="px-6 py-4 border-b border-charcoal/10 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <h2 className="text-sm font-black text-graphite uppercase tracking-widest">
+                  Users <span className="text-charcoal font-normal normal-case tracking-normal">({filteredUsers.length.toLocaleString()}{users.length !== filteredUsers.length ? ` / ${users.length.toLocaleString()}` : ''})</span>
+                </h2>
+                <div className="sm:ml-auto flex items-center gap-2 w-full sm:w-auto">
+                  <input
+                    type="text" placeholder="Search name, username, location…" value={userSearch} onChange={e => setUserSearch(e.target.value)}
+                    className="flex-1 sm:w-64 px-3 py-2 rounded-lg bg-snow text-sm text-graphite placeholder-charcoal/40 shadow-sm focus:shadow-md focus:outline-none transition-shadow"
+                  />
+                  <button onClick={() => downloadCsv('users.csv', filteredUsers as unknown as Record<string, unknown>[])} className="px-3 py-2 rounded-lg text-xs font-bold bg-charcoal/10 text-charcoal hover:bg-charcoal/20 whitespace-nowrap">Export CSV</button>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <FilterSelect label="Type" value={userTypeFilter} onChange={setUserTypeFilter} options={[
+                  { value: 'all', label: 'All types' }, { value: 'restaurant', label: 'Restaurants' },
+                  { value: 'musician', label: 'Musicians' }, { value: 'fan', label: 'Fans' },
+                ]} />
+                <FilterSelect label="Status" value={userStatusFilter} onChange={setUserStatusFilter} options={[
+                  { value: 'all', label: 'All' }, { value: 'active', label: 'Active' }, { value: 'banned', label: 'Banned' },
+                ]} />
+                <FilterSelect label="Stripe" value={userOnboardFilter} onChange={setUserOnboardFilter} options={[
+                  { value: 'all', label: 'Any' }, { value: 'onboarded', label: 'Onboarded' }, { value: 'not', label: 'Not onboarded' },
+                ]} />
+                <FilterSelect label="Joined" value={userRange} onChange={setUserRange} options={RANGE_OPTIONS} />
+                <FilterSelect label="Sort by" value={userSort.key} onChange={k => setUserSort({ key: k, dir: userSort.dir })} options={[
+                  { value: 'created_at', label: 'Joined' }, { value: 'full_name', label: 'Name' },
+                  { value: 'user_type', label: 'Type' }, { value: 'is_banned', label: 'Status' }, { value: 'location_text', label: 'Location' },
+                ]} />
+                <button onClick={() => setUserSort(s => ({ ...s, dir: s.dir === 'asc' ? 'desc' : 'asc' }))}
+                  className="px-3 py-2 rounded-lg text-xs font-bold bg-snow text-charcoal hover:bg-charcoal/10 shadow-sm" title="Toggle direction">
+                  {userSort.dir === 'asc' ? '↑ Asc' : '↓ Desc'}
+                </button>
+                {(userSearch || userTypeFilter !== 'all' || userStatusFilter !== 'all' || userOnboardFilter !== 'all' || userRange !== 'all') && (
+                  <button onClick={() => { setUserSearch(''); setUserTypeFilter('all'); setUserStatusFilter('all'); setUserOnboardFilter('all'); setUserRange('all') }}
+                    className="px-3 py-2 rounded-lg text-xs font-bold text-chestnut hover:bg-chestnut/10">Clear filters</button>
+                )}
               </div>
             </div>
+            <BulkBar count={selUsers.size} onClear={() => setSelUsers(new Set())}>
+              <button disabled={bulkBusy} onClick={() => openEmail([...selUsers], `${selUsers.size} selected user(s)`)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white/15 text-snow hover:bg-white/25 disabled:opacity-50">✉ Email</button>
+              <button disabled={bulkBusy} onClick={() => runBulk('users', 'ban', [...selUsers], `Ban ${selUsers.size} selected user(s)?`)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-500/90 text-white hover:bg-red-500 disabled:opacity-50">Ban</button>
+              <button disabled={bulkBusy} onClick={() => runBulk('users', 'unban', [...selUsers], `Unban ${selUsers.size} selected user(s)?`)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-teal text-white hover:opacity-90 disabled:opacity-50">Unban</button>
+            </BulkBar>
             {usersLoading ? (
               <div className="px-6 py-12 text-center text-charcoal text-sm">Loading users…</div>
             ) : filteredUsers.length === 0 ? (
-              <div className="px-6 py-12 text-center text-charcoal text-sm">{userSearch ? 'No users match your search.' : 'No users yet.'}</div>
+              <div className="px-6 py-12 text-center text-charcoal text-sm">{users.length ? 'No users match your filters.' : 'No users yet.'}</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-charcoal/10 bg-snow/60">
-                      <th className="text-left px-6 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">User</th>
-                      <th className="text-left px-4 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Type</th>
-                      <th className="text-left px-4 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Joined</th>
-                      <th className="text-left px-4 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 w-0">
+                        <RowCheck
+                          checked={filteredUsers.length > 0 && filteredUsers.every(u => selUsers.has(u.id))}
+                          onChange={() => setSelUsers(filteredUsers.every(u => selUsers.has(u.id)) ? new Set() : new Set(filteredUsers.map(u => u.id)))}
+                        />
+                      </th>
+                      <SortableTh label="User" sortKey="full_name" sort={userSort} setSort={setUserSort} className="!px-6" />
+                      <SortableTh label="Type" sortKey="user_type" sort={userSort} setSort={setUserSort} />
+                      <SortableTh label="Location" sortKey="location_text" sort={userSort} setSort={setUserSort} />
+                      <SortableTh label="Joined" sortKey="created_at" sort={userSort} setSort={setUserSort} />
+                      <SortableTh label="Status" sortKey="is_banned" sort={userSort} setSort={setUserSort} />
                       <th className="text-right px-6 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-charcoal/5">
                     {filteredUsers.map(user => (
-                      <tr key={user.id} className={`hover:bg-snow/40 transition-colors cursor-pointer ${user.is_banned ? 'opacity-60' : ''}`} onClick={() => openDrawer(user.id)}>
+                      <tr key={user.id} className={`hover:bg-snow/40 transition-colors cursor-pointer ${user.is_banned ? 'opacity-60' : ''} ${selUsers.has(user.id) ? 'bg-chestnut/5' : ''}`} onClick={() => openDrawer(user.id)}>
+                        <td className="px-6 py-4 w-0" onClick={e => e.stopPropagation()}>
+                          <RowCheck checked={selUsers.has(user.id)} onChange={() => setSelUsers(s => toggleInSet(s, user.id))} />
+                        </td>
                         <td className="px-6 py-4">
                           <p className="font-semibold text-graphite">{user.full_name || '—'}</p>
                           <p className="text-charcoal text-xs mt-0.5">@{user.username || 'no-username'}</p>
                         </td>
                         <td className="px-4 py-4"><Badge value={user.user_type} /></td>
+                        <td className="px-4 py-4 text-charcoal text-xs truncate max-w-[160px]">{user.location_text || '—'}</td>
                         <td className="px-4 py-4 text-charcoal">{fmtDate(user.created_at)}</td>
                         <td className="px-4 py-4">
                           {user.is_banned
@@ -918,43 +1311,90 @@ export default function AdminDashboard() {
         {/* ---- BOOKINGS ---- */}
         {tab === 'bookings' && (
           <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-charcoal/10 flex flex-col sm:flex-row sm:items-center gap-3">
-              <h2 className="text-sm font-black text-graphite uppercase tracking-widest">
-                Bookings {bookings.length > 0 && <span className="text-charcoal font-normal normal-case tracking-normal">({filteredBookings.length.toLocaleString()}/{bookings.length.toLocaleString()})</span>}
-              </h2>
-              <div className="sm:ml-auto flex items-center gap-2 w-full sm:w-auto flex-wrap">
-                <select value={bookingStatusFilter} onChange={e => setBookingStatusFilter(e.target.value)} className="px-3 py-2 rounded-lg bg-snow text-sm text-graphite shadow-sm focus:outline-none">
-                  <option value="all">All statuses</option>
-                  <option value="confirmed">Confirmed</option>
-                  <option value="pending">Pending</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-                <input type="text" placeholder="Search venue or musician…" value={bookingSearch} onChange={e => setBookingSearch(e.target.value)}
-                  className="flex-1 sm:w-56 px-3 py-2 rounded-lg bg-snow text-sm text-graphite placeholder-charcoal/40 shadow-sm focus:shadow-md focus:outline-none transition-shadow" />
-                <button onClick={() => downloadCsv('bookings.csv', filteredBookings as unknown as Record<string, unknown>[])} className="px-3 py-2 rounded-lg text-xs font-bold bg-charcoal/10 text-charcoal hover:bg-charcoal/20 whitespace-nowrap">Export CSV</button>
+            <div className="px-6 py-4 border-b border-charcoal/10 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <h2 className="text-sm font-black text-graphite uppercase tracking-widest">
+                  Bookings <span className="text-charcoal font-normal normal-case tracking-normal">({filteredBookings.length.toLocaleString()}{bookings.length !== filteredBookings.length ? ` / ${bookings.length.toLocaleString()}` : ''})</span>
+                </h2>
+                <div className="sm:ml-auto flex items-center gap-2 w-full sm:w-auto">
+                  <input type="text" placeholder="Search venue or musician…" value={bookingSearch} onChange={e => setBookingSearch(e.target.value)}
+                    className="flex-1 sm:w-56 px-3 py-2 rounded-lg bg-snow text-sm text-graphite placeholder-charcoal/40 shadow-sm focus:shadow-md focus:outline-none transition-shadow" />
+                  <button onClick={() => downloadCsv('bookings.csv', filteredBookings as unknown as Record<string, unknown>[])} className="px-3 py-2 rounded-lg text-xs font-bold bg-charcoal/10 text-charcoal hover:bg-charcoal/20 whitespace-nowrap">Export CSV</button>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <FilterSelect label="Status" value={bookingStatusFilter} onChange={setBookingStatusFilter} options={[
+                  { value: 'all', label: 'All statuses' }, { value: 'confirmed', label: 'Confirmed' },
+                  { value: 'pending', label: 'Pending' }, { value: 'cancelled', label: 'Cancelled' },
+                ]} />
+                <FilterSelect label="Payment" value={bookingPaymentFilter} onChange={setBookingPaymentFilter} options={[
+                  { value: 'all', label: 'All payments' }, { value: 'unpaid', label: 'Unpaid' }, { value: 'authorized', label: 'Authorized' },
+                  { value: 'paid', label: 'Paid' }, { value: 'refunded', label: 'Refunded' }, { value: 'failed', label: 'Failed' },
+                ]} />
+                <FilterSelect label="Payout" value={bookingPayoutFilter} onChange={setBookingPayoutFilter} options={[
+                  { value: 'all', label: 'Any' }, { value: 'released', label: 'Released' }, { value: 'held', label: 'Held' },
+                ]} />
+                <FilterSelect label="Source" value={bookingSourceFilter} onChange={setBookingSourceFilter} options={[
+                  { value: 'all', label: 'Any' }, { value: 'application', label: 'Application' }, { value: 'invite', label: 'Invite' },
+                ]} />
+                <RangeFilter label="Pay amount" min={bookingPayMin} max={bookingPayMax} onMin={setBookingPayMin} onMax={setBookingPayMax} prefix="$" />
+                <div className="flex items-end gap-1">
+                  <FilterSelect label="Date range" value={bookingRange} onChange={setBookingRange} options={RANGE_OPTIONS} />
+                  <FilterSelect label="On" value={bookingRangeField} onChange={setBookingRangeField} options={[
+                    { value: 'created_at', label: 'Booked' }, { value: 'gig_date', label: 'Gig date' },
+                  ]} />
+                </div>
+                <FilterSelect label="Sort by" value={bookingSort.key} onChange={k => setBookingSort({ key: k, dir: bookingSort.dir })} options={[
+                  { value: 'created_at', label: 'Booked date' }, { value: 'gig_date', label: 'Gig date' }, { value: 'pay_amount', label: 'Pay' },
+                  { value: 'platform_fee', label: 'Fee' }, { value: 'status', label: 'Status' }, { value: 'payment_status', label: 'Payment' },
+                  { value: 'restaurant_name', label: 'Restaurant' }, { value: 'musician_name', label: 'Musician' },
+                ]} />
+                <button onClick={() => setBookingSort(s => ({ ...s, dir: s.dir === 'asc' ? 'desc' : 'asc' }))}
+                  className="px-3 py-2 rounded-lg text-xs font-bold bg-snow text-charcoal hover:bg-charcoal/10 shadow-sm" title="Toggle direction">
+                  {bookingSort.dir === 'asc' ? '↑ Asc' : '↓ Desc'}
+                </button>
+                {(bookingSearch || bookingStatusFilter !== 'all' || bookingPaymentFilter !== 'all' || bookingPayoutFilter !== 'all' || bookingSourceFilter !== 'all' || bookingPayMin || bookingPayMax || bookingRange !== 'all') && (
+                  <button onClick={() => { setBookingSearch(''); setBookingStatusFilter('all'); setBookingPaymentFilter('all'); setBookingPayoutFilter('all'); setBookingSourceFilter('all'); setBookingPayMin(''); setBookingPayMax(''); setBookingRange('all') }}
+                    className="px-3 py-2 rounded-lg text-xs font-bold text-chestnut hover:bg-chestnut/10">Clear filters</button>
+                )}
               </div>
             </div>
+            <BulkBar count={selBookings.size} onClear={() => setSelBookings(new Set())}>
+              <button disabled={bulkBusy} onClick={() => runBulk('bookings', 'release_payout', [...selBookings], `Capture & release payouts for ${selBookings.size} selected booking(s)? Only authorized holds are processed.`)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-teal text-white hover:opacity-90 disabled:opacity-50">💸 Release payouts</button>
+              <span className="text-snow/50 text-[11px]">Skips anything not in an authorized hold.</span>
+            </BulkBar>
             {bookingsLoading ? (
               <div className="px-6 py-12 text-center text-charcoal text-sm">Loading bookings…</div>
             ) : filteredBookings.length === 0 ? (
-              <div className="px-6 py-12 text-center text-charcoal text-sm">No bookings match.</div>
+              <div className="px-6 py-12 text-center text-charcoal text-sm">No bookings match your filters.</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-charcoal/10 bg-snow/60">
-                      <th className="text-left px-6 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Restaurant</th>
-                      <th className="text-left px-4 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Musician</th>
-                      <th className="text-left px-4 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Pay</th>
-                      <th className="text-left px-4 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Fee</th>
-                      <th className="text-left px-4 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Status</th>
-                      <th className="text-left px-4 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Payment</th>
+                      <th className="px-6 py-3 w-0">
+                        <RowCheck
+                          checked={filteredBookings.length > 0 && filteredBookings.every(b => selBookings.has(b.id))}
+                          onChange={() => setSelBookings(filteredBookings.every(b => selBookings.has(b.id)) ? new Set() : new Set(filteredBookings.map(b => b.id)))}
+                        />
+                      </th>
+                      <SortableTh label="Restaurant" sortKey="restaurant_name" sort={bookingSort} setSort={setBookingSort} className="!px-6" />
+                      <SortableTh label="Musician" sortKey="musician_name" sort={bookingSort} setSort={setBookingSort} />
+                      <SortableTh label="Gig date" sortKey="gig_date" sort={bookingSort} setSort={setBookingSort} />
+                      <SortableTh label="Pay" sortKey="pay_amount" sort={bookingSort} setSort={setBookingSort} />
+                      <SortableTh label="Fee" sortKey="platform_fee" sort={bookingSort} setSort={setBookingSort} />
+                      <SortableTh label="Status" sortKey="status" sort={bookingSort} setSort={setBookingSort} />
+                      <SortableTh label="Payment" sortKey="payment_status" sort={bookingSort} setSort={setBookingSort} />
                       <th className="text-right px-6 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-charcoal/5">
                     {filteredBookings.map(b => (
-                      <tr key={b.id} className="hover:bg-snow/40 transition-colors">
+                      <tr key={b.id} className={`hover:bg-snow/40 transition-colors ${selBookings.has(b.id) ? 'bg-chestnut/5' : ''}`}>
+                        <td className="px-6 py-4 w-0">
+                          <RowCheck checked={selBookings.has(b.id)} onChange={() => setSelBookings(s => toggleInSet(s, b.id))} />
+                        </td>
                         <td className="px-6 py-4">
                           <p className="font-semibold text-graphite truncate max-w-[140px]">{b.restaurant_name}</p>
                           <p className="text-charcoal text-xs mt-0.5">@{b.restaurant_username}</p>
@@ -963,6 +1403,7 @@ export default function AdminDashboard() {
                           <p className="font-semibold text-graphite truncate max-w-[120px]">{b.musician_name}</p>
                           <p className="text-charcoal text-xs mt-0.5">@{b.musician_username}</p>
                         </td>
+                        <td className="px-4 py-4 text-charcoal text-xs">{b.gig_date ? fmtDay(b.gig_date) : '—'}</td>
                         <td className="px-4 py-4 font-semibold text-graphite">{b.pay_amount ? fmt(b.pay_amount) : '—'}</td>
                         <td className="px-4 py-4 text-charcoal">{b.platform_fee ? fmt(b.platform_fee) : '—'}</td>
                         <td className="px-4 py-4"><Badge value={b.status} /></td>
@@ -993,20 +1434,71 @@ export default function AdminDashboard() {
         {/* ---- REVIEWS ---- */}
         {tab === 'reviews' && (
           <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-charcoal/10">
-              <h2 className="text-sm font-black text-graphite uppercase tracking-widest">
-                Reviews {adminReviews.length > 0 && <span className="text-charcoal font-normal normal-case tracking-normal">({adminReviews.length})</span>}
-              </h2>
-              <p className="text-xs text-charcoal mt-0.5">Remove abusive reviews, or mark trustworthy ones as verified (shows a badge on profiles).</p>
+            <div className="px-6 py-4 border-b border-charcoal/10 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div>
+                  <h2 className="text-sm font-black text-graphite uppercase tracking-widest">
+                    Reviews <span className="text-charcoal font-normal normal-case tracking-normal">({filteredReviews.length}{adminReviews.length !== filteredReviews.length ? ` / ${adminReviews.length}` : ''})</span>
+                  </h2>
+                  <p className="text-xs text-charcoal mt-0.5">Remove abusive reviews, or mark trustworthy ones as verified (shows a badge on profiles).</p>
+                </div>
+                <div className="sm:ml-auto flex items-center gap-2 w-full sm:w-auto">
+                  <input type="text" placeholder="Search reviewer, reviewee, text…" value={reviewSearch} onChange={e => setReviewSearch(e.target.value)}
+                    className="flex-1 sm:w-64 px-3 py-2 rounded-lg bg-snow text-sm text-graphite placeholder-charcoal/40 shadow-sm focus:shadow-md focus:outline-none transition-shadow" />
+                  <button onClick={() => downloadCsv('reviews.csv', filteredReviews as unknown as Record<string, unknown>[])} className="px-3 py-2 rounded-lg text-xs font-bold bg-charcoal/10 text-charcoal hover:bg-charcoal/20 whitespace-nowrap">Export CSV</button>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <FilterSelect label="Rating" value={reviewRatingFilter} onChange={setReviewRatingFilter} options={[
+                  { value: 'all', label: 'All ratings' }, { value: '5', label: '5 ★' }, { value: '4', label: '4 ★' },
+                  { value: '3', label: '3 ★' }, { value: '2', label: '2 ★' }, { value: '1', label: '1 ★' },
+                ]} />
+                <FilterSelect label="Verified" value={reviewVerifiedFilter} onChange={setReviewVerifiedFilter} options={[
+                  { value: 'all', label: 'Any' }, { value: 'verified', label: 'Verified' }, { value: 'unverified', label: 'Unverified' },
+                ]} />
+                <FilterSelect label="Text" value={reviewTextFilter} onChange={setReviewTextFilter} options={[
+                  { value: 'all', label: 'Any' }, { value: 'with', label: 'Has comment' }, { value: 'without', label: 'Rating only' },
+                ]} />
+                <FilterSelect label="Reviewee" value={reviewTypeFilter} onChange={setReviewTypeFilter} options={[
+                  { value: 'all', label: 'All' }, { value: 'musician', label: 'Musicians' }, { value: 'restaurant', label: 'Restaurants' },
+                ]} />
+                <FilterSelect label="Date" value={reviewRange} onChange={setReviewRange} options={RANGE_OPTIONS} />
+                <FilterSelect label="Sort by" value={reviewSort.key} onChange={k => setReviewSort({ key: k, dir: reviewSort.dir })} options={[
+                  { value: 'created_at', label: 'Date' }, { value: 'rating', label: 'Rating' },
+                  { value: 'reviewer_name', label: 'Reviewer' }, { value: 'reviewee_name', label: 'Reviewee' }, { value: 'verified', label: 'Verified' },
+                ]} />
+                <button onClick={() => setReviewSort(s => ({ ...s, dir: s.dir === 'asc' ? 'desc' : 'asc' }))}
+                  className="px-3 py-2 rounded-lg text-xs font-bold bg-snow text-charcoal hover:bg-charcoal/10 shadow-sm" title="Toggle direction">
+                  {reviewSort.dir === 'asc' ? '↑ Asc' : '↓ Desc'}
+                </button>
+                {(reviewSearch || reviewRatingFilter !== 'all' || reviewVerifiedFilter !== 'all' || reviewTextFilter !== 'all' || reviewTypeFilter !== 'all' || reviewRange !== 'all') && (
+                  <button onClick={() => { setReviewSearch(''); setReviewRatingFilter('all'); setReviewVerifiedFilter('all'); setReviewTextFilter('all'); setReviewTypeFilter('all'); setReviewRange('all') }}
+                    className="px-3 py-2 rounded-lg text-xs font-bold text-chestnut hover:bg-chestnut/10">Clear filters</button>
+                )}
+              </div>
             </div>
+            <BulkBar count={selReviews.size} onClear={() => setSelReviews(new Set())}>
+              <button disabled={bulkBusy} onClick={() => runBulk('reviews', 'verify', [...selReviews], `Mark ${selReviews.size} review(s) verified?`)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-teal text-white hover:opacity-90 disabled:opacity-50">Verify</button>
+              <button disabled={bulkBusy} onClick={() => runBulk('reviews', 'unverify', [...selReviews], `Unverify ${selReviews.size} review(s)?`)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white/15 text-snow hover:bg-white/25 disabled:opacity-50">Unverify</button>
+              <button disabled={bulkBusy} onClick={() => runBulk('reviews', 'remove', [...selReviews], `Permanently delete ${selReviews.size} review(s)? This cannot be undone.`)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-500/90 text-white hover:bg-red-500 disabled:opacity-50">Remove</button>
+            </BulkBar>
             {reviewsLoading ? (
               <div className="px-6 py-12 text-center text-charcoal text-sm">Loading reviews…</div>
-            ) : adminReviews.length === 0 ? (
-              <div className="px-6 py-12 text-center text-charcoal text-sm">No reviews yet.</div>
+            ) : filteredReviews.length === 0 ? (
+              <div className="px-6 py-12 text-center text-charcoal text-sm">{adminReviews.length ? 'No reviews match your filters.' : 'No reviews yet.'}</div>
             ) : (
               <div className="divide-y divide-charcoal/5">
-                {adminReviews.map(r => (
-                  <div key={r.id} className="px-6 py-4 flex items-start gap-4">
+                <label className="px-6 py-2 flex items-center gap-2 bg-snow/40 cursor-pointer">
+                  <RowCheck checked={filteredReviews.length > 0 && filteredReviews.every(r => selReviews.has(r.id))}
+                    onChange={() => setSelReviews(filteredReviews.every(r => selReviews.has(r.id)) ? new Set() : new Set(filteredReviews.map(r => r.id)))} />
+                  <span className="text-[11px] font-semibold text-charcoal uppercase tracking-wider">Select all</span>
+                </label>
+                {filteredReviews.map(r => (
+                  <div key={r.id} className={`px-6 py-4 flex items-start gap-4 ${selReviews.has(r.id) ? 'bg-chestnut/5' : ''}`}>
+                    <div className="pt-0.5"><RowCheck checked={selReviews.has(r.id)} onChange={() => setSelReviews(s => toggleInSet(s, r.id))} /></div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-chestnut font-bold text-sm">{'★'.repeat(r.rating)}<span className="text-charcoal/30">{'★'.repeat(5 - r.rating)}</span></span>
@@ -1036,31 +1528,75 @@ export default function AdminDashboard() {
         {/* ---- REPORTS ---- */}
         {tab === 'reports' && (
           <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-charcoal/10">
-              <h2 className="text-sm font-black text-graphite uppercase tracking-widest">
-                All Reports {reports.length > 0 && <span className="text-charcoal font-normal normal-case tracking-normal">({reports.length.toLocaleString()})</span>}
-              </h2>
+            <div className="px-6 py-4 border-b border-charcoal/10 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <h2 className="text-sm font-black text-graphite uppercase tracking-widest">
+                  Reports <span className="text-charcoal font-normal normal-case tracking-normal">({filteredReports.length.toLocaleString()}{reports.length !== filteredReports.length ? ` / ${reports.length.toLocaleString()}` : ''})</span>
+                </h2>
+                <div className="sm:ml-auto flex items-center gap-2 w-full sm:w-auto">
+                  <input type="text" placeholder="Search reporter, reported, details…" value={reportSearch} onChange={e => setReportSearch(e.target.value)}
+                    className="flex-1 sm:w-64 px-3 py-2 rounded-lg bg-snow text-sm text-graphite placeholder-charcoal/40 shadow-sm focus:shadow-md focus:outline-none transition-shadow" />
+                  <button onClick={() => downloadCsv('reports.csv', filteredReports as unknown as Record<string, unknown>[])} className="px-3 py-2 rounded-lg text-xs font-bold bg-charcoal/10 text-charcoal hover:bg-charcoal/20 whitespace-nowrap">Export CSV</button>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <FilterSelect label="Reason" value={reportReasonFilter} onChange={setReportReasonFilter} options={[
+                  { value: 'all', label: 'All reasons' }, ...reportReasons.map(r => ({ value: r, label: capitalize(r) })),
+                ]} />
+                <FilterSelect label="Status" value={reportStatusFilter} onChange={setReportStatusFilter} options={[
+                  { value: 'all', label: 'All' }, { value: 'open', label: 'Open' }, { value: 'resolved', label: 'Resolved' },
+                ]} />
+                <FilterSelect label="Thread" value={reportConvoFilter} onChange={setReportConvoFilter} options={[
+                  { value: 'all', label: 'Any' }, { value: 'with', label: 'Has thread' }, { value: 'without', label: 'No thread' },
+                ]} />
+                <FilterSelect label="Date" value={reportRange} onChange={setReportRange} options={RANGE_OPTIONS} />
+                <FilterSelect label="Sort by" value={reportSort.key} onChange={k => setReportSort({ key: k, dir: reportSort.dir })} options={[
+                  { value: 'created_at', label: 'Date' }, { value: 'reason', label: 'Reason' }, { value: 'resolved', label: 'Status' },
+                  { value: 'reporter_name', label: 'Reporter' }, { value: 'reported_name', label: 'Reported' },
+                ]} />
+                <button onClick={() => setReportSort(s => ({ ...s, dir: s.dir === 'asc' ? 'desc' : 'asc' }))}
+                  className="px-3 py-2 rounded-lg text-xs font-bold bg-snow text-charcoal hover:bg-charcoal/10 shadow-sm" title="Toggle direction">
+                  {reportSort.dir === 'asc' ? '↑ Asc' : '↓ Desc'}
+                </button>
+                {(reportSearch || reportReasonFilter !== 'all' || reportStatusFilter !== 'all' || reportConvoFilter !== 'all' || reportRange !== 'all') && (
+                  <button onClick={() => { setReportSearch(''); setReportReasonFilter('all'); setReportStatusFilter('all'); setReportConvoFilter('all'); setReportRange('all') }}
+                    className="px-3 py-2 rounded-lg text-xs font-bold text-chestnut hover:bg-chestnut/10">Clear filters</button>
+                )}
+              </div>
             </div>
+            <BulkBar count={selReports.size} onClear={() => setSelReports(new Set())}>
+              <button disabled={bulkBusy} onClick={() => runBulk('reports', 'resolve', [...selReports], `Resolve ${selReports.size} selected report(s)?`)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-chestnut text-white hover:opacity-90 disabled:opacity-50">Resolve</button>
+            </BulkBar>
             {reportsLoading ? (
               <div className="px-6 py-12 text-center text-charcoal text-sm">Loading reports…</div>
-            ) : reports.length === 0 ? (
-              <div className="px-6 py-12 text-center text-charcoal text-sm">No reports yet.</div>
+            ) : filteredReports.length === 0 ? (
+              <div className="px-6 py-12 text-center text-charcoal text-sm">{reports.length ? 'No reports match your filters.' : 'No reports yet.'}</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-charcoal/10 bg-snow/60">
-                      <th className="text-left px-6 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Reporter</th>
-                      <th className="text-left px-4 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Reported</th>
-                      <th className="text-left px-4 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Reason</th>
+                      <th className="px-6 py-3 w-0">
+                        <RowCheck
+                          checked={filteredReports.length > 0 && filteredReports.every(r => selReports.has(r.id))}
+                          onChange={() => setSelReports(filteredReports.every(r => selReports.has(r.id)) ? new Set() : new Set(filteredReports.map(r => r.id)))}
+                        />
+                      </th>
+                      <SortableTh label="Reporter" sortKey="reporter_name" sort={reportSort} setSort={setReportSort} className="!px-6" />
+                      <SortableTh label="Reported" sortKey="reported_name" sort={reportSort} setSort={setReportSort} />
+                      <SortableTh label="Reason" sortKey="reason" sort={reportSort} setSort={setReportSort} />
                       <th className="text-left px-4 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Details</th>
-                      <th className="text-left px-4 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Date</th>
+                      <SortableTh label="Date" sortKey="created_at" sort={reportSort} setSort={setReportSort} />
                       <th className="text-right px-6 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-charcoal/5">
-                    {reports.map(report => (
-                      <tr key={report.id} className={`hover:bg-snow/40 transition-colors ${report.resolved ? 'opacity-50' : ''}`}>
+                    {filteredReports.map(report => (
+                      <tr key={report.id} className={`hover:bg-snow/40 transition-colors ${report.resolved ? 'opacity-50' : ''} ${selReports.has(report.id) ? 'bg-chestnut/5' : ''}`}>
+                        <td className="px-6 py-4 w-0">
+                          <RowCheck checked={selReports.has(report.id)} onChange={() => setSelReports(s => toggleInSet(s, report.id))} />
+                        </td>
                         <td className="px-6 py-4">
                           <p className="font-semibold text-graphite">{report.reporter_name}</p>
                           <p className="text-charcoal text-xs mt-0.5">@{report.reporter_username}</p>
@@ -1090,6 +1626,132 @@ export default function AdminDashboard() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ---- DISPUTES ---- */}
+        {tab === 'disputes' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+              <StatCard label="Open Disputes" value={disputesMeta?.openCount ?? 0} sub="Need a response" accent={disputesMeta && disputesMeta.openCount > 0 ? 'text-red-500' : 'text-teal'} />
+              <StatCard label="Total Disputed" value={fmt(disputesMeta?.totalDisputed ?? 0)} sub={`${disputes.length} dispute(s) all-time`} />
+              <div className="bg-white rounded-2xl shadow-sm p-5 flex items-center">
+                <button onClick={() => loadDisputes(true)} disabled={disputesLoading}
+                  className="px-4 py-2 rounded-xl text-sm font-bold bg-charcoal/10 text-charcoal hover:bg-charcoal/20 disabled:opacity-50">
+                  {disputesLoading ? 'Refreshing…' : '↻ Refresh from Stripe'}
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-charcoal/10">
+                <h2 className="text-sm font-black text-graphite uppercase tracking-widest">Stripe Disputes & Chargebacks</h2>
+                <p className="text-xs text-charcoal mt-0.5">Live from Stripe. Respond to disputes in the Stripe Dashboard — the deadline is shown below.</p>
+              </div>
+              {disputesLoading ? (
+                <div className="px-6 py-12 text-center text-charcoal text-sm">Loading disputes…</div>
+              ) : disputesError ? (
+                <div className="px-6 py-12 text-center text-red-500 text-sm">{disputesError}</div>
+              ) : disputes.length === 0 ? (
+                <div className="px-6 py-12 text-center text-teal text-sm font-semibold">✓ No disputes — clean record</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-charcoal/10 bg-snow/60">
+                        <th className="text-left px-6 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Parties</th>
+                        <th className="text-left px-4 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Amount</th>
+                        <th className="text-left px-4 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Reason</th>
+                        <th className="text-left px-4 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Status</th>
+                        <th className="text-left px-4 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Respond by</th>
+                        <th className="text-right px-6 py-3 text-[11px] font-semibold text-charcoal uppercase tracking-wider">Stripe</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-charcoal/5">
+                      {disputes.map(d => {
+                        const open = ['warning_needs_response', 'needs_response', 'warning_under_review', 'under_review'].includes(d.status)
+                        const won = d.status === 'won'
+                        const lost = d.status === 'lost'
+                        const statusCls = won ? 'bg-teal/15 text-teal' : lost ? 'bg-red-100 text-red-600' : open ? 'bg-yellow-100 text-yellow-700' : 'bg-charcoal/10 text-charcoal'
+                        const dueSoon = d.evidence_due_by && new Date(d.evidence_due_by).getTime() - Date.now() < 3 * 86400_000
+                        return (
+                          <tr key={d.id} className="hover:bg-snow/40 transition-colors">
+                            <td className="px-6 py-4">
+                              {d.booking_id ? (
+                                <>
+                                  <p className="font-semibold text-graphite truncate max-w-[200px]">{d.restaurant_name} ↔ {d.musician_name}</p>
+                                  <p className="text-charcoal text-xs mt-0.5">Booking matched</p>
+                                </>
+                              ) : (
+                                <p className="text-charcoal text-xs">Unmatched · {d.payment_intent ?? d.id}</p>
+                              )}
+                            </td>
+                            <td className="px-4 py-4 font-semibold text-graphite">{fmt(d.amount)} <span className="text-charcoal text-xs font-normal">{d.currency}</span></td>
+                            <td className="px-4 py-4 text-charcoal capitalize">{d.reason.replace(/_/g, ' ')}</td>
+                            <td className="px-4 py-4"><span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${statusCls}`}>{capitalize(d.status.replace(/_/g, ' '))}</span></td>
+                            <td className="px-4 py-4">
+                              {d.evidence_due_by ? (
+                                <span className={`text-xs font-semibold ${dueSoon && open ? 'text-red-500' : 'text-charcoal'}`}>
+                                  {fmtDate(d.evidence_due_by)}{d.evidence_submitted ? ' · submitted' : ''}
+                                </span>
+                              ) : <span className="text-charcoal/40 text-xs">—</span>}
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <a href={`https://dashboard.stripe.com/disputes/${d.id}`} target="_blank" rel="noopener noreferrer"
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-chestnut/10 text-chestnut hover:bg-chestnut/20 inline-block">Open ↗</a>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ---- AUDIT LOG ---- */}
+        {tab === 'audit' && (
+          <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-charcoal/10 flex flex-col sm:flex-row sm:items-center gap-3">
+              <div>
+                <h2 className="text-sm font-black text-graphite uppercase tracking-widest">
+                  Audit Log <span className="text-charcoal font-normal normal-case tracking-normal">({auditActions.length})</span>
+                </h2>
+                <p className="text-xs text-charcoal mt-0.5">Every privileged admin action — bans, refunds, payout releases, fee changes, review removals, bulk ops, and emails.</p>
+              </div>
+              <div className="sm:ml-auto flex items-center gap-2">
+                <button onClick={() => loadAudit(true)} disabled={auditLoading}
+                  className="px-3 py-2 rounded-lg text-xs font-bold bg-charcoal/10 text-charcoal hover:bg-charcoal/20 disabled:opacity-50">{auditLoading ? '…' : '↻ Refresh'}</button>
+                <button onClick={() => downloadCsv('audit-log.csv', auditActions.map(a => ({ created_at: a.created_at, action: a.action, target_type: a.target_type, target_id: a.target_id, summary: a.summary })) as unknown as Record<string, unknown>[])}
+                  className="px-3 py-2 rounded-lg text-xs font-bold bg-charcoal/10 text-charcoal hover:bg-charcoal/20 whitespace-nowrap">Export CSV</button>
+              </div>
+            </div>
+            {auditLoading ? (
+              <div className="px-6 py-12 text-center text-charcoal text-sm">Loading audit log…</div>
+            ) : auditActions.length === 0 ? (
+              <div className="px-6 py-12 text-center text-charcoal text-sm">No admin actions recorded yet.</div>
+            ) : (
+              <div className="divide-y divide-charcoal/5">
+                {auditActions.map(a => {
+                  const danger = /ban|refund|remove|cancel/.test(a.action)
+                  return (
+                    <div key={a.id} className="px-6 py-3 flex items-start gap-3">
+                      <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${danger ? 'bg-red-400' : 'bg-teal'}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-graphite">{a.summary || a.action}</p>
+                        <p className="text-xs text-charcoal mt-0.5">
+                          <span className="font-mono bg-charcoal/5 px-1.5 py-0.5 rounded">{a.action}</span>
+                          {a.target_type && <span className="ml-2">{a.target_type}{a.target_id ? ` · ${a.target_id.slice(0, 8)}…` : ''}</span>}
+                        </p>
+                      </div>
+                      <span className="text-xs text-charcoal/50 shrink-0 text-right" title={new Date(a.created_at).toLocaleString()}>{timeAgo(a.created_at)}</span>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -1229,6 +1891,12 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <button
+                  onClick={() => openEmail([drawerData.profile.id], drawerData.profile.full_name || '@' + drawerData.profile.username)}
+                  className="w-full py-2.5 rounded-xl text-sm font-bold bg-chestnut/10 text-chestnut hover:bg-chestnut/20"
+                >
+                  ✉ Email this user
+                </button>
+                <button
                   onClick={() => { handleBan(drawerData.profile.id, !drawerData.profile.is_banned); setDrawerData(d => d ? { ...d, profile: { ...d.profile, is_banned: !d.profile.is_banned } } : d) }}
                   className={`w-full py-2.5 rounded-xl text-sm font-bold ${drawerData.profile.is_banned ? 'bg-teal/15 text-teal hover:bg-teal/25' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
                 >
@@ -1236,6 +1904,40 @@ export default function AdminDashboard() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ---- EMAIL COMPOSER ---- */}
+      {emailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => !emailSending && setEmailModal(null)}>
+          <div className="absolute inset-0 bg-graphite/50" />
+          <div className="relative bg-snow w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="bg-graphite px-5 py-3 flex items-center justify-between">
+              <span className="text-snow font-black text-sm">Email {emailModal.label}</span>
+              <button onClick={() => !emailSending && setEmailModal(null)} className="text-snow/60 hover:text-snow text-xl leading-none">×</button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-xs text-charcoal">Sends a branded Drum Up email to {emailModal.ids.length} recipient{emailModal.ids.length === 1 ? '' : 's'}. They reply to support, not to you.</p>
+              <div>
+                <label className="text-[10px] uppercase tracking-widest text-charcoal">Subject</label>
+                <input type="text" value={emailSubject} onChange={e => setEmailSubject(e.target.value)} placeholder="e.g. Finish setting up payouts"
+                  className="w-full mt-1 px-3 py-2 rounded-lg bg-white text-sm text-graphite shadow-sm focus:shadow-md focus:outline-none transition-shadow" />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-widest text-charcoal">Message</label>
+                <textarea value={emailBody} onChange={e => setEmailBody(e.target.value)} rows={6} placeholder="Write your message… Blank lines start new paragraphs."
+                  className="w-full mt-1 px-3 py-2 rounded-lg bg-white text-sm text-graphite shadow-sm focus:shadow-md focus:outline-none transition-shadow resize-y" />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setEmailModal(null)} disabled={emailSending}
+                  className="px-4 py-2 rounded-xl text-sm font-bold bg-charcoal/10 text-charcoal hover:bg-charcoal/20 disabled:opacity-50">Cancel</button>
+                <button onClick={handleSendEmail} disabled={emailSending || !emailSubject.trim() || !emailBody.trim()}
+                  className="px-4 py-2 rounded-xl text-sm font-bold bg-chestnut text-white hover:opacity-90 disabled:opacity-50">
+                  {emailSending ? 'Sending…' : `Send to ${emailModal.ids.length}`}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { logAdminAction } from '@/lib/admin-audit'
 
 function adminClient() {
   return createClient(
@@ -21,7 +22,7 @@ export async function GET() {
   if (!reviews?.length) return NextResponse.json({ reviews: [] })
 
   const ids = [...new Set(reviews.flatMap(r => [r.reviewer_id, r.reviewee_id]).filter(Boolean))]
-  const { data: profiles } = await supabase.from('profiles').select('id, username, full_name').in('id', ids)
+  const { data: profiles } = await supabase.from('profiles').select('id, username, full_name, user_type').in('id', ids)
   const pMap = new Map((profiles ?? []).map(p => [p.id, p]))
 
   const enriched = reviews.map(r => ({
@@ -34,6 +35,7 @@ export async function GET() {
     reviewer_username: pMap.get(r.reviewer_id)?.username ?? '',
     reviewee_name: pMap.get(r.reviewee_id)?.full_name ?? '—',
     reviewee_username: pMap.get(r.reviewee_id)?.username ?? '',
+    reviewee_type: pMap.get(r.reviewee_id)?.user_type ?? '',
   }))
 
   return NextResponse.json({ reviews: enriched })
@@ -57,6 +59,12 @@ export async function POST(request: Request) {
       const { error } = await supabase.from('reviews').update({ verified: action === 'verify' }).eq('id', reviewId)
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     }
+    await logAdminAction({
+      action: action === 'remove' ? 'remove_review' : action === 'verify' ? 'verify_review' : 'unverify_review',
+      target_type: 'review',
+      target_id: reviewId,
+      summary: action === 'remove' ? 'Removed a review' : action === 'verify' ? 'Marked a review verified' : 'Unverified a review',
+    })
     return NextResponse.json({ success: true })
   } catch {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })

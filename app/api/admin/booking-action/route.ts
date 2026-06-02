@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { stripe } from '@/lib/stripe'
+import { logAdminAction } from '@/lib/admin-audit'
 
 // Admin-only booking remediation. Guarded by middleware.ts (admin cookie) — this
 // route sits under /api/admin/*. Uses the service role, so the DB write triggers
@@ -46,6 +47,7 @@ export async function POST(request: Request) {
       await supabase.from('bookings')
         .update({ status: 'cancelled', payment_status: 'refunded' })
         .eq('id', bookingId)
+      await logAdminAction({ action: 'refund_booking', target_type: 'booking', target_id: bookingId, summary: 'Refunded a paid booking (payout reversed)' })
       return NextResponse.json({ success: true, action })
     }
 
@@ -58,6 +60,7 @@ export async function POST(request: Request) {
       await supabase.from('bookings')
         .update({ payment_status: 'paid', payout_released: true, payout_released_at: new Date().toISOString() })
         .eq('id', bookingId)
+      await logAdminAction({ action: 'release_payout', target_type: 'booking', target_id: bookingId, summary: 'Manually captured & released a payout' })
       return NextResponse.json({ success: true, action })
     }
 
@@ -72,6 +75,7 @@ export async function POST(request: Request) {
     if (booking.availability_id) {
       await supabase.from('availability').update({ status: 'open' }).eq('id', booking.availability_id)
     }
+    await logAdminAction({ action: 'cancel_hold', target_type: 'booking', target_id: bookingId, summary: 'Cancelled an authorization hold (no charge)' })
     return NextResponse.json({ success: true, action })
   } catch (err) {
     console.error('[Admin booking-action] error:', err)

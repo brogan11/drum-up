@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { logAdminAction } from '@/lib/admin-audit'
 
 // Admin-only: set or clear a user's platform-fee override. Guarded by middleware.
 function adminClient() {
@@ -31,6 +32,15 @@ export async function POST(request: Request) {
       .eq('id', userId)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    await logAdminAction({
+      action: pct == null ? 'reset_fee' : 'set_fee_override',
+      target_type: 'user',
+      target_id: userId,
+      summary: pct == null ? 'Reset platform fee to default (8%)' : `Set platform fee to ${pct}%${waiverUntil ? ` until ${waiverUntil.slice(0, 10)}` : ' (no expiry)'}`,
+      metadata: { pct, waiverUntil },
+    })
+
     return NextResponse.json({ success: true })
   } catch {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
