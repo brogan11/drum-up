@@ -5,7 +5,7 @@ Drum Up is a two-sided marketplace platform (web + mobile) that connects restaur
 
 ## Business Model
 - **Free tier** — profile creation, browsing, limited messaging
-- **Booking fee** — 5–10% on bookings made through the app (primary revenue)
+- **Booking fee** — 8% on bookings made through the app (primary revenue)
 - **Pro Musician tier** — ~$12/month for unlimited videos, featured placement, analytics
 - **Pro Venue tier** — ~$25/month for unlimited postings, promoted listings, verified musicians
 

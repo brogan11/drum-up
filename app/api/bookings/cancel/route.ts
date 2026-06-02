@@ -30,7 +30,7 @@ export async function POST(request: Request) {
 
     const { data: booking, error: bookingErr } = await supabaseAdmin
       .from('bookings')
-      .select('id, musician_id, restaurant_id, payment_status, pay_amount, stripe_payment_intent_id, availability_id, status')
+      .select('id, musician_id, restaurant_id, payment_status, pay_amount, platform_fee, stripe_payment_intent_id, availability_id, status')
       .eq('id', bookingId)
       .maybeSingle()
 
@@ -38,6 +38,16 @@ export async function POST(request: Request) {
     if (booking.status === 'cancelled') return NextResponse.json({ error: 'Already cancelled' }, { status: 400 })
     if (booking.status !== 'confirmed') {
       return NextResponse.json({ error: 'Only confirmed bookings can be cancelled this way' }, { status: 400 })
+    }
+    // A 'paid' booking means the gig already ended and the payout was captured &
+    // transferred to the musician. A self-serve refund here would either leave the
+    // platform out of pocket (the transfer isn't reversed) or claw back money the
+    // musician earned for a gig they played. Route these through support instead.
+    if (booking.payment_status === 'paid') {
+      return NextResponse.json(
+        { error: 'This gig has already been completed and paid out. Please contact support for any disputes.' },
+        { status: 409 },
+      )
     }
 
     if (cancelledBy === 'musician' && booking.musician_id !== user.id) {
@@ -60,44 +70,50 @@ export async function POST(request: Request) {
     const within48h = hoursUntilGig !== null && hoursUntilGig <= 48
 
     const payAmount = Number(booking.pay_amount) || 0
-    const platformFeeInCents = Math.round(payAmount * 0.08 * 100)
+    // Use the fee actually charged on this booking (respects any waiver); fall
+    // back to 8% for legacy rows where it wasn't persisted.
+    const platformFeeInCents = booking.platform_fee != null
+      ? Math.round(Number(booking.platform_fee) * 100)
+      : Math.round(payAmount * 0.08 * 100)
     const paymentIntentId = booking.stripe_payment_intent_id as string | null
     const paymentStatus = booking.payment_status as string | null
 
-    if (paymentIntentId && paymentStatus) {
+    // The payment is still just an authorization hold (never captured), so no
+    // money has moved yet. Cancel or partially-capture the hold. Idempotency keys
+    // make concurrent/duplicate cancel requests collapse to a single Stripe op.
+    if (paymentIntentId && paymentStatus === 'authorized') {
+      const idem = `cancel_${bookingId}`
       if (cancelledBy === 'musician') {
-        if (paymentStatus === 'authorized') {
-          await stripe.paymentIntents.cancel(paymentIntentId)
-        } else if (paymentStatus === 'paid') {
-          await stripe.refunds.create({ payment_intent: paymentIntentId })
-        }
+        // Musician backs out before the gig — release the whole hold.
+        await stripe.paymentIntents.cancel(paymentIntentId, undefined, { idempotencyKey: idem })
       } else {
-        // Restaurant cancels: keep 8% platform fee, return the rest
-        if (paymentStatus === 'authorized') {
-          if (platformFeeInCents > 0) {
-            // Partial capture of just the fee; Stripe auto-releases the remainder
-            await stripe.paymentIntents.capture(paymentIntentId, {
-              amount_to_capture: platformFeeInCents,
-            })
-          } else {
-            await stripe.paymentIntents.cancel(paymentIntentId)
-          }
-        } else if (paymentStatus === 'paid') {
-          const refundAmount = Math.round(payAmount * 0.92 * 100)
-          if (refundAmount > 0) {
-            await stripe.refunds.create({
-              payment_intent: paymentIntentId,
-              amount: refundAmount,
-            })
-          }
+        // Restaurant cancels — keep the 8% platform fee, release the rest.
+        if (platformFeeInCents > 0) {
+          await stripe.paymentIntents.capture(
+            paymentIntentId,
+            { amount_to_capture: platformFeeInCents },
+            { idempotencyKey: idem },
+          )
+        } else {
+          await stripe.paymentIntents.cancel(paymentIntentId, undefined, { idempotencyKey: idem })
         }
       }
     }
 
-    await supabaseAdmin
+    // Atomically claim the cancellation: only the request that flips
+    // confirmed → cancelled proceeds to reopen the slot / apply the ban. A
+    // concurrent second request sees no row and returns idempotently.
+    const { data: claimed } = await supabaseAdmin
       .from('bookings')
       .update({ status: 'cancelled' })
       .eq('id', bookingId)
+      .eq('status', 'confirmed')
+      .select('id')
+      .maybeSingle()
+
+    if (!claimed) {
+      return NextResponse.json({ success: true, banned: false })
+    }
 
     // Re-open the slot so it can be filled again
     await supabaseAdmin
@@ -118,7 +134,7 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error('[Cancel Booking] Error:', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Internal server error' },
+      { error: 'Could not cancel the booking. Please try again.' },
       { status: 500 },
     )
   }

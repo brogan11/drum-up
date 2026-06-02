@@ -8,17 +8,17 @@ import { Kpi, Card, EmptyCard, RangeTabs, AnalyticsHeader, InsightsCard } from '
 import { ratingDistribution, aspectAverages, topTags } from '@/lib/reviews'
 import { DollarSign, MusicNote, Star, User, Eye, Hourglass } from '@/components/Icons'
 import { type Range, money, moneyAxis, pctDelta, DASH_BG, buildBuckets, series } from '@/lib/analytics'
+import { musicianNet } from '@/lib/fees'
 
-// The platform takes 8% (see app/api/stripe/payment-intent/route.ts), so a musician nets
-// 92% of the agreed gig pay. All "earnings" here are net to the musician.
-const NET = 0.92
-
+// Earnings are net to the musician. We use the fee actually charged on each
+// booking (bookings.platform_fee, 0 when waived); legacy rows fall back to 8%.
 interface BookingRow {
   id: string
   availability_id: string | null
   restaurant_id: string | null
   status: string
   pay_amount: number | null
+  platform_fee: number | null
   payment_status: string | null
   payout_released: boolean | null
   created_at: string
@@ -59,7 +59,7 @@ export default function MusicianAnalytics() {
           supabase.from('profile_views').select('viewed_at').eq('profile_id', uid),
           supabase.from('follows').select('created_at').eq('following_id', uid),
           supabase.from('bookings')
-            .select('id, availability_id, restaurant_id, status, pay_amount, payment_status, payout_released, created_at')
+            .select('id, availability_id, restaurant_id, status, pay_amount, platform_fee, payment_status, payout_released, created_at')
             .eq('musician_id', uid),
           supabase.from('reviews').select('rating, aspects, tags, created_at').eq('reviewee_id', uid),
         ])
@@ -102,8 +102,8 @@ export default function MusicianAnalytics() {
 
     const confirmed = bookings.filter(b => b.status === 'confirmed')
     const paid = bookings.filter(b => b.payment_status === 'paid')
-    const netEarned = paid.reduce((s, b) => s + (Number(b.pay_amount) || 0) * NET, 0)
-    const pending = confirmed.filter(b => b.payment_status !== 'paid').reduce((s, b) => s + (Number(b.pay_amount) || 0) * NET, 0)
+    const netEarned = paid.reduce((s, b) => s + musicianNet(Number(b.pay_amount) || 0, b.platform_fee), 0)
+    const pending = confirmed.filter(b => b.payment_status !== 'paid').reduce((s, b) => s + musicianNet(Number(b.pay_amount) || 0, b.platform_fee), 0)
 
     const gigsPlayed = confirmed.filter(b => gigDateFor(b).getTime() < now).length
     const upcoming = confirmed.filter(b => gigDateFor(b).getTime() >= now).length
@@ -119,8 +119,8 @@ export default function MusicianAnalytics() {
     const viewsDelta = pctDelta(views30, viewsPrev30)
     const followersNew30 = followers.filter(d => d.getTime() >= d30).length
 
-    const earn30 = paid.filter(b => gigDateFor(b).getTime() >= d30).reduce((s, b) => s + (Number(b.pay_amount) || 0) * NET, 0)
-    const earnPrev30 = paid.filter(b => { const t = gigDateFor(b).getTime(); return t >= d60 && t < d30 }).reduce((s, b) => s + (Number(b.pay_amount) || 0) * NET, 0)
+    const earn30 = paid.filter(b => gigDateFor(b).getTime() >= d30).reduce((s, b) => s + musicianNet(Number(b.pay_amount) || 0, b.platform_fee), 0)
+    const earnPrev30 = paid.filter(b => { const t = gigDateFor(b).getTime(); return t >= d60 && t < d30 }).reduce((s, b) => s + musicianNet(Number(b.pay_amount) || 0, b.platform_fee), 0)
     const earnDelta = pctDelta(earn30, earnPrev30)
 
     const venueAgg = new Map<string, { gigs: number; earned: number }>()
@@ -128,7 +128,7 @@ export default function MusicianAnalytics() {
       if (!b.restaurant_id) continue
       const cur = venueAgg.get(b.restaurant_id) ?? { gigs: 0, earned: 0 }
       cur.gigs += 1
-      cur.earned += (Number(b.pay_amount) || 0) * NET
+      cur.earned += musicianNet(Number(b.pay_amount) || 0, b.platform_fee)
       venueAgg.set(b.restaurant_id, cur)
     }
     const topVenues = [...venueAgg.entries()].sort((a, b) => b[1].gigs - a[1].gigs).slice(0, 6)
@@ -144,7 +144,7 @@ export default function MusicianAnalytics() {
     const gigDateFor = (b: BookingRow) => (b.availability_id && gigDates.get(b.availability_id)) || new Date(b.created_at)
     const viewsSeries = series(views.map(d => ({ date: d, value: 1 })), buckets)
     const followerSeries = series(followers.map(d => ({ date: d, value: 1 })), buckets, true)
-    const earnItems = bookings.filter(b => b.payment_status === 'paid').map(b => ({ date: gigDateFor(b), value: (Number(b.pay_amount) || 0) * NET }))
+    const earnItems = bookings.filter(b => b.payment_status === 'paid').map(b => ({ date: gigDateFor(b), value: musicianNet(Number(b.pay_amount) || 0, b.platform_fee) }))
     const earnSeries = series(earnItems, buckets)
     return { viewsSeries, followerSeries, earnSeries }
   }, [range, views, followers, bookings, gigDates])
@@ -193,7 +193,7 @@ export default function MusicianAnalytics() {
       <AnalyticsHeader title="Analytics" subtitle={name} />
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 pb-24">
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-5">
-          <Kpi icon={<DollarSign className="w-4 h-4" />} label="Net earnings" value={money(m.netEarned)} sub="After 8% platform fee" delta={m.earnDelta} spark={charts.earnSeries.map(p => p.value)} sparkColor={CHART.chestnut} />
+          <Kpi icon={<DollarSign className="w-4 h-4" />} label="Net earnings" value={money(m.netEarned)} sub="After platform fee" delta={m.earnDelta} spark={charts.earnSeries.map(p => p.value)} sparkColor={CHART.chestnut} />
           <Kpi icon={<Hourglass className="w-4 h-4" />} label="Pending payouts" value={money(m.pending)} sub={`${m.upcoming} upcoming gig${m.upcoming === 1 ? '' : 's'}`} accent={CHART.teal} />
           <Kpi icon={<MusicNote className="w-4 h-4" />} label="Gigs played" value={String(m.gigsPlayed)} sub={`${m.confirmedCount} confirmed total`} />
           <Kpi icon={<Eye className="w-4 h-4" />} label="Profile views" value={String(m.views30)} sub="Last 30 days" delta={m.viewsDelta} spark={charts.viewsSeries.map(p => p.value)} sparkColor={CHART.teal} />

@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
+import { bookingFee } from '@/lib/fees'
 
-const FEE_RATE = 0.08
 const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
 
 interface Receipt {
@@ -40,7 +40,7 @@ export default function ReceiptPage() {
 
         const { data: b } = await supabase
           .from('bookings')
-          .select('id, availability_id, restaurant_id, musician_id, status, pay_amount, payment_status, payout_released, payout_released_at, created_at')
+          .select('id, availability_id, restaurant_id, musician_id, status, pay_amount, platform_fee, payment_status, payout_released, payout_released_at, created_at')
           .eq('id', id)
           .maybeSingle()
 
@@ -58,7 +58,7 @@ export default function ReceiptPage() {
           return (mt[key] as string) || p.full_name || fallback
         }
         const gross = Number(b.pay_amount) || 0
-        const fee = gross * FEE_RATE
+        const fee = bookingFee(gross, b.platform_fee as number | null)
         setR({
           id: b.id,
           date: av?.date ? new Date(av.date + 'T00:00:00') : (b.created_at ? new Date(b.created_at) : null),
@@ -151,7 +151,7 @@ export default function ReceiptPage() {
               <span className="text-graphite font-semibold tabular-nums">{usd(r.gross)}</span>
             </div>
             <div className="flex items-center justify-between text-sm py-1.5">
-              <span className="text-charcoal/70">Platform fee (8%)</span>
+              <span className="text-charcoal/70">Platform fee{r.gross > 0 ? ` (${Math.round((r.fee / r.gross) * 100)}%)` : ''}{r.fee === 0 ? ' — waived' : ''}</span>
               <span className={`font-semibold tabular-nums ${isMus ? 'text-charcoal/70' : 'text-charcoal/40'}`}>{isMus ? `−${usd(r.fee)}` : `(${usd(r.fee)} incl.)`}</span>
             </div>
             <div className="flex items-center justify-between border-t border-charcoal/10 mt-2 pt-3">

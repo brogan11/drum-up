@@ -14,6 +14,7 @@ import SaveButton from '@/components/SaveButton'
 import AddToCalendar from '@/components/AddToCalendar'
 import { getSavedSet, savedKey } from '@/lib/saved'
 import { gigStartEnd } from '@/lib/ics'
+import { musicianNet } from '@/lib/fees'
 import { TIME_OPTIONS, endTimeOptions } from '@/lib/time'
 import { groupReputations, type RepSummary } from '@/lib/reviews'
 import { RatingBadge } from '@/components/RatingBadge'
@@ -58,6 +59,7 @@ interface Booking {
   gig: Gig
   status: BookingStatus
   price: number
+  platformFee: number | null
   note: string
   paymentStatus: string | null
   payoutReleased: boolean
@@ -225,7 +227,7 @@ export default function MusicianDashboard() {
     try {
       const { data: myBookings, error: bookingsErr } = await supabase
         .from('bookings')
-        .select('id, availability_id, restaurant_id, status, pay_amount, note, created_at, payment_status, payout_released, source, invite_accepted')
+        .select('id, availability_id, restaurant_id, status, pay_amount, platform_fee, note, created_at, payment_status, payout_released, source, invite_accepted')
         .eq('musician_id', uid)
         .order('created_at', { ascending: false })
 
@@ -285,6 +287,7 @@ export default function MusicianDashboard() {
           },
           status: b.status as BookingStatus,
           price: Number(b.pay_amount) || 0,
+          platformFee: (b as Record<string, unknown>).platform_fee as number | null ?? null,
           note: b.note ?? '',
           paymentStatus: (b as Record<string, unknown>).payment_status as string | null ?? null,
           payoutReleased: ((b as Record<string, unknown>).payout_released as boolean | null) ?? false,
@@ -737,6 +740,7 @@ export default function MusicianDashboard() {
         gig,
         status: 'pending',
         price: gig.budget,
+        platformFee: null,
         note: applyNote,
         paymentStatus: null,
         payoutReleased: false,
@@ -882,15 +886,12 @@ export default function MusicianDashboard() {
   // day when end is unknown, matching prior behavior.
   const gigEndsAt = (g: Gig): Date =>
     gigStartEnd(g.rawDate, g.rawStartDatetime.slice(11) || null, g.rawEndDatetime.slice(11) || '23:59').end
-  // What the musician actually receives after the 8% platform fee. Mirrors the
-  // per-booking rounding in /api/stripe/release-payout so totals match real payouts.
-  const netPay = (gross: number): number => {
-    const fee = Math.round(gross * 0.08 * 100) / 100
-    return Math.round((gross - fee) * 100) / 100
-  }
+  // What the musician actually receives after the platform fee. Uses the fee
+  // actually charged on the booking (0 when waived); legacy rows fall back to 8%.
+  const netPay = (b: Booking): number => musicianNet(b.price, b.platformFee)
   const upcomingGigs = bookings.filter(b => b.status === 'confirmed' && gigEndsAt(b.gig) >= now).length
   const pendingApps = bookings.filter(b => b.status === 'pending').length
-  const totalEarned = bookings.filter(b => b.status === 'confirmed').reduce((sum, b) => sum + netPay(b.price), 0)
+  const totalEarned = bookings.filter(b => b.status === 'confirmed').reduce((sum, b) => sum + netPay(b), 0)
   const filteredGigs = gigs
     .filter(g => {
       const q = gigSearch.toLowerCase()
@@ -1447,13 +1448,13 @@ export default function MusicianDashboard() {
           const cancelledBookings = bookings.filter(b => b.status === 'cancelled')
           const pendingEarnings = bookings
             .filter(b => b.status === 'confirmed' && b.paymentStatus === 'authorized' && !b.payoutReleased)
-            .reduce((s, b) => s + netPay(b.price), 0)
+            .reduce((s, b) => s + netPay(b), 0)
           const releasedEarnings = bookings
             .filter(b => b.status === 'confirmed' && b.paymentStatus === 'paid' && b.payoutReleased)
-            .reduce((s, b) => s + netPay(b.price), 0)
+            .reduce((s, b) => s + netPay(b), 0)
           const totalConfirmedEarnings = bookings
             .filter(b => b.status === 'confirmed')
-            .reduce((s, b) => s + netPay(b.price), 0)
+            .reduce((s, b) => s + netPay(b), 0)
 
           const filteredBookings = (() => {
             switch (bookingFilter) {

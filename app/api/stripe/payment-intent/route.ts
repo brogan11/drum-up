@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe'
 import { createClient } from '@supabase/supabase-js'
 import { checkRateLimit, strictLimiter } from '@/lib/ratelimit'
+import { feeCents } from '@/lib/fees'
 
 export async function POST(request: Request) {
   const rl = await checkRateLimit(request, strictLimiter)
@@ -73,10 +74,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Booking has no payable amount.' }, { status: 400 })
     }
 
-    // Fetch musician's Stripe account
+    // Fetch musician's Stripe account + both parties' fee overrides
     const { data: musician } = await supabaseAdmin
       .from('profiles')
-      .select('stripe_account_id, stripe_onboarded')
+      .select('stripe_account_id, stripe_onboarded, platform_fee_pct, fee_waiver_until')
       .eq('id', musician_id)
       .maybeSingle()
 
@@ -87,6 +88,12 @@ export async function POST(request: Request) {
       )
     }
 
+    const { data: restaurant } = await supabaseAdmin
+      .from('profiles')
+      .select('platform_fee_pct, fee_waiver_until')
+      .eq('id', user.id)
+      .maybeSingle()
+
     // Reconcile the stored amount to the authoritative slot price so payout capture,
     // refunds, and emails (all of which read bookings.pay_amount) agree with what we
     // actually charge here.
@@ -96,7 +103,8 @@ export async function POST(request: Request) {
       .update({ pay_amount: payDollars })
       .eq('id', booking_id)
 
-    const platformFee = Math.round(totalAmount * 0.08)
+    // Effective fee honors any admin-granted per-user waiver (musician or venue).
+    const platformFee = feeCents(totalAmount, musician, restaurant)
 
     console.log('[Stripe] Creating payment intent:', {
       totalAmountCents: totalAmount,
@@ -110,7 +118,8 @@ export async function POST(request: Request) {
       amount: totalAmount,
       currency: 'usd',
       capture_method: 'manual',
-      application_fee_amount: platformFee,
+      // A fully-waived fee means no application fee at all (musician nets 100%).
+      ...(platformFee > 0 ? { application_fee_amount: platformFee } : {}),
       transfer_data: {
         destination: musician.stripe_account_id as string,
       },
@@ -135,7 +144,7 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error('Payment intent error:', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Internal server error' },
+      { error: 'Could not start the payment. Please try again.' },
       { status: 500 },
     )
   }

@@ -4,11 +4,11 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { DASH_BG } from '@/lib/analytics'
+import { bookingFee } from '@/lib/fees'
 import { DollarSign, Calendar, Banknote, Hourglass, Ban } from '@/components/Icons'
 
-// Platform takes 8% (app/api/stripe/payment-intent/route.ts). Musicians net 92%; the
-// restaurant is charged the full amount.
-const FEE_RATE = 0.08
+// Fees come from the fee actually charged on each booking (bookings.platform_fee),
+// which is 0 for fee-waived gigs. Legacy rows fall back to the default 8%.
 const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
 
 interface Row {
@@ -66,7 +66,7 @@ export default function PaymentsPage() {
         const uid = user.id
         const { data: bks } = await supabase
           .from('bookings')
-          .select('id, availability_id, restaurant_id, musician_id, status, pay_amount, payment_status, payout_released, created_at')
+          .select('id, availability_id, restaurant_id, musician_id, status, pay_amount, platform_fee, payment_status, payout_released, created_at')
           .eq(r === 'musician' ? 'musician_id' : 'restaurant_id', uid)
           .order('created_at', { ascending: false })
 
@@ -87,7 +87,7 @@ export default function PaymentsPage() {
         const built: Row[] = bookings.map(b => {
           const av = b.availability_id ? aMap.get(b.availability_id) : undefined
           const gross = Number(b.pay_amount) || 0
-          const fee = gross * FEE_RATE
+          const fee = bookingFee(gross, b.platform_fee as number | null)
           const otherId = (r === 'musician' ? b.restaurant_id : b.musician_id) as string | null
           return {
             id: b.id,

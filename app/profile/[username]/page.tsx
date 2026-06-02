@@ -329,7 +329,7 @@ export default function ProfilePage() {
       // exposed to anon — so it only loads for signed-in viewers.
       if (user && pd.user_type === 'musician') {
         const { data: bks } = await supabase
-          .from('bookings').select('id, availability_id, restaurant_id')
+          .from('confirmed_gigs').select('id, availability_id, restaurant_id')
           .eq('musician_id', pid).eq('status', 'confirmed')
         if (bks && bks.length > 0) {
           const aIds = bks.map(b => b.availability_id)
@@ -357,7 +357,7 @@ export default function ProfilePage() {
         }
       } else if (pd.user_type === 'restaurant') {
         const { data: bks } = await supabase
-          .from('bookings').select('id, musician_id, availability_id')
+          .from('confirmed_gigs').select('id, musician_id, availability_id')
           .eq('restaurant_id', pid).eq('status', 'confirmed')
         if (bks && bks.length > 0) {
           const aIds = bks.map(b => b.availability_id)
@@ -430,7 +430,7 @@ export default function ProfilePage() {
 
           // Eligible to review only once a confirmed gig between the two has actually
           // finished (its end time is in the past — cross-midnight aware via gigStartEnd).
-          let bq = supabase.from('bookings').select('id, availability_id').eq('status', 'confirmed')
+          let bq = supabase.from('confirmed_gigs').select('id, availability_id').eq('status', 'confirmed')
           bq = isRestViewer
             ? bq.eq('restaurant_id', user.id).eq('musician_id', pid)
             : bq.eq('musician_id', user.id).eq('restaurant_id', pid)

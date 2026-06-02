@@ -163,6 +163,28 @@ function PaymentModalInner({ slot, app, onClose, onConfirmed }: {
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState('')
   const [cardComplete, setCardComplete] = useState(false)
+  // Effective fee for this gig (reflects any admin waiver). Defaults to 8% until
+  // the quote loads; the restaurant always pays the full slot pay regardless.
+  const [feeAmount, setFeeAmount] = useState(slot.budget * 0.08)
+
+  useEffect(() => {
+    let cancelled = false
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) return
+      fetch('/api/stripe/fee-quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ booking_id: app.id }),
+      })
+        .then(r => r.json())
+        .then((d: { feeCents?: number }) => { if (!cancelled && typeof d.feeCents === 'number') setFeeAmount(d.feeCents / 100) })
+        .catch(() => {})
+    })
+    return () => { cancelled = true }
+  }, [app.id, slot.budget])
+
+  const musicianReceives = slot.budget - feeAmount
+  const waived = feeAmount <= 0
 
   const handlePay = async () => {
     if (!stripe || !elements || processing) return
@@ -234,12 +256,12 @@ function PaymentModalInner({ slot, app, onClose, onConfirmed }: {
                 <span className="text-graphite font-semibold">${slot.budget.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-xs text-charcoal/60">
-                <span>Platform fee (8%, absorbed by Drum Up)</span>
-                <span>${(slot.budget * 0.08).toFixed(2)}</span>
+                <span>{waived ? 'Platform fee waived 🎉' : `Platform fee (${Math.round((feeAmount / (slot.budget || 1)) * 100)}%, absorbed by Drum Up)`}</span>
+                <span>${feeAmount.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-xs text-charcoal/60">
                 <span>Musician receives</span>
-                <span>${(slot.budget * 0.92).toFixed(2)}</span>
+                <span>${musicianReceives.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm font-black border-t border-charcoal/[0.08] pt-2 mt-1">
                 <span className="text-graphite">You pay</span>
@@ -855,73 +877,42 @@ export default function RestaurantDashboard() {
   }
 
   const handleApplicationAction = async (slotId: string, appId: string, action: 'accept' | 'decline') => {
-    const newStatus = action === 'accept' ? 'confirmed' : 'cancelled'
+    // Accepting requires payment and goes through the payment modal (openPaymentModal
+    // → handlePaymentConfirmed → /api/bookings/confirm). This handler only declines.
+    if (action !== 'decline') return
     try {
       const { error } = await supabase
         .from('bookings')
-        .update({ status: newStatus })
+        .update({ status: 'cancelled' })
         .eq('id', appId)
       if (error) throw error
 
-      if (action === 'accept') {
-        await supabase.from('availability').update({ status: 'filled' }).eq('id', slotId)
-        await supabase.from('bookings')
-          .update({ status: 'cancelled' })
-          .eq('availability_id', slotId)
-          .eq('status', 'pending')
-          .neq('id', appId)
+      toast.info('Application declined.')
 
-        const slot = slots.find(s => s.id === slotId)
-        const app = slot?.applications.find(a => a.id === appId)
-        if (slot && app) {
-          toast.success(`Booking confirmed! ${app.musicianName} has been booked for ${slot.date}.`)
-        }
-
-        // Fire-and-forget: notify musician of acceptance
-        void supabase.auth.getSession().then(({ data: { session } }) => {
-          if (!session) return
-          fetch('/api/notifications/application-accepted', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${session.access_token}`,
-            },
-            body: JSON.stringify({ booking_id: appId }),
-          }).catch(err => console.error('[Email] application-accepted failed:', err))
-        })
-      } else {
-        toast.info('Application declined.')
-
-        // Fire-and-forget: notify musician of decline
-        void supabase.auth.getSession().then(({ data: { session } }) => {
-          if (!session) return
-          fetch('/api/notifications/application-declined', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${session.access_token}`,
-            },
-            body: JSON.stringify({ booking_id: appId }),
-          }).catch(err => console.error('[Email] application-declined failed:', err))
-        })
-      }
+      // Fire-and-forget: notify musician of decline
+      void supabase.auth.getSession().then(({ data: { session } }) => {
+        if (!session) return
+        fetch('/api/notifications/application-declined', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ booking_id: appId }),
+        }).catch(err => console.error('[Email] application-declined failed:', err))
+      })
 
       setSlots(prev => prev.map(slot => {
         if (slot.id !== slotId) return slot
-        const app = slot.applications.find(a => a.id === appId)
         return {
           ...slot,
-          status: action === 'accept' ? 'booked' : slot.status,
-          bookedMusician: action === 'accept' ? app?.musicianName : slot.bookedMusician,
-          applications: slot.applications.map(a => {
-            if (a.id === appId) return { ...a, status: action === 'accept' ? 'confirmed' : 'cancelled' }
-            if (action === 'accept' && a.status === 'pending') return { ...a, status: 'cancelled' as AppStatus }
-            return a
-          }),
+          applications: slot.applications.map(a =>
+            a.id === appId ? { ...a, status: 'cancelled' as AppStatus } : a
+          ),
         }
       }))
     } catch (err) {
-      console.error('Failed to update booking:', err)
+      console.error('Failed to decline application:', err)
       toast.error('Could not update the application. Please try again.')
     }
   }
@@ -1028,17 +1019,22 @@ export default function RestaurantDashboard() {
     if (!paymentModalData) return
     const { slot, app } = paymentModalData
     try {
-      await supabase.from('bookings').update({
-        status: 'confirmed',
-        stripe_payment_intent_id: paymentIntentId,
-        payment_status: 'authorized',
-      }).eq('id', app.id)
-      await supabase.from('availability').update({ status: 'filled' }).eq('id', slot.id)
-      await supabase.from('bookings')
-        .update({ status: 'cancelled' })
-        .eq('availability_id', slot.id)
-        .eq('status', 'pending')
-        .neq('id', app.id)
+      // Booking lifecycle/payment columns are server-only (DB trigger). Confirm
+      // through the API, which re-verifies the Stripe authorization before it
+      // marks the booking confirmed + fills the slot + declines other applicants.
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Not authenticated')
+      const res = await fetch('/api/bookings/confirm', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ booking_id: app.id, payment_intent_id: paymentIntentId }),
+      })
+      const data = await res.json() as { success?: boolean; error?: string }
+      if (!res.ok || !data.success) throw new Error(data.error ?? 'Could not confirm booking.')
+
       setSlots(prev => prev.map(s => {
         if (s.id !== slot.id) return s
         return {

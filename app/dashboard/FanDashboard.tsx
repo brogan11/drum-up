@@ -175,8 +175,10 @@ export default function FanDashboard() {
       const today = new Date().toISOString().slice(0, 10)
       const thirtyDays = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)
 
+      // Reads the column-safe confirmed_gigs view (no pay/Stripe data) — the
+      // bookings base table only exposes a viewer's own rows.
       const { data: bookings, error: bErr } = await supabase
-        .from('bookings')
+        .from('confirmed_gigs')
         .select('id, restaurant_id, musician_id, availability_id')
         .eq('status', 'confirmed')
 

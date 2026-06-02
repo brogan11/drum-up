@@ -113,7 +113,7 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error('Stripe connect error:', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Internal server error' },
+      { error: 'Could not start Stripe onboarding. Please try again.' },
       { status: 500 },
     )
   }

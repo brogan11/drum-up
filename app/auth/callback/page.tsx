@@ -6,7 +6,12 @@ import { useRouter, useSearchParams } from 'next/navigation'
 
 type Status = 'loading' | 'confirmed' | 'failed'
 
-function CallbackHandler({ onDone }: { onDone: (status: 'confirmed' | 'failed') => void }) {
+type Result =
+  | { type: 'confirmed' }
+  | { type: 'failed' }
+  | { type: 'redirect'; to: string }
+
+function CallbackHandler({ onResult }: { onResult: (result: Result) => void }) {
   const searchParams = useSearchParams()
 
   useEffect(() => {
@@ -16,20 +21,49 @@ function CallbackHandler({ onDone }: { onDone: (status: 'confirmed' | 'failed') 
     const handleCallback = async () => {
       try {
         if (code) {
-          const { data, error: codeErr } = await supabase.auth.exchangeCodeForSession(code)
+          const { error: codeErr } = await supabase.auth.exchangeCodeForSession(code)
           if (codeErr) throw codeErr
-          if (data.session && userType) {
-            await supabase.auth.updateUser({ data: { user_type: userType } })
-          }
         }
 
         const { data: { user }, error: userErr } = await supabase.auth.getUser()
         if (userErr) throw userErr
+        if (!user) {
+          onResult({ type: 'failed' })
+          return
+        }
 
-        onDone(user ? 'confirmed' : 'failed')
+        // How did this user authenticate? Email confirmation links use the
+        // 'email' provider; Google sign-in/up uses 'google' (an OAuth provider).
+        const provider = user.app_metadata?.provider
+        const isOAuth = !!provider && provider !== 'email'
+
+        if (isOAuth) {
+          // First Google sign-up carries the chosen role in ?user_type=. Persist
+          // it to auth metadata if the account doesn't already have one.
+          if (userType && !user.user_metadata?.user_type) {
+            await supabase.auth.updateUser({ data: { user_type: userType } })
+          }
+
+          // OAuth users are already fully signed in — there is no password to
+          // create and nothing to "log in" with. Send them straight into the
+          // app: onboarding if they're new, dashboard if they already have a
+          // profile.
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', user.id)
+            .maybeSingle()
+
+          onResult({ type: 'redirect', to: profile ? '/dashboard' : '/onboarding' })
+          return
+        }
+
+        // Email confirmation flow — the user still needs to log in with the
+        // password they set at signup.
+        onResult({ type: 'confirmed' })
       } catch (e) {
         console.error('Auth callback failed', e)
-        onDone('failed')
+        onResult({ type: 'failed' })
       }
     }
 
@@ -43,6 +77,14 @@ function CallbackHandler({ onDone }: { onDone: (status: 'confirmed' | 'failed') 
 export default function AuthCallback() {
   const router = useRouter()
   const [status, setStatus] = useState<Status>('loading')
+
+  const handleResult = (result: Result) => {
+    if (result.type === 'redirect') {
+      router.replace(result.to)
+      return
+    }
+    setStatus(result.type)
+  }
 
   if (status === 'confirmed') {
     return (
@@ -86,10 +128,10 @@ export default function AuthCallback() {
         <img src="/orange-drum-up.png" alt="Drum Up" className="w-16 h-16 object-contain" />
       </div>
       <div className="w-10 h-10 border-4 border-chestnut border-t-transparent rounded-full animate-spin mb-4" />
-      <p className="text-graphite font-bold text-base">Confirming your account…</p>
+      <p className="text-graphite font-bold text-base">Signing you in…</p>
       <p className="text-charcoal text-sm mt-1">Just a moment.</p>
       <Suspense fallback={null}>
-        <CallbackHandler onDone={setStatus} />
+        <CallbackHandler onResult={handleResult} />
       </Suspense>
     </div>
   )
