@@ -82,6 +82,7 @@ interface UserDetail {
     created_at: string; is_banned: boolean; location_text: string | null; bio: string | null
     stripe_onboarded: boolean | null
     platform_fee_pct: number | null; fee_waiver_until: string | null
+    terms_accepted_at: string | null; privacy_accepted_at: string | null; legal_version: string | null
   }
   stats: { ltv: number; paidGigs: number; totalBookings: number; reviewsReceived: number; avgRating: number | null; reportsAgainst: number }
   bookings: {
@@ -1870,6 +1871,32 @@ export default function AdminDashboard() {
                       Reset
                     </button>
                   </div>
+                </div>
+
+                {/* Legal acceptance */}
+                <div className="bg-white rounded-xl shadow-sm p-4">
+                  <p className="text-xs font-black text-graphite uppercase tracking-widest mb-3">Legal Acceptance</p>
+                  {drawerData.profile.terms_accepted_at || drawerData.profile.privacy_accepted_at ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-charcoal">Terms of Service</span>
+                        {drawerData.profile.terms_accepted_at
+                          ? <span className="text-xs font-semibold text-teal text-right">✓ {new Date(drawerData.profile.terms_accepted_at).toLocaleString()}</span>
+                          : <span className="text-xs font-semibold text-red-500">Not recorded</span>}
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-charcoal">Privacy Policy</span>
+                        {drawerData.profile.privacy_accepted_at
+                          ? <span className="text-xs font-semibold text-teal text-right">✓ {new Date(drawerData.profile.privacy_accepted_at).toLocaleString()}</span>
+                          : <span className="text-xs font-semibold text-red-500">Not recorded</span>}
+                      </div>
+                      {drawerData.profile.legal_version && (
+                        <p className="text-[11px] text-charcoal/60 pt-1">Version agreed: {drawerData.profile.legal_version}</p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-charcoal/60">No acceptance on record (joined before consent tracking, or via an older flow).</p>
+                  )}
                 </div>
 
                 <div>

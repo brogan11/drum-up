@@ -6,8 +6,16 @@ import { generateUsername } from '@/lib/generate-username'
 import { useRouter } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
 import { GenreSelector } from '@/components/GenreSelector'
+import { TermsContent, PrivacyContent, LEGAL_EFFECTIVE_DATE } from '@/components/legal'
 
 type UserType = 'restaurant' | 'musician' | 'fan'
+
+// Shrinks the full legal documents to fit the onboarding scroll boxes while
+// rendering the exact same content as /terms and /privacy.
+const LEGAL_EMBED =
+  'h-56 overflow-y-auto bg-white rounded-lg p-4 shadow-inner mb-3 ' +
+  '[&_section]:mb-5 [&_h2]:text-sm [&_h2]:mb-2 [&_h2]:pb-2 [&_h3]:text-[13px] ' +
+  '[&_p]:text-[13px] [&_li]:text-[13px] [&_p]:leading-relaxed'
 
 const BASE_STEPS = 4
 
@@ -355,6 +363,10 @@ export default function OnboardingPage() {
       youtube_url: social.youtube || null,
       website: social.website || null,
       role_metadata: roleMetadata,
+      // Consent trail — Step 1 requires both before reaching here.
+      terms_accepted_at: tosAccepted ? new Date().toISOString() : null,
+      privacy_accepted_at: privacyAccepted ? new Date().toISOString() : null,
+      legal_version: LEGAL_EFFECTIVE_DATE,
     }
 
     const { error: upsertErr } = await supabase.from('profiles').upsert(profileRow)
@@ -531,22 +543,12 @@ export default function OnboardingPage() {
                   <div className="flex items-start justify-between gap-3 mb-2">
                     <div>
                       <p className="text-graphite font-bold text-sm">Terms of Service</p>
-                      <p className="text-charcoal/70 text-xs mt-0.5">Effective May 19, 2026 · Version 1.0</p>
+                      <p className="text-charcoal/70 text-xs mt-0.5">Effective {LEGAL_EFFECTIVE_DATE}</p>
                     </div>
+                    <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-chestnut text-xs font-bold hover:underline shrink-0 mt-0.5">Open full page ↗</a>
                   </div>
-                  <div className="h-40 overflow-y-auto bg-white rounded-lg p-3 text-xs text-charcoal leading-relaxed space-y-2 shadow-inner mb-3">
-                    <p><strong>1. Introduction.</strong> Welcome to Drum Up. By creating an account you agree to these Terms. Drum Up is operated as a sole proprietorship in Pennsylvania, United States.</p>
-                    <p><strong>2. Eligibility.</strong> You must be at least 18 years old, have legal capacity to enter a contract, and provide accurate registration information.</p>
-                    <p><strong>3. Description.</strong> Drum Up is a marketplace connecting restaurants and musicians. We act solely as a facilitator — we do not employ or endorse any user.</p>
-                    <p><strong>4. Accounts.</strong> You are responsible for your account credentials and all activity under your account.</p>
-                    <p><strong>5. Booking & Payments.</strong> Drum Up charges an 8% platform fee on confirmed bookings. All payments must flow through the Platform via Stripe. Arranging off-platform payments to bypass the fee is a violation and may result in account termination.</p>
-                    <p><strong>6. User Conduct.</strong> You agree not to provide false information, harass other users, circumvent fees, scrape the Platform, or otherwise violate these Terms.</p>
-                    <p><strong>7. Content.</strong> You retain ownership of your content but grant Drum Up a license to display and distribute it on the Platform.</p>
-                    <p><strong>8. Third-Party Services.</strong> The Platform integrates with Stripe, Google, Supabase, and Vercel. Your use of those services is subject to their own terms.</p>
-                    <p><strong>9. Disclaimers.</strong> The Platform is provided "as is." Drum Up is not liable for indirect, incidental, or consequential damages. Total liability is capped at platform fees paid in the prior six months.</p>
-                    <p><strong>10. Termination.</strong> Drum Up may suspend or terminate your account at any time for violations of these Terms.</p>
-                    <p><strong>11. Governing Law.</strong> These Terms are governed by Pennsylvania law. Disputes will be resolved in Pennsylvania courts.</p>
-                    <p><strong>12. Contact.</strong> support@drum-up.app</p>
+                  <div className={LEGAL_EMBED}>
+                    <TermsContent />
                   </div>
                   <label className="flex items-center gap-3 cursor-pointer group">
                     <div
@@ -568,21 +570,12 @@ export default function OnboardingPage() {
                   <div className="flex items-start justify-between gap-3 mb-2">
                     <div>
                       <p className="text-graphite font-bold text-sm">Privacy Policy</p>
-                      <p className="text-charcoal/70 text-xs mt-0.5">Effective May 19, 2026 · Version 1.0</p>
+                      <p className="text-charcoal/70 text-xs mt-0.5">Effective {LEGAL_EFFECTIVE_DATE}</p>
                     </div>
+                    <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-chestnut text-xs font-bold hover:underline shrink-0 mt-0.5">Open full page ↗</a>
                   </div>
-                  <div className="h-40 overflow-y-auto bg-white rounded-lg p-3 text-xs text-charcoal leading-relaxed space-y-2 shadow-inner mb-3">
-                    <p><strong>1. Introduction.</strong> Drum Up is committed to protecting your privacy. This Policy explains how we collect, use, disclose, and safeguard your personal information.</p>
-                    <p><strong>2. Information We Collect.</strong> We collect your name, email, profile photo, location (city and coordinates), user type, social media links, booking information, messages, and reviews. We also collect usage data automatically (IP, device, browser, pages visited).</p>
-                    <p><strong>3. How We Use It.</strong> We use your information to operate the Platform, connect restaurants with musicians, process bookings, enable messaging, send notifications, improve the service, prevent fraud, and comply with legal obligations.</p>
-                    <p><strong>4. How We Share It.</strong> Your public profile is visible to other logged-in users. We share data with Supabase, Stripe, Google, and Vercel only as needed to operate the Platform. We do not sell your data to third parties or allow ad targeting.</p>
-                    <p><strong>5. Location Data.</strong> We store your city and coordinates to power location-based matching. Your precise coordinates are never shown to other users — only your general location (e.g. "Philadelphia, PA") is displayed.</p>
-                    <p><strong>6. Data Retention.</strong> Data is retained while your account is active. On deletion, personal data is removed within 30 days. Booking and payment records may be retained up to 7 years for compliance.</p>
-                    <p><strong>7. Your Rights.</strong> You may request access, correction, deletion, or portability of your data by contacting privacy@drum-up.app. We respond within 30 days.</p>
-                    <p><strong>8. Cookies.</strong> We use essential cookies (required for the Platform) and analytics cookies. You can control these through your browser.</p>
-                    <p><strong>9. Children.</strong> The Platform is not intended for users under 18. We do not knowingly collect data from minors.</p>
-                    <p><strong>10. Security.</strong> We use HTTPS, encrypted password storage, and access controls. No internet transmission is 100% secure.</p>
-                    <p><strong>11. Contact.</strong> privacy@drum-up.app</p>
+                  <div className={LEGAL_EMBED}>
+                    <PrivacyContent />
                   </div>
                   <label className="flex items-center gap-3 cursor-pointer group">
                     <div

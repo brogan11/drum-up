@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
 import { eqBarStyle } from '@/lib/eq'
 import { WaveDivider } from '@/components/WaveDivider'
@@ -47,9 +48,15 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
 
-  // When arriving from an invite link (/join), preselect the role the inviter chose.
+  // Preselect the role from the homepage CTA (?type=restaurant|musician|fan), or
+  // from an invite link (/join) that stashed the inviter's chosen role.
   useEffect(() => {
     try {
+      const fromUrl = new URLSearchParams(window.location.search).get('type')
+      if (fromUrl === 'restaurant' || fromUrl === 'musician' || fromUrl === 'fan') {
+        setUserType(fromUrl)
+        return
+      }
       const role = sessionStorage.getItem('drumup_invite_role')
       if (role === 'restaurant' || role === 'musician') setUserType(role)
     } catch { /* ignore */ }
@@ -144,7 +151,7 @@ export default function SignupPage() {
 
         <div className="relative z-10 flex flex-col items-center max-w-md">
           <div className="bg-white rounded-2xl p-3 mb-5 shadow-2xl">
-            <img src="/orange-drum-up.png" alt="Drum Up" className="w-20 h-20 object-contain" />
+            <Image src="/orange-drum-up.png" alt="Drum Up" width={80} height={80} className="w-20 h-20 object-contain" />
           </div>
           <h1 className="text-snow text-5xl font-black tracking-tight mb-4">Drum Up</h1>
           <p className="text-snow/80 text-xl text-center mb-8 max-w-sm">

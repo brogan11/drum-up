@@ -8,6 +8,7 @@ import { Avatar } from '@/components/Avatar'
 import { useToast } from '@/components/Toast'
 import { SkeletonProfilePageMusician, SkeletonProfilePageLight } from '@/components/Skeleton'
 import { buildSocialUrl } from '@/lib/social-urls'
+import { getVideoEmbed, getAudioEmbed, videoProviderLabel } from '@/lib/embeds'
 import { gigStartEnd } from '@/lib/ics'
 import InviteModal from '@/components/InviteModal'
 import { ShareButton } from '@/components/ShareButton'
@@ -92,11 +93,6 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 function toAbsoluteUrl(url: string): string {
   if (!url) return url
   return /^https?:\/\//.test(url) ? url : 'https://' + url
-}
-
-function getYouTubeEmbedUrl(url: string): string | null {
-  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/)
-  return m ? `https://www.youtube.com/embed/${m[1]}` : null
 }
 
 function dateFmt(dateStr: string): string {
@@ -202,6 +198,7 @@ export default function ProfilePage() {
   const [followingCount, setFollowingCount] = useState(0)
 
   const [inviteModalOpen, setInviteModalOpen] = useState(false)
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
 
   // A completed (past) confirmed gig between the two parties makes the viewer eligible to
   // review. myReviewId is set when the viewer has ALREADY reviewed this profile — they may
@@ -230,6 +227,14 @@ export default function ProfilePage() {
     setReviewTags(mine?.tags ?? [])
     setReviewModalOpen(true)
   }
+
+  // Close the photo lightbox on Escape.
+  useEffect(() => {
+    if (!lightboxUrl) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightboxUrl(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [lightboxUrl])
 
   // Check if we navigated here from a messages conversation
   useEffect(() => {
@@ -279,14 +284,15 @@ export default function ProfilePage() {
 
       // NOTE: Never include legal_name here — this is a public query readable by any logged-in user.
       // legal_name is private and only allowed in the user's own settings page or server-side Stripe routes.
-      const publicColumns = 'id, username, full_name, avatar_url, bio, user_type, location_text, latitude, longitude, instagram_url, tiktok_url, spotify_url, youtube_url, website, role_metadata, created_at, performer_type, band_members'
+      const publicColumns = 'id, username, full_name, avatar_url, bio, user_type, location_text, latitude, longitude, instagram_url, tiktok_url, spotify_url, youtube_url, website, role_metadata, created_at, performer_type, band_members, deleted_at'
       const q = UUID_RE.test(slug)
         ? supabase.from('profiles').select(publicColumns).eq('id', slug)
         : supabase.from('profiles').select(publicColumns).eq('username', slug)
       const { data: pd, error: pdErr } = await q.maybeSingle()
       if (pdErr) throw pdErr
       setLoading(false)
-      if (!pd) return
+      // Treat deleted/anonymized accounts as not found.
+      if (!pd || (pd as { deleted_at?: string | null }).deleted_at) return
       setProfile(pd as ProfileData)
 
       const pid = pd.id
@@ -599,6 +605,25 @@ export default function ProfilePage() {
   const performerType = profile.performer_type ?? ''
   const bandMembers = profile.band_members ?? null
   const venueName = (meta.venue_name as string | undefined) ?? profile.full_name ?? ''
+
+  // Showcase media (musicians)
+  const videos: { url: string; title: string }[] = Array.isArray(meta.videos)
+    ? (meta.videos as unknown[]).map(v => {
+        const o = (v ?? {}) as Record<string, unknown>
+        return { url: String(o.url ?? ''), title: String(o.title ?? '') }
+      }).filter(v => v.url)
+    : []
+  const photos: string[] = Array.isArray(meta.photos)
+    ? (meta.photos as unknown[]).map(String).filter(u => /^https?:\/\//.test(u))
+    : []
+  const audioUrl = (meta.audio_url as string | undefined) ?? ''
+  const audioEmbed = getAudioEmbed(audioUrl) ?? (profile.spotify_url ? getAudioEmbed(profile.spotify_url) : null)
+  const repertoire = (meta.repertoire as string | undefined) ?? ''
+  const setLength = (meta.set_length as string | undefined) ?? ''
+  const ownPa = meta.own_pa === true
+  const payRange = (meta.pay_range as string | undefined) ?? ''
+  const stageNotes = (meta.stage_notes as string | undefined) ?? ''
+  const hasLogistics = !!(setLength || ownPa || payRange || stageNotes)
   const capacity = (meta.capacity as string | undefined) ?? ''
   const cuisineType = (meta.cuisine_type as string | undefined) ?? ''
   const musicNights = Array.isArray(meta.music_nights) ? meta.music_nights as string[] : []
@@ -612,7 +637,14 @@ export default function ProfilePage() {
   const avgRating = reviews.length > 0 ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : null
   const revieweeType: RevieweeType | null = profile.user_type === 'musician'
     ? 'musician' : profile.user_type === 'restaurant' ? 'restaurant' : null
-  const embedUrl = profile.youtube_url ? getYouTubeEmbedUrl(profile.youtube_url) : null
+  // Featured clip = first gallery video, falling back to the legacy youtube_url field.
+  const galleryVideos = videos.length > 0
+    ? videos
+    : (profile.youtube_url ? [{ url: profile.youtube_url, title: '' }] : [])
+  const featuredVideo = galleryVideos[0] ?? null
+  const featuredEmbed = featuredVideo ? getVideoEmbed(featuredVideo.url) : null
+  const otherVideos = galleryVideos.slice(1)
+  const hasAnyMedia = galleryVideos.length > 0 || !!audioEmbed || !!profile.tiktok_url
   const memberSince = new Date(profile.created_at).getFullYear()
 
   // ==============================
@@ -825,74 +857,148 @@ export default function ProfilePage() {
           </section>
 
           <section className="py-8 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-            <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-5">· Watch & Listen</p>
+            <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-5">· Watch &amp; Listen</p>
 
-            {/* YouTube embed */}
-            {embedUrl && (
-              <div className="rounded-2xl overflow-hidden shadow-2xl mb-4" style={{ aspectRatio: '16/9', border: '1px solid rgba(255,255,255,0.08)' }}>
-                <iframe src={embedUrl} className="w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title="Performance video" />
+            {/* Featured clip */}
+            {featuredVideo && (featuredEmbed ? (
+              <div className="mb-2">
+                <div className="rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: '16/9', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <iframe src={featuredEmbed} className="w-full h-full" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title={featuredVideo.title || 'Featured performance'} />
+                </div>
+                {featuredVideo.title && <p className="text-snow/55 text-xs mt-2">{featuredVideo.title}</p>}
               </div>
-            )}
-
-            {/* YouTube link card (non-embeddable URL) */}
-            {!embedUrl && profile.youtube_url && (
-              <a href={toAbsoluteUrl(profile.youtube_url)} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-4 p-4 rounded-2xl group mb-4"
+            ) : (
+              <a href={toAbsoluteUrl(featuredVideo.url)} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-4 p-4 rounded-2xl group mb-2"
                 style={{ background: '#3D3D3D', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <div className="w-12 h-12 bg-red-600 rounded-xl flex items-center justify-center shrink-0 text-snow">
-                  <SocialIcon type="youtube" />
+                <div className="w-12 h-12 bg-chestnut rounded-xl flex items-center justify-center shrink-0 text-snow">
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-snow font-bold text-sm group-hover:text-chestnut transition-colors">Watch on YouTube</p>
-                  <p className="text-snow/40 text-xs truncate max-w-xs mt-0.5">{profile.youtube_url}</p>
+                  <p className="text-snow font-bold text-sm group-hover:text-chestnut transition-colors">{featuredVideo.title || `Watch on ${videoProviderLabel(featuredVideo.url)}`}</p>
+                  <p className="text-snow/40 text-xs truncate mt-0.5">{featuredVideo.url}</p>
                 </div>
                 <svg className="w-4 h-4 text-snow/20 group-hover:text-chestnut transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
               </a>
+            ))}
+
+            {/* Additional clips */}
+            {otherVideos.length > 0 && (
+              <div className="grid sm:grid-cols-2 gap-3 mt-4">
+                {otherVideos.map((v, i) => {
+                  const e = getVideoEmbed(v.url)
+                  return e ? (
+                    <div key={i}>
+                      <div className="rounded-xl overflow-hidden shadow-lg" style={{ aspectRatio: '16/9', border: '1px solid rgba(255,255,255,0.08)' }}>
+                        <iframe src={e} className="w-full h-full" loading="lazy" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title={v.title || `Performance clip ${i + 2}`} />
+                      </div>
+                      {v.title && <p className="text-snow/50 text-xs mt-1.5">{v.title}</p>}
+                    </div>
+                  ) : (
+                    <a key={i} href={toAbsoluteUrl(v.url)} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-3 p-3 rounded-xl group" style={{ background: '#3D3D3D', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <div className="w-9 h-9 rounded-lg bg-chestnut/20 text-chestnut flex items-center justify-center shrink-0"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg></div>
+                      <div className="min-w-0">
+                        <p className="text-snow text-xs font-bold truncate group-hover:text-chestnut transition-colors">{v.title || `Watch on ${videoProviderLabel(v.url)}`}</p>
+                        <p className="text-snow/40 text-[10px] truncate">{videoProviderLabel(v.url)}</p>
+                      </div>
+                    </a>
+                  )
+                })}
+              </div>
             )}
 
-            {/* Streaming platform cards — Spotify & TikTok */}
-            {(profile.spotify_url || profile.tiktok_url) && (
-              <div className={`grid gap-3 ${profile.spotify_url && profile.tiktok_url ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                {profile.spotify_url && (
+            {/* Audio player (Spotify / SoundCloud) */}
+            {audioEmbed && (
+              <div className="mt-4 rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+                <iframe src={audioEmbed.src} className="w-full block" style={{ height: audioEmbed.height }} loading="lazy" allow="encrypted-media; clipboard-write" title="Music player" />
+              </div>
+            )}
+
+            {/* Link-out cards for platforms we can't embed inline */}
+            {(profile.tiktok_url || (profile.spotify_url && !audioEmbed)) && (
+              <div className={`grid gap-3 mt-4 ${profile.tiktok_url && profile.spotify_url && !audioEmbed ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                {profile.spotify_url && !audioEmbed && (
                   <a href={buildSocialUrl('spotify', profile.spotify_url)} target="_blank" rel="noopener noreferrer"
                     className="flex flex-col items-center gap-3 p-5 rounded-2xl group hover:opacity-90 transition-opacity"
                     style={{ background: 'rgba(29,185,84,0.14)', border: '1px solid rgba(29,185,84,0.28)' }}>
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 text-snow shadow-sm" style={{ background: '#1DB954' }}>
-                      <SocialIcon type="spotify" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-snow font-bold text-sm">Listen on Spotify</p>
-                      <p className="text-snow/40 text-[11px] mt-0.5">Stream music</p>
-                    </div>
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 text-snow shadow-sm" style={{ background: '#1DB954' }}><SocialIcon type="spotify" /></div>
+                    <div className="text-center"><p className="text-snow font-bold text-sm">Listen on Spotify</p><p className="text-snow/40 text-[11px] mt-0.5">Stream music</p></div>
                   </a>
                 )}
                 {profile.tiktok_url && (
                   <a href={buildSocialUrl('tiktok', profile.tiktok_url)} target="_blank" rel="noopener noreferrer"
                     className="flex flex-col items-center gap-3 p-5 rounded-2xl group hover:opacity-90 transition-opacity"
                     style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.14)' }}>
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 text-snow shadow-sm bg-black">
-                      <SocialIcon type="tiktok" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-snow font-bold text-sm">Watch on TikTok</p>
-                      <p className="text-snow/40 text-[11px] mt-0.5">Short-form videos</p>
-                    </div>
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 text-snow shadow-sm bg-black"><SocialIcon type="tiktok" /></div>
+                    <div className="text-center"><p className="text-snow font-bold text-sm">Watch on TikTok</p><p className="text-snow/40 text-[11px] mt-0.5">Short-form videos</p></div>
                   </a>
                 )}
               </div>
             )}
 
-            {/* Empty state — only when no platforms at all */}
-            {!embedUrl && !profile.youtube_url && !profile.spotify_url && !profile.tiktok_url && (
+            {/* Empty state */}
+            {!hasAnyMedia && (
               <div className="p-8 rounded-2xl text-center" style={{ background: '#3D3D3D', border: '1px solid rgba(255,255,255,0.06)' }}>
                 <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-3" style={{ background: 'rgba(220,127,65,0.15)', color: '#DC7F41' }}>
                   <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
                 </div>
                 <p className="text-snow/60 font-bold text-sm mb-1">No media yet</p>
-                <p className="text-snow/30 text-xs">Add YouTube, Spotify, or TikTok in settings.</p>
+                <p className="text-snow/30 text-xs">{isOwnProfile ? 'Add performance clips and a music player in settings.' : 'This artist hasn’t added clips yet.'}</p>
               </div>
             )}
           </section>
+
+          {/* Repertoire */}
+          {repertoire && (
+            <section className="py-8 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+              <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-4">· Repertoire</p>
+              <p className="text-snow/80 text-sm leading-relaxed whitespace-pre-line">{repertoire}</p>
+            </section>
+          )}
+
+          {/* What I bring */}
+          {hasLogistics && (
+            <section className="py-8 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+              <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-5">· What I Bring</p>
+              <div className="flex flex-wrap gap-3 mb-3">
+                {setLength && (
+                  <div className="rounded-xl px-4 py-3" style={{ background: '#3D3D3D', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <p className="text-snow/30 text-[10px] font-semibold uppercase tracking-wide">Set length</p>
+                    <p className="text-snow font-bold mt-0.5 text-sm">{setLength}</p>
+                  </div>
+                )}
+                {payRange && (
+                  <div className="rounded-xl px-4 py-3" style={{ background: '#3D3D3D', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <p className="text-snow/30 text-[10px] font-semibold uppercase tracking-wide">Typical pay</p>
+                    <p className="text-snow font-bold mt-0.5 text-sm">{payRange}</p>
+                  </div>
+                )}
+                {ownPa && (
+                  <div className="rounded-xl px-4 py-3 flex items-center gap-2" style={{ background: 'rgba(108,154,139,0.16)', border: '1px solid rgba(108,154,139,0.3)' }}>
+                    <svg className="w-4 h-4 text-teal shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                    <p className="text-snow font-bold text-sm">Brings own PA / sound</p>
+                  </div>
+                )}
+              </div>
+              {stageNotes && <p className="text-snow/70 text-sm leading-relaxed whitespace-pre-line">{stageNotes}</p>}
+            </section>
+          )}
+
+          {/* Photos */}
+          {photos.length > 0 && (
+            <section className="py-8 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+              <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-5">· Photos</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {photos.map((url, i) => (
+                  <button key={i} type="button" onClick={() => setLightboxUrl(url)}
+                    className="block rounded-xl overflow-hidden cursor-zoom-in" style={{ aspectRatio: '1/1', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <img src={url} alt="" className="w-full h-full object-cover hover:opacity-90 transition-opacity" loading="lazy" />
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
 
           <section className="py-8 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
             <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-5">· Live History</p>
@@ -1002,6 +1108,31 @@ export default function ProfilePage() {
               toast.success(`Invite sent to ${displayName}! They'll be notified to accept or decline.`)
             }}
           />
+        )}
+
+        {lightboxUrl && (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 cursor-zoom-out"
+            style={{ background: 'rgba(20,20,20,0.92)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setLightboxUrl(null)}
+            role="dialog"
+            aria-modal="true"
+          >
+            <button
+              onClick={() => setLightboxUrl(null)}
+              aria-label="Close"
+              className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center text-snow text-2xl leading-none"
+              style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)' }}
+            >
+              ×
+            </button>
+            <img
+              src={lightboxUrl}
+              alt=""
+              className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            />
+          </div>
         )}
       </div>
     )

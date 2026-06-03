@@ -4,8 +4,12 @@ import React, { ChangeEvent, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { GenreSelector } from '@/components/GenreSelector'
+import { STANDARD_PLAN } from '@/lib/plan'
+import { getVideoEmbed, getAudioEmbed, looksLikeUrl } from '@/lib/embeds'
 
 type UserType = 'restaurant' | 'musician' | 'fan'
+
+interface VideoItem { url: string; title: string }
 
 const PANEL_BG = `
   radial-gradient(ellipse 50% 40% at 12% 8%, rgba(108, 154, 139, 0.10), transparent 70%),
@@ -38,6 +42,16 @@ interface FormState {
   legalName: string
   yearsPerforming: string
 
+  // Showcase media (musicians)
+  videos: VideoItem[]
+  photos: string[]
+  audioUrl: string
+  repertoire: string
+  setLength: string
+  ownPa: boolean
+  payRange: string
+  stageNotes: string
+
   favoriteGenres: string[]
 
   maxDistance: number
@@ -58,6 +72,7 @@ const EMPTY: FormState = {
   locationText: '', latitude: null, longitude: null,
   venueName: '', capacity: '', cuisineType: '', musicNights: [],
   genres: [], instruments: '', performerType: '', bandMembers: '', legalName: '', yearsPerforming: '',
+  videos: [], photos: [], audioUrl: '', repertoire: '', setLength: '', ownPa: false, payRange: '', stageNotes: '',
   favoriteGenres: [],
   maxDistance: 20,
   notifyGigAlerts: true,
@@ -96,6 +111,10 @@ export default function SettingsPage() {
   const [form, setForm] = useState<FormState>(EMPTY)
   const [originalUsername, setOriginalUsername] = useState('')
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle')
+
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -151,6 +170,19 @@ export default function SettingsPage() {
           bandMembers: profile.band_members != null ? String(profile.band_members) : '',
           legalName,
           yearsPerforming: meta.years_performing != null ? String(meta.years_performing) : '',
+          videos: Array.isArray(meta.videos)
+            ? (meta.videos as unknown[]).map(v => {
+                const o = (v ?? {}) as Record<string, unknown>
+                return { url: String(o.url ?? ''), title: String(o.title ?? '') }
+              }).filter(v => v.url)
+            : [],
+          photos: Array.isArray(meta.photos) ? (meta.photos as unknown[]).map(String) : [],
+          audioUrl: (meta.audio_url as string | undefined) ?? '',
+          repertoire: (meta.repertoire as string | undefined) ?? '',
+          setLength: (meta.set_length as string | undefined) ?? '',
+          ownPa: meta.own_pa === true,
+          payRange: (meta.pay_range as string | undefined) ?? '',
+          stageNotes: (meta.stage_notes as string | undefined) ?? '',
           favoriteGenres: Array.isArray(meta.favorite_genres) ? meta.favorite_genres : [],
           maxDistance: typeof profile.max_distance_miles === 'number' ? profile.max_distance_miles : 20,
           notifyGigAlerts: profile.notify_gig_alerts !== false,
@@ -194,6 +226,20 @@ export default function SettingsPage() {
   const toggleArrayItem = (arr: string[], item: string) =>
     arr.includes(item) ? arr.filter(x => x !== item) : [...arr, item]
 
+  // Video list editing
+  const addVideo = () => setForm(p => p.videos.length >= STANDARD_PLAN.maxVideos ? p : { ...p, videos: [...p.videos, { url: '', title: '' }] })
+  const updateVideo = (i: number, key: keyof VideoItem, val: string) =>
+    setForm(p => ({ ...p, videos: p.videos.map((v, idx) => idx === i ? { ...v, [key]: val } : v) }))
+  const removeVideo = (i: number) => { setForm(p => ({ ...p, videos: p.videos.filter((_, idx) => idx !== i) })); setSavedAt(null) }
+  const featureVideo = (i: number) => setForm(p => {
+    if (i === 0) return p
+    const next = [...p.videos]
+    const [item] = next.splice(i, 1)
+    next.unshift(item)
+    return { ...p, videos: next }
+  })
+  const removePhoto = (url: string) => { setForm(p => ({ ...p, photos: p.photos.filter(u => u !== url) })); setSavedAt(null) }
+
   const handleAvatarChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -214,6 +260,31 @@ export default function SettingsPage() {
     }
     update('bannerFile', file)
     update('bannerPreview', URL.createObjectURL(file))
+  }
+
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const handlePhotoAdd = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = '' // allow re-selecting the same file
+    if (!files.length) return
+    const room = STANDARD_PLAN.maxPhotos - form.photos.length
+    if (room <= 0) return
+    setPhotoUploading(true)
+    setError('')
+    try {
+      const added: string[] = []
+      for (const file of files.slice(0, room)) {
+        if (file.size > 10 * 1024 * 1024) { setError('Each photo must be under 10MB.'); continue }
+        const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+        const path = `${userId}/media-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`
+        const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: file.type })
+        if (upErr) { setError(formatError(upErr)); continue }
+        added.push(supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl)
+      }
+      if (added.length) { setForm(prev => ({ ...prev, photos: [...prev.photos, ...added] })); setSavedAt(null) }
+    } finally {
+      setPhotoUploading(false)
+    }
   }
 
   const detectLocation = () => {
@@ -283,6 +354,31 @@ export default function SettingsPage() {
     router.push('/')
   }
 
+  const handleDeleteAccount = async () => {
+    setDeleting(true)
+    setError('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) throw new Error('Your session expired — please log in again.')
+
+      const res = await fetch('/api/account/delete', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json().catch(() => ({})) as { success?: boolean; error?: string }
+      if (!res.ok || !data.success) throw new Error(data.error ?? 'Failed to delete your account.')
+
+      // Account is gone — clear the local session and send them home.
+      try { await supabase.auth.signOut() } catch { /* already invalid */ }
+      router.replace('/?deleted=1')
+    } catch (e) {
+      setError(formatError(e))
+      setDeleting(false)
+      setDeleteOpen(false)
+    }
+  }
+
   const save = async () => {
     setSaving(true)
     setError('')
@@ -329,6 +425,18 @@ export default function SettingsPage() {
         roleMetadata.instruments = form.instruments || null
         roleMetadata.years_performing = form.yearsPerforming ? Number(form.yearsPerforming) : null
         roleMetadata.banner_url = bannerUrl || null
+        // Showcase media — capped to the standard plan allotment.
+        roleMetadata.videos = form.videos
+          .filter(v => looksLikeUrl(v.url))
+          .slice(0, STANDARD_PLAN.maxVideos)
+          .map(v => ({ url: v.url.trim(), title: v.title.trim() }))
+        roleMetadata.photos = form.photos.slice(0, STANDARD_PLAN.maxPhotos)
+        roleMetadata.audio_url = form.audioUrl.trim() || null
+        roleMetadata.repertoire = form.repertoire.trim() || null
+        roleMetadata.set_length = form.setLength.trim() || null
+        roleMetadata.own_pa = form.ownPa
+        roleMetadata.pay_range = form.payRange.trim() || null
+        roleMetadata.stage_notes = form.stageNotes.trim() || null
       } else {
         roleMetadata.favorite_genres = form.favoriteGenres
       }
@@ -609,6 +717,128 @@ export default function SettingsPage() {
             )}
           </Card>
 
+          {/* SECTION — Showcase (musicians) */}
+          {userType === 'musician' && (
+            <Card title="Showcase your talent" eyebrow="2.2">
+
+              {/* Performance clips */}
+              <Field label={`Performance videos · ${form.videos.length}/${STANDARD_PLAN.maxVideos}`}
+                hint={form.videos.length ? 'The first clip is featured at the top of your profile.' : undefined}>
+                <div className="space-y-3">
+                  {form.videos.map((v, i) => {
+                    const embeddable = looksLikeUrl(v.url) && !!getVideoEmbed(v.url)
+                    return (
+                      <div key={i} className="bg-snow rounded-xl p-3 shadow-sm">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className={`text-[10px] font-bold uppercase tracking-widest ${i === 0 ? 'text-chestnut' : 'text-charcoal/50'}`}>
+                            {i === 0 ? '★ Featured' : `Clip ${i + 1}`}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {i !== 0 && (
+                              <button type="button" onClick={() => featureVideo(i)} className="text-[11px] font-bold text-teal hover:underline">Make featured</button>
+                            )}
+                            <button type="button" onClick={() => removeVideo(i)} className="text-[11px] font-bold text-red-500 hover:underline">Remove</button>
+                          </div>
+                        </div>
+                        <input
+                          type="url" inputMode="url" value={v.url} placeholder="YouTube, Vimeo, Instagram or TikTok link"
+                          onChange={e => updateVideo(i, 'url', e.target.value)}
+                          className="w-full bg-white rounded-lg px-3 py-2.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite text-sm mb-2"
+                        />
+                        <input
+                          type="text" value={v.title} placeholder="Caption (optional) — e.g. Acoustic set @ The Rusty Nail"
+                          onChange={e => updateVideo(i, 'title', e.target.value)}
+                          className="w-full bg-white rounded-lg px-3 py-2.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite text-sm"
+                        />
+                        {v.url && (
+                          <p className={`text-[11px] mt-1.5 ${embeddable ? 'text-teal' : 'text-charcoal/50'}`}>
+                            {embeddable ? '✓ Plays inline on your profile' : 'Will show as a link button (YouTube & Vimeo play inline)'}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
+                  {form.videos.length < STANDARD_PLAN.maxVideos ? (
+                    <button type="button" onClick={addVideo}
+                      className="w-full py-2.5 rounded-xl border-2 border-dashed border-charcoal/20 text-charcoal font-bold text-sm hover:border-chestnut/50 hover:text-chestnut transition-colors">
+                      + Add a clip
+                    </button>
+                  ) : (
+                    <p className="text-charcoal/50 text-xs text-center">You&apos;ve added all {STANDARD_PLAN.maxVideos} clips on your plan.</p>
+                  )}
+                </div>
+              </Field>
+
+              {/* Music player */}
+              <Field label="Music player" hint="Paste a Spotify or SoundCloud link to embed a player on your profile.">
+                <Input value={form.audioUrl} onChange={v => update('audioUrl', v)} placeholder="https://open.spotify.com/… or soundcloud.com/…" />
+                {form.audioUrl && (
+                  <p className={`text-[11px] mt-1.5 ${getAudioEmbed(form.audioUrl) ? 'text-teal' : 'text-charcoal/50'}`}>
+                    {getAudioEmbed(form.audioUrl) ? '✓ Player will embed on your profile' : 'Not a recognized Spotify/SoundCloud link — your Spotify profile link still shows separately.'}
+                  </p>
+                )}
+              </Field>
+
+              {/* Photos */}
+              <Field label={`Photos · ${form.photos.length}/${STANDARD_PLAN.maxPhotos}`}>
+                <div className="flex flex-wrap gap-2.5">
+                  {form.photos.map(url => (
+                    <div key={url} className="relative w-20 h-20 rounded-xl overflow-hidden shadow-sm group">
+                      <img src={url} alt="" className="w-full h-full object-cover" />
+                      <button type="button" onClick={() => removePhoto(url)}
+                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-graphite/80 text-snow text-xs font-bold flex items-center justify-center hover:bg-red-500 transition-colors">×</button>
+                    </div>
+                  ))}
+                  {form.photos.length < STANDARD_PLAN.maxPhotos && (
+                    <label className={`w-20 h-20 rounded-xl border-2 border-dashed border-charcoal/20 flex items-center justify-center cursor-pointer hover:border-chestnut/50 transition-colors ${photoUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                      {photoUploading
+                        ? <span className="w-5 h-5 border-2 border-charcoal/30 border-t-chestnut rounded-full animate-spin" />
+                        : <span className="text-charcoal/50 text-2xl font-light">+</span>}
+                      <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoAdd} />
+                    </label>
+                  )}
+                </div>
+                <p className="text-xs text-charcoal/60 mt-1.5">Live shots or press photos, up to 10MB each.</p>
+              </Field>
+
+              {/* Repertoire */}
+              <Field label="Repertoire" hint="What you play — covers, styles, originals. Helps venues picture your set.">
+                <textarea
+                  rows={3}
+                  placeholder="e.g. Jazz standards, acoustic pop covers (Hozier, Norah Jones), a few originals…"
+                  value={form.repertoire}
+                  onChange={e => update('repertoire', e.target.value)}
+                  className="w-full bg-snow rounded-xl px-4 py-3.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite resize-none"
+                />
+              </Field>
+
+              {/* What you bring */}
+              <Field label="What you bring">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Input value={form.setLength} onChange={v => update('setLength', v)} placeholder="Set length — e.g. 2 × 45 min" />
+                  <Input value={form.payRange} onChange={v => update('payRange', v)} placeholder="Typical pay — e.g. $150–250" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => update('ownPa', !form.ownPa)}
+                  className="w-full flex items-center justify-between gap-4 text-left mt-3"
+                >
+                  <span className="text-graphite font-semibold text-sm">I bring my own PA / sound</span>
+                  <span className={`shrink-0 w-11 h-6 rounded-full transition-colors relative ${form.ownPa ? 'bg-chestnut' : 'bg-charcoal/25'}`}>
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.ownPa ? 'translate-x-5' : ''}`} />
+                  </span>
+                </button>
+                <textarea
+                  rows={2}
+                  placeholder="Anything else a venue should know (space needed, power, breaks)…"
+                  value={form.stageNotes}
+                  onChange={e => update('stageNotes', e.target.value)}
+                  className="w-full bg-snow rounded-xl px-4 py-3.5 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite resize-none mt-3"
+                />
+              </Field>
+            </Card>
+          )}
+
           {/* SECTION — Discovery radius (musicians + fans) */}
           {userType !== 'restaurant' && (
             <Card title="Discovery radius" eyebrow="2.5">
@@ -712,11 +942,82 @@ export default function SettingsPage() {
             </button>
           </Card>
 
+          {/* SECTION — Danger zone */}
+          <section className="bg-white rounded-2xl shadow-sm p-6 md:p-8 border border-red-200">
+            <div className="flex items-baseline justify-between mb-3">
+              <h2 className="text-red-600 font-black text-xl tracking-tight">Delete account</h2>
+              <span className="text-red-400 text-[10px] font-bold tracking-[0.3em]">DANGER</span>
+            </div>
+            <p className="text-charcoal text-sm leading-relaxed mb-2">
+              Permanently deletes your account and removes your profile, messages, follows, saved items,
+              reviews you&apos;ve written, and uploaded photos. This cannot be undone.
+            </p>
+            <p className="text-charcoal/70 text-xs leading-relaxed mb-4">
+              As required by law, booking and payment records are retained in anonymized form for up to 7 years
+              for tax and accounting. See our <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-chestnut font-semibold hover:underline">Privacy Policy</a>.
+            </p>
+            <button
+              onClick={() => { setDeleteConfirm(''); setDeleteOpen(true) }}
+              className="bg-red-50 text-red-600 font-bold text-sm px-5 py-2.5 rounded-xl hover:bg-red-100 transition-colors border border-red-200"
+            >
+              Delete my account
+            </button>
+          </section>
+
           {error && (
             <p className="bg-red-100 text-red-600 p-3 rounded-xl text-sm">{error}</p>
           )}
         </div>
       </main>
+
+      {/* Delete confirmation modal */}
+      {deleteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => !deleting && setDeleteOpen(false)}>
+          <div className="absolute inset-0 bg-graphite/50" />
+          <div className="relative bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="bg-red-600 px-6 py-4">
+              <h3 className="text-white font-black text-lg">Delete your account?</h3>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-charcoal text-sm leading-relaxed">
+                This is permanent. Your profile and personal data will be erased and you&apos;ll be signed out.
+                Booking and payment records are kept in anonymized form only as long as the law requires.
+              </p>
+              <div>
+                <label className="block text-charcoal font-semibold text-sm mb-2">
+                  Type <span className="font-black text-red-600">DELETE</span> to confirm
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirm}
+                  onChange={e => setDeleteConfirm(e.target.value)}
+                  placeholder="DELETE"
+                  autoFocus
+                  className="w-full bg-snow rounded-xl px-4 py-3 shadow-sm focus:outline-none focus:shadow-md transition-shadow border-none text-graphite"
+                />
+              </div>
+              <div className="flex gap-3 justify-end pt-1">
+                <button
+                  onClick={() => setDeleteOpen(false)}
+                  disabled={deleting}
+                  className="px-4 py-2.5 rounded-xl text-sm font-bold bg-charcoal/10 text-charcoal hover:bg-charcoal/20 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteAccount}
+                  disabled={deleting || deleteConfirm.trim().toUpperCase() !== 'DELETE'}
+                  className="px-4 py-2.5 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {deleting
+                    ? <><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg> Deleting…</>
+                    : 'Permanently delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sticky save bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-graphite/95 backdrop-blur-md border-t border-charcoal/30 z-40">

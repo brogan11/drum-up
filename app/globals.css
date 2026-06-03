@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Respect users who ask the OS to minimize motion. Neutralizes the perpetual
+   EQ bars, marquee, spin rings, and ping dot for vestibular safety + low-end
+   battery. Kept at the very top so nothing overrides it. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 @layer utilities {
   @keyframes eq-bounce {
     0%, 100% { transform: scaleY(0.25); }

@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, username, full_name, user_type, created_at, is_banned, location_text, bio, stripe_onboarded, platform_fee_pct, fee_waiver_until')
+    .select('id, username, full_name, user_type, created_at, is_banned, location_text, bio, stripe_onboarded, platform_fee_pct, fee_waiver_until, terms_accepted_at, privacy_accepted_at, legal_version')
     .eq('id', id)
     .maybeSingle()
 
