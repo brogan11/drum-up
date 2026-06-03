@@ -42,6 +42,7 @@ interface FeedGig {
   rawStartDatetime: string
   rawEndDatetime: string
   distance: number | null
+  genres: string[]
 }
 
 interface DiscoverVenue {
@@ -146,6 +147,8 @@ export default function FanDashboard() {
 
   // Profile
   const [profile, setProfile] = useState<FanProfile>(INITIAL_PROFILE)
+  const [fanGenres, setFanGenres] = useState<string[]>([])   // favorite genres from onboarding, for personalization
+  const [feedGenreFilter, setFeedGenreFilter] = useState(false)  // toggle: only show gigs matching favorites
   const [userId, setUserId] = useState('')
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
   const [dataLoading, setDataLoading] = useState(true)
@@ -196,7 +199,7 @@ export default function FanDashboard() {
           .select('id, full_name, avatar_url, role_metadata, location_text, latitude, longitude')
           .in('id', venueIds),
         supabase.from('profiles')
-          .select('id, full_name, avatar_url, performer_type, band_members')
+          .select('id, full_name, avatar_url, performer_type, band_members, role_metadata')
           .in('id', musicianIds),
       ])
 
@@ -229,6 +232,8 @@ export default function FanDashboard() {
 
           const pt = musician?.performer_type as string | null
           const performerType: 'solo' | 'band' | null = (pt === 'solo' || pt === 'band') ? pt : null
+          const mMeta = (musician?.role_metadata ?? {}) as Record<string, unknown>
+          const genres = Array.isArray(mMeta.genres) ? (mMeta.genres as string[]) : []
 
           return [{
             id: b.id,
@@ -249,6 +254,7 @@ export default function FanDashboard() {
             rawStartDatetime: `${rawDate}T${startTime || '00:00:00'}`,
             rawEndDatetime,
             distance,
+            genres,
           } satisfies FeedGig]
         })
         .sort((a, b) => a.rawDate.localeCompare(b.rawDate) || a.time.localeCompare(b.time))
@@ -334,7 +340,7 @@ export default function FanDashboard() {
         // or in server-side Stripe routes. legal_name is private.
         const { data, error: profileErr } = await supabase
           .from('profiles')
-          .select('full_name, bio, location_text, avatar_url, latitude, longitude')
+          .select('full_name, bio, location_text, avatar_url, latitude, longitude, role_metadata')
           .eq('id', user.id).maybeSingle()
         if (profileErr) throw profileErr
         if (!data) return
@@ -345,6 +351,8 @@ export default function FanDashboard() {
           location: data.location_text ?? '',
           avatar: data.avatar_url ?? '',
         })
+        const ownMeta = (data.role_metadata ?? {}) as Record<string, unknown>
+        setFanGenres(Array.isArray(ownMeta.favorite_genres) ? (ownMeta.favorite_genres as string[]) : [])
 
         const lat = data.latitude as number | null
         const lon = data.longitude as number | null
@@ -451,6 +459,9 @@ export default function FanDashboard() {
   const today = new Date().toISOString().slice(0, 10)
   const sevenDaysFromNow = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
 
+  // Does this gig's performer play any of the fan's favorite genres?
+  const matchesFavorite = (g: FeedGig) => fanGenres.length > 0 && g.genres.some(x => fanGenres.includes(x))
+
   const followingGigs = feedGigs.filter(g =>
     followedIds.has(g.restaurantId) || followedIds.has(g.musicianId)
   )
@@ -458,7 +469,15 @@ export default function FanDashboard() {
   const nearbyGigs = feedGigs
     .filter(g => {
       if (followedIds.has(g.restaurantId) || followedIds.has(g.musicianId)) return false
-      return g.distance != null && g.distance <= discoverRadius
+      if (g.distance == null || g.distance > discoverRadius) return false
+      if (feedGenreFilter && !matchesFavorite(g)) return false
+      return true
+    })
+    // Favorite-genre matches first, then chronological.
+    .sort((a, b) => {
+      const am = matchesFavorite(a) ? 0 : 1, bm = matchesFavorite(b) ? 0 : 1
+      if (am !== bm) return am - bm
+      return a.rawDate.localeCompare(b.rawDate) || a.time.localeCompare(b.time)
     })
     .slice(0, 20)
 
@@ -661,6 +680,16 @@ export default function FanDashboard() {
               </h3>
               {fanCoords.lat != null && (
                 <p className="text-charcoal text-xs mt-1.5">Upcoming shows within {discoverRadius} miles</p>
+              )}
+              {fanGenres.length > 0 && fanCoords.lat != null && (
+                <button
+                  onClick={() => setFeedGenreFilter(v => !v)}
+                  aria-pressed={feedGenreFilter}
+                  className={`mt-3 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all ${feedGenreFilter ? 'bg-chestnut text-snow shadow-sm' : 'bg-white text-charcoal border border-charcoal/15 hover:bg-[#E8E4E0]'}`}
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill={feedGenreFilter ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                  {feedGenreFilter ? 'My genres only' : 'Match my genres'}
+                </button>
               )}
             </div>
 
@@ -1284,6 +1313,13 @@ function GigCard({
           </span>
         ) : <div className="mb-3" />}
         <p className="text-chestnut font-black text-sm">{gig.date} · {gig.time}</p>
+        {gig.genres.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {gig.genres.slice(0, 3).map(g => (
+              <span key={g} className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-white/10 text-snow/80 border border-white/10">{g}</span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Action row */}
