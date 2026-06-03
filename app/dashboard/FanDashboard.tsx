@@ -1473,7 +1473,7 @@ function TabButton({ icon, label, active, onClick, badge, animation = 'bounce' }
   animation?: string
 }) {
   return (
-    <button onClick={onClick} className={`py-1 flex flex-col items-center gap-1 transition-colors relative tab-hover-${animation}`}>
+    <button onClick={onClick} className={`py-1 min-h-[44px] flex flex-col items-center justify-center gap-1 transition-colors relative tab-hover-${animation}`}>
       <div className={`relative w-11 h-9 rounded-xl flex items-center justify-center transition-all ${active ? 'bg-chestnut shadow-md' : ''}`}>
         <span className={`tab-icon w-5 h-5 ${active ? 'text-snow' : 'text-snow/50'}`}>{icon}</span>
         {badge != null && badge > 0 && (
