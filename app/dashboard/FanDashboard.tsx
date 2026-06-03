@@ -146,10 +146,7 @@ export default function FanDashboard() {
 
   // Profile
   const [profile, setProfile] = useState<FanProfile>(INITIAL_PROFILE)
-  const [editingProfile, setEditingProfile] = useState(false)
-  const [profileDraft, setProfileDraft] = useState<FanProfile>(INITIAL_PROFILE)
   const [userId, setUserId] = useState('')
-  const [savingProfile, setSavingProfile] = useState(false)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
   const [dataLoading, setDataLoading] = useState(true)
   const { toast } = useToast()
@@ -399,27 +396,6 @@ export default function FanDashboard() {
 
   // ---- Actions ----
 
-  const saveProfile = async () => {
-    if (!userId) return
-    setSavingProfile(true)
-    try {
-      const { error: upErr } = await supabase.from('profiles').update({
-        full_name: profileDraft.name || null,
-        bio: profileDraft.bio || null,
-        location_text: profileDraft.location || null,
-      }).eq('id', userId)
-      if (upErr) throw upErr
-      setProfile(profileDraft)
-      setEditingProfile(false)
-      toast.success('Profile saved!')
-    } catch (err) {
-      console.error('Profile save failed:', err)
-      toast.error('Could not save your profile. Please try again.')
-    } finally {
-      setSavingProfile(false)
-    }
-  }
-
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut()
@@ -582,7 +558,7 @@ export default function FanDashboard() {
                   <p className="text-snow font-black text-xl leading-tight truncate">{profile.name}</p>
                   <p className="text-snow/55 text-xs mt-1 truncate">{profile.location || 'Set your location in Profile'}</p>
                 </div>
-                <button onClick={() => setActiveTab('discover')} className="bg-chestnut text-snow px-5 py-3 rounded-xl text-sm font-black hover:opacity-90 transition-opacity shrink-0 shadow-lg">
+                <button onClick={() => setActiveTab('events')} className="bg-chestnut text-snow px-5 py-3 rounded-xl text-sm font-black hover:opacity-90 transition-opacity shrink-0 shadow-lg">
                   Discover
                 </button>
               </div>
@@ -632,8 +608,8 @@ export default function FanDashboard() {
                   title="You're not following anyone yet"
                   body="Follow restaurants and musicians to see their upcoming gigs right here in your feed."
                   twoActions={[
-                    { label: 'Browse Musicians →', onClick: () => { setActiveTab('discover'); setDiscoverView('musicians') } },
-                    { label: 'Browse Venues →', onClick: () => { setActiveTab('discover'); setDiscoverView('venues') } },
+                    { label: 'Browse Musicians →', onClick: () => { setActiveTab('events'); setDiscoverView('musicians') } },
+                    { label: 'Browse Venues →', onClick: () => { setActiveTab('events'); setDiscoverView('venues') } },
                   ]}
                 />
               </div>
@@ -649,7 +625,7 @@ export default function FanDashboard() {
                   icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>}
                   title="No upcoming shows from your follows"
                   body="The venues and artists you follow don't have confirmed shows in the next 30 days yet."
-                  action={{ label: 'Discover More', onClick: () => setActiveTab('discover') }}
+                  action={{ label: 'Discover More', onClick: () => setActiveTab('events') }}
                 />
               </div>
             ) : (
@@ -735,7 +711,7 @@ export default function FanDashboard() {
         )}
 
         {/* ---- DISCOVER TAB ---- */}
-        {activeTab === 'discover' && (
+        {activeTab === 'events' && (
           <>
             <div className="mb-5">
               <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em] mb-1">Local Scene</p>
@@ -1092,7 +1068,7 @@ export default function FanDashboard() {
                 icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>}
                 title="Not following anyone yet"
                 body="Discover venues and musicians and follow them to see their shows in your feed."
-                action={{ label: 'Start Discovering', onClick: () => setActiveTab('discover') }}
+                action={{ label: 'Start Discovering', onClick: () => setActiveTab('events') }}
               />
             ) : (
               <>
@@ -1160,14 +1136,7 @@ export default function FanDashboard() {
                   Your <span className="text-chestnut italic">Profile.</span>
                 </h2>
               </div>
-              {!editingProfile ? (
-                <button onClick={() => { setEditingProfile(true); setProfileDraft(profile) }} className="text-chestnut text-sm font-bold hover:underline shrink-0">Edit</button>
-              ) : (
-                <div className="flex gap-3 shrink-0">
-                  <button onClick={() => setEditingProfile(false)} disabled={savingProfile} className="text-charcoal text-sm font-medium hover:underline disabled:opacity-50">Cancel</button>
-                  <button onClick={saveProfile} disabled={savingProfile} className="bg-chestnut text-snow px-4 py-1.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50">{savingProfile ? 'Saving…' : 'Save'}</button>
-                </div>
-              )}
+              <button onClick={() => router.push('/settings')} className="text-chestnut text-sm font-bold hover:underline shrink-0">Edit</button>
             </div>
 
             <button onClick={() => router.push('/profile/' + userId)} className="flex items-center gap-1 text-chestnut text-sm font-bold hover:underline mb-4">
@@ -1205,11 +1174,11 @@ export default function FanDashboard() {
               </div>
             </div>
 
-            {/* Edit fields */}
+            {/* Profile fields (edit via Settings) */}
             <div className="bg-white rounded-2xl p-5 shadow-sm space-y-4 mb-4">
-              <ProfileField label="Display Name" value={editingProfile ? profileDraft.name : profile.name} editing={editingProfile} onChange={v => setProfileDraft(p => ({ ...p, name: v }))} />
-              <ProfileField label="Bio" value={editingProfile ? profileDraft.bio : profile.bio} editing={editingProfile} onChange={v => setProfileDraft(p => ({ ...p, bio: v }))} multiline placeholder="Tell us what kind of music you love..." />
-              <ProfileField label="Location" value={editingProfile ? profileDraft.location : profile.location} editing={editingProfile} onChange={v => setProfileDraft(p => ({ ...p, location: v }))} placeholder="City, State" />
+              <ProfileField label="Display Name" value={profile.name} />
+              <ProfileField label="Bio" value={profile.bio} placeholder="Tell us what kind of music you love..." />
+              <ProfileField label="Location" value={profile.location} placeholder="City, State" />
             </div>
 
             <div className="bg-white rounded-2xl p-5 shadow-sm">
@@ -1234,7 +1203,7 @@ export default function FanDashboard() {
       <nav className="fixed bottom-0 left-0 right-0 bg-graphite/95 backdrop-blur-md border-t border-charcoal/30 z-40">
         <div className="max-w-2xl mx-auto grid grid-cols-5 px-2 py-2">
           <TabButton animation="sway"    icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>} label="Feed"      active={activeTab === 'feed'}      onClick={() => setActiveTab('feed')} />
-          <TabButton animation="shake"   icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>} label="Events"  active={activeTab === 'discover'}  onClick={() => setActiveTab('discover')} />
+          <TabButton animation="shake"   icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>} label="Events"  active={activeTab === 'events'}  onClick={() => setActiveTab('events')} />
           <TabButton animation="ping"    icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>} label="Following" active={activeTab === 'following'} onClick={() => setActiveTab('following')} badge={followingCount} />
           <TabButton animation="pop"     icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>} label="Messages"  active={activeTab === 'messages'}  onClick={() => setActiveTab('messages')} badge={msgUnread} />
           <TabButton animation="float"   icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>} label="Profile"   active={activeTab === 'profile'}   onClick={() => setActiveTab('profile')} />
@@ -1487,28 +1456,17 @@ function TabButton({ icon, label, active, onClick, badge, animation = 'bounce' }
   )
 }
 
-function ProfileField({ label, value, editing, onChange, multiline, placeholder }: {
+function ProfileField({ label, value, placeholder }: {
   label: string
   value: string
-  editing: boolean
-  onChange: (v: string) => void
-  multiline?: boolean
   placeholder?: string
 }) {
   return (
     <div>
       <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">{label}</p>
-      {editing ? (
-        multiline ? (
-          <textarea value={value} onChange={e => onChange(e.target.value)} rows={3} className="w-full bg-snow rounded-xl px-3 py-2 text-sm text-graphite focus:outline-none resize-none border border-charcoal/10" placeholder={placeholder} />
-        ) : (
-          <input value={value} onChange={e => onChange(e.target.value)} className="w-full bg-snow rounded-xl px-3 py-2 text-sm text-graphite focus:outline-none border border-charcoal/10" placeholder={placeholder} />
-        )
-      ) : (
-        <p className="text-graphite text-sm">
-          {value || <span className="text-charcoal/50">{placeholder || 'Not set'}</span>}
-        </p>
-      )}
+      <p className="text-graphite text-sm">
+        {value || <span className="text-charcoal/50">{placeholder || 'Not set'}</span>}
+      </p>
     </div>
   )
 }
