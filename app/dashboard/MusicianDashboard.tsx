@@ -1531,6 +1531,13 @@ export default function MusicianDashboard() {
                       {formatMoney(pendingEarnings)} is authorized and will be released to your bank after each gig date passes.
                     </p>
                   )}
+                  <a
+                    href="mailto:support@drum-up.app?subject=Payout%20issue&body=Hi%20Drum%20Up%20team%2C%20I%20have%20a%20question%20about%20one%20of%20my%20payouts%3A%0A%0A"
+                    className="inline-flex items-center gap-1.5 text-snow/50 hover:text-snow text-xs font-semibold mt-3 transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+                    Something wrong with a payout? Contact support
+                  </a>
                 </div>
               )}
 
@@ -2021,15 +2028,16 @@ export default function MusicianDashboard() {
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {slot.min_pay != null && (
-                          <span className="text-teal text-xs font-black">${slot.min_pay}+</span>
+                          <span className="text-teal text-xs font-black">{formatMoney(slot.min_pay)}+</span>
                         )}
                         <button
                           onClick={async () => {
+                            if (!window.confirm(`Remove your availability on ${slot.dateLabel}?`)) return
                             await supabase.from('musician_availability').update({ status: 'cancelled' }).eq('id', slot.id)
                             setMyAvailability(prev => prev.filter(s => s.id !== slot.id))
                           }}
                           className="text-charcoal/40 hover:text-red-500 transition-colors"
-                          aria-label="Cancel slot"
+                          aria-label="Remove availability slot"
                         >
                           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
