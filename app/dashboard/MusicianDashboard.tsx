@@ -19,6 +19,7 @@ import { TIME_OPTIONS, endTimeOptions } from '@/lib/time'
 import { groupReputations, type RepSummary } from '@/lib/reviews'
 import { RatingBadge } from '@/components/RatingBadge'
 import InvitePeopleModal from '@/components/InvitePeopleModal'
+import Modal from '@/components/Modal'
 import {
   SkeletonStatCard,
   SkeletonBookingCard,
@@ -2028,13 +2029,12 @@ export default function MusicianDashboard() {
 
       {/* ---- APPLY MODAL ---- */}
       {applyGigId && applyGig && (
-        <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
-          <div className="bg-snow w-full max-w-md rounded-3xl shadow-2xl">
+        <Modal onClose={() => { setApplyGigId(null); setApplyNote('') }} labelledBy="apply-modal-title">
             <div className="bg-graphite rounded-t-3xl px-6 py-4 flex items-center justify-between relative overflow-hidden">
               <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-chestnut opacity-25 blur-2xl pointer-events-none" />
               <div className="relative z-10">
                 <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em]">Send It</p>
-                <h3 className="text-snow text-xl font-black tracking-tight">Apply to <span className="text-chestnut italic">Gig.</span></h3>
+                <h3 id="apply-modal-title" className="text-snow text-xl font-black tracking-tight">Apply to <span className="text-chestnut italic">Gig.</span></h3>
               </div>
               <button
                 onClick={() => { setApplyGigId(null); setApplyNote('') }}
@@ -2085,18 +2085,16 @@ export default function MusicianDashboard() {
                 {applying ? 'Sending…' : 'Submit Application →'}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ---- Stripe Explain Modal ---- */}
       {showStripeExplainModal && (
-        <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden">
+        <Modal onClose={() => setShowStripeExplainModal(false)} labelledBy="stripe-explain-title">
             {/* Header */}
-            <div className="bg-graphite px-6 py-5">
+            <div className="bg-graphite rounded-t-3xl px-6 py-5">
               <p className="text-snow/60 text-xs font-semibold uppercase tracking-widest mb-1">Payouts</p>
-              <h2 className="text-snow font-black text-2xl tracking-tight">Set Up Your Payouts</h2>
+              <h2 id="stripe-explain-title" className="text-snow font-black text-2xl tracking-tight">Set Up Your Payouts</h2>
               <p className="text-snow/60 text-xs mt-2 leading-relaxed">
                 Powered by Stripe — the same payment platform used by Amazon, Shopify, and millions of businesses worldwide.
               </p>
@@ -2148,16 +2146,14 @@ export default function MusicianDashboard() {
                 I'll do this later
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ---- Stripe Success Modal ---- */}
       {stripeSuccess && (
-        <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden">
-            <div className="bg-graphite px-6 py-5">
-              <h2 className="text-snow font-black text-2xl tracking-tight">You're all set!</h2>
+        <Modal onClose={() => setStripeSuccess(false)} labelledBy="stripe-success-title">
+            <div className="bg-graphite rounded-t-3xl px-6 py-5">
+              <h2 id="stripe-success-title" className="text-snow font-black text-2xl tracking-tight">You're all set!</h2>
               <p className="text-snow/60 text-sm mt-2 leading-relaxed">
                 Your payout account is connected. You'll automatically receive payment within 2 business days after each completed gig.
               </p>
@@ -2178,8 +2174,7 @@ export default function MusicianDashboard() {
                 Go to Dashboard
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ---- Cancel Booking Modal ---- */}
@@ -2188,10 +2183,9 @@ export default function MusicianDashboard() {
         const gigMs = booking ? new Date(booking.gig.rawDate + 'T00:00:00').getTime() : Infinity
         const within48h = (gigMs - Date.now()) / 3600000 <= 48
         return (
-          <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl overflow-hidden">
-              <div className="bg-graphite px-6 py-5">
-                <h3 className="text-snow font-black text-xl tracking-tight">Cancel Booking?</h3>
+          <Modal onClose={() => setCancelBookingId(null)} size="sm" labelledBy="m-cancel-booking-title">
+              <div className="bg-graphite rounded-t-3xl px-6 py-5">
+                <h3 id="m-cancel-booking-title" className="text-snow font-black text-xl tracking-tight">Cancel Booking?</h3>
                 <p className="text-snow/60 text-sm mt-1">
                   {booking?.gig.venue.name} · {booking?.gig.date}
                 </p>
@@ -2227,17 +2221,15 @@ export default function MusicianDashboard() {
                   </button>
                 </div>
               </div>
-            </div>
-          </div>
+          </Modal>
         )
       })()}
 
       {/* ---- Stripe Refresh Modal (incomplete onboarding) ---- */}
       {showStripeRefreshModal && (
-        <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden">
-            <div className="bg-graphite px-6 py-5">
-              <h2 className="text-snow font-black text-2xl tracking-tight">Almost there</h2>
+        <Modal onClose={() => setShowStripeRefreshModal(false)} labelledBy="stripe-refresh-title">
+            <div className="bg-graphite rounded-t-3xl px-6 py-5">
+              <h2 id="stripe-refresh-title" className="text-snow font-black text-2xl tracking-tight">Almost there</h2>
               <p className="text-snow/60 text-sm mt-2 leading-relaxed">
                 It looks like your payout setup wasn't completed. You'll need to finish setting up your account to receive payment for gigs.
               </p>
@@ -2257,8 +2249,7 @@ export default function MusicianDashboard() {
                 I'll do this later
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
     </div>
@@ -2375,14 +2366,12 @@ function PostAvailabilityModal({ userId, myLat, myLon, onClose, onSuccess }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
-      <div className="bg-snow w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
-
+    <Modal onClose={onClose} labelledBy="post-avail-title">
         <div className="bg-graphite rounded-t-3xl px-6 py-4 flex items-center justify-between relative overflow-hidden">
           <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-teal opacity-20 blur-2xl pointer-events-none" />
           <div className="relative z-10">
             <p className="text-teal text-[10px] font-semibold uppercase tracking-[0.3em]">Availability</p>
-            <h3 className="text-snow text-xl font-black tracking-tight">
+            <h3 id="post-avail-title" className="text-snow text-xl font-black tracking-tight">
               Post a <span className="text-teal italic">Slot.</span>
             </h3>
           </div>
@@ -2490,8 +2479,7 @@ function PostAvailabilityModal({ userId, myLat, myLon, onClose, onSuccess }: {
             Cancel
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }
 

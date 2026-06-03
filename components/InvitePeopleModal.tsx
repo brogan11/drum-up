@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/components/Toast'
+import Modal from '@/components/Modal'
 
 interface Props {
   // The role the invitee will join as. A musician invites venues; a venue invites musicians.
@@ -51,14 +52,13 @@ export default function InvitePeopleModal({ invitedRole, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
-      <div className="bg-snow w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
+    <Modal onClose={onClose} labelledBy="invite-people-title">
         {/* Header */}
         <div className="bg-graphite rounded-t-3xl px-6 py-4 flex items-center justify-between relative overflow-hidden">
           <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-chestnut opacity-20 blur-2xl pointer-events-none" />
           <div className="relative z-10">
             <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em]">Grow your network</p>
-            <h3 className="text-snow text-xl font-black tracking-tight">
+            <h3 id="invite-people-title" className="text-snow text-xl font-black tracking-tight">
               Invite a <span className="text-chestnut italic">{noun}.</span>
             </h3>
           </div>
@@ -125,7 +125,6 @@ export default function InvitePeopleModal({ invitedRole, onClose }: Props) {
             Cancel
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { TIME_OPTIONS, endTimeOptions } from '@/lib/time'
+import Modal from '@/components/Modal'
 
 interface OpenSlot {
   id: string
@@ -130,15 +131,13 @@ export default function InviteModal({ musicianId, musicianName, onClose, onSucce
   }
 
   return (
-    <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
-      <div className="bg-snow w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
-
+    <Modal onClose={onClose} labelledBy="invite-modal-title">
         {/* Header */}
         <div className="bg-graphite rounded-t-3xl px-6 py-4 flex items-center justify-between relative overflow-hidden">
           <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-chestnut opacity-20 blur-2xl pointer-events-none" />
           <div className="relative z-10">
             <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em]">Private Booking</p>
-            <h3 className="text-snow text-xl font-black tracking-tight">
+            <h3 id="invite-modal-title" className="text-snow text-xl font-black tracking-tight">
               Invite <span className="text-chestnut italic">{musicianName.split(' ')[0]}.</span>
             </h3>
           </div>
@@ -320,8 +319,7 @@ export default function InviteModal({ musicianId, musicianName, onClose, onSucce
             Cancel
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }
 

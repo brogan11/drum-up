@@ -22,6 +22,7 @@ import { TIME_OPTIONS, endTimeOptions } from '@/lib/time'
 import { groupReputations, type RepSummary } from '@/lib/reviews'
 import { RatingBadge } from '@/components/RatingBadge'
 import InvitePeopleModal from '@/components/InvitePeopleModal'
+import Modal from '@/components/Modal'
 
 // ---- Types ----
 
@@ -230,13 +231,12 @@ function PaymentModalInner({ slot, app, onClose, onConfirmed }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
-      <div className="bg-snow w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
+    <Modal onClose={onClose} labelledBy="pay-modal-title">
         <div className="bg-graphite rounded-t-3xl px-6 py-4 flex items-center justify-between relative overflow-hidden">
           <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-chestnut opacity-25 blur-2xl pointer-events-none" />
           <div className="relative z-10">
             <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em]">Confirm & Pay</p>
-            <h3 className="text-snow text-xl font-black tracking-tight">Confirm <span className="text-chestnut italic">Booking.</span></h3>
+            <h3 id="pay-modal-title" className="text-snow text-xl font-black tracking-tight">Confirm <span className="text-chestnut italic">Booking.</span></h3>
           </div>
           <button onClick={onClose} className="text-snow/60 hover:text-snow transition-colors leading-none relative z-10"><svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
         </div>
@@ -314,8 +314,7 @@ function PaymentModalInner({ slot, app, onClose, onConfirmed }: {
             Cancel
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -2292,12 +2291,11 @@ export default function RestaurantDashboard() {
 
       {/* ---- EDIT SLOT MODAL ---- */}
       {editingSlot && (
-        <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
-          <div className="bg-snow w-full max-w-md rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto">
+        <Modal onClose={() => setEditingSlot(null)} labelledBy="edit-slot-title">
             <div className="bg-graphite rounded-t-3xl px-6 py-4 flex items-center justify-between">
               <div>
                 <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em]">Edit Slot</p>
-                <h3 className="text-snow text-xl font-black tracking-tight">{editingSlot.date}</h3>
+                <h3 id="edit-slot-title" className="text-snow text-xl font-black tracking-tight">{editingSlot.date}</h3>
               </div>
               <button onClick={() => setEditingSlot(null)} className="text-snow/60 hover:text-snow transition-colors leading-none"><svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
             </div>
@@ -2362,8 +2360,7 @@ export default function RestaurantDashboard() {
                 <button onClick={handleEditSlot} disabled={savingEdit} className="flex-1 bg-chestnut text-snow py-3 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50">{savingEdit ? 'Saving…' : 'Save Changes'}</button>
               </div>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ---- INVITE MODAL (from Availability browse) ---- */}
@@ -2384,12 +2381,12 @@ export default function RestaurantDashboard() {
 
       {/* ---- INVITE SUCCESS ---- */}
       {inviteSuccessBookingId && (
-        <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-snow w-full max-w-sm rounded-3xl shadow-2xl p-6 text-center">
+        <Modal onClose={() => setInviteSuccessBookingId(null)} size="sm" labelledBy="invite-success-title">
+          <div className="p-6 text-center">
             <div className="w-12 h-12 bg-teal/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6 text-teal" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+              <svg className="w-6 h-6 text-teal" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
             </div>
-            <h3 className="text-graphite text-xl font-black mb-2">Invite Sent!</h3>
+            <h3 id="invite-success-title" className="text-graphite text-xl font-black mb-2">Invite Sent!</h3>
             <p className="text-charcoal/60 text-sm mb-5">The musician has been invited and will receive a notification.</p>
             <button
               onClick={() => setInviteSuccessBookingId(null)}
@@ -2398,16 +2395,15 @@ export default function RestaurantDashboard() {
               Done
             </button>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* ---- CANCEL SLOT MODAL ---- */}
       {cancelSlotId && (
-        <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-snow w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden">
+        <Modal onClose={() => setCancelSlotId(null)} size="sm" labelledBy="cancel-slot-title">
             <div className="p-6">
-              <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-4"><svg className="w-6 h-6 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg></div>
-              <h3 className="text-graphite text-xl font-black text-center mb-2">Cancel this slot?</h3>
+              <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-4"><svg className="w-6 h-6 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg></div>
+              <h3 id="cancel-slot-title" className="text-graphite text-xl font-black text-center mb-2">Cancel this slot?</h3>
               {(() => {
                 const slot = slots.find(s => s.id === cancelSlotId)
                 const hasConfirmed = slot?.applications.some(a => a.status === 'confirmed')
@@ -2425,16 +2421,14 @@ export default function RestaurantDashboard() {
                 <button onClick={handleCancelSlot} disabled={cancellingSlot} className="flex-1 bg-red-500 text-white py-3 rounded-xl text-sm font-bold hover:bg-red-600 transition-colors disabled:opacity-50">{cancellingSlot ? 'Cancelling…' : 'Yes, Cancel'}</button>
               </div>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ---- CANCEL BOOKING MODAL (refund flow) ---- */}
       {cancelBookingId && (
-        <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl overflow-hidden">
-            <div className="bg-graphite px-6 py-5">
-              <h3 className="text-snow font-black text-xl tracking-tight">Cancel Booking?</h3>
+        <Modal onClose={() => setCancelBookingId(null)} size="sm" labelledBy="cancel-booking-title">
+            <div className="bg-graphite rounded-t-3xl px-6 py-5">
+              <h3 id="cancel-booking-title" className="text-snow font-black text-xl tracking-tight">Cancel Booking?</h3>
               <p className="text-snow/60 text-sm mt-1">
                 {(() => {
                   const slot = slots.find(s => s.applications.some(a => a.id === cancelBookingId))
@@ -2468,19 +2462,17 @@ export default function RestaurantDashboard() {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ---- POST SLOT MODAL ---- */}
       {postSlotOpen && (
-        <div className="fixed inset-0 bg-graphite/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
-          <div className="bg-snow w-full max-w-md rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto">
+        <Modal onClose={() => setPostSlotOpen(false)} labelledBy="post-slot-title">
             <div className="bg-graphite rounded-t-3xl px-6 py-4 flex items-center justify-between relative overflow-hidden">
               <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-chestnut opacity-25 blur-2xl pointer-events-none" />
               <div className="relative z-10">
                 <p className="text-chestnut text-[10px] font-semibold uppercase tracking-[0.3em]">New Listing</p>
-                <h3 className="text-snow text-xl font-black tracking-tight">Post a <span className="text-chestnut italic">Slot.</span></h3>
+                <h3 id="post-slot-title" className="text-snow text-xl font-black tracking-tight">Post a <span className="text-chestnut italic">Slot.</span></h3>
               </div>
               <button onClick={() => setPostSlotOpen(false)} className="text-snow/60 hover:text-snow transition-colors leading-none relative z-10"><svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
             </div>
@@ -2586,8 +2578,7 @@ export default function RestaurantDashboard() {
                 {postingSlot ? 'Posting…' : 'Post Slot'}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* ---- PAYMENT MODAL ---- */}
