@@ -385,8 +385,11 @@ export default function FanDashboard() {
     loadDiscover(fanCoords.lat, fanCoords.lon, discoverRadius, userId)
   }, [discoverRadius, fanCoords, userId, loadDiscover])
 
-  // Realtime: new confirmed bookings → refetch feed
+  // Realtime: new confirmed bookings → refetch feed.
+  // This filter fires for EVERY confirmed booking platform-wide, so coalesce a
+  // burst of events into a single trailing refetch instead of reloading per row.
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
     const channel = supabase
       .channel('fan-feed-bookings')
       .on('postgres_changes', {
@@ -395,11 +398,14 @@ export default function FanDashboard() {
         table: 'bookings',
         filter: 'status=eq.confirmed',
       }, () => {
-        const { lat, lon } = fanCoordsRef.current
-        loadFeed(lat, lon)
+        if (timer) clearTimeout(timer)
+        timer = setTimeout(() => {
+          const { lat, lon } = fanCoordsRef.current
+          loadFeed(lat, lon)
+        }, 4000)
       })
       .subscribe()
-    return () => { void supabase.removeChannel(channel) }
+    return () => { if (timer) clearTimeout(timer); void supabase.removeChannel(channel) }
   }, [loadFeed])
 
   // ---- Actions ----
