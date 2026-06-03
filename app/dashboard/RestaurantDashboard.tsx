@@ -24,6 +24,8 @@ import { RatingBadge } from '@/components/RatingBadge'
 import InvitePeopleModal from '@/components/InvitePeopleModal'
 import Modal from '@/components/Modal'
 import { formatMoney } from '@/lib/analytics'
+import SaveButton from '@/components/SaveButton'
+import { getSavedSet, savedKey } from '@/lib/saved'
 
 // ---- Types ----
 
@@ -365,6 +367,13 @@ export default function RestaurantDashboard() {
   const [savingRadius, setSavingRadius] = useState(false)
   const [declineApp, setDeclineApp] = useState<{ slotId: string; appId: string; name: string } | null>(null)
   const [decliningApp, setDecliningApp] = useState(false)
+  const [savedMusicians, setSavedMusicians] = useState<Set<string>>(new Set())
+  const setSavedKey = (key: string, on: boolean) =>
+    setSavedMusicians(prev => {
+      const next = new Set(prev)
+      if (on) next.add(key); else next.delete(key)
+      return next
+    })
   const [liveMusicians, setLiveMusicians] = useState<LiveMusician[]>([])
   // Aggregate reputation per musician, keyed by musician id, for browse cards.
   const [musicianReps, setMusicianReps] = useState<Map<string, RepSummary>>(new Map())
@@ -374,6 +383,8 @@ export default function RestaurantDashboard() {
   // Browse view toggle + musician availability
   const [browseView, setBrowseView] = useState<'musicians' | 'availability'>('musicians')
   const [musicianAvailability, setMusicianAvailability] = useState<MusicianAvailCard[]>([])
+  const [availMinPay, setAvailMinPay] = useState(0)   // min-pay filter for the availability view
+  const [availDate, setAvailDate] = useState('')       // exact-date filter (YYYY-MM-DD) for the availability view
   const [availabilityLoading, setAvailabilityLoading] = useState(false)
   const [inviteModal, setInviteModal] = useState<{ musicianId: string; musicianName: string; date?: string; startTime?: string; endTime?: string } | null>(null)
   const [inviteSuccessBookingId, setInviteSuccessBookingId] = useState<string | null>(null)
@@ -616,6 +627,7 @@ export default function RestaurantDashboard() {
       if (authErr) throw authErr
       if (!user) return
       setUserId(user.id)
+      void getSavedSet(user.id).then(setSavedMusicians)
       // NOTE: Never include legal_name in queries unless fetching the current user's own profile
       // or in server-side Stripe routes. legal_name is private.
       const { data, error: profileErr } = await supabase
@@ -1740,7 +1752,12 @@ export default function RestaurantDashboard() {
             </div>
 
             {/* ---- AVAILABILITY VIEW ---- */}
-            {browseView === 'availability' && (
+            {browseView === 'availability' && (() => {
+              const filteredAvailability = musicianAvailability.filter(s =>
+                (availMinPay === 0 || (s.min_pay ?? 0) >= availMinPay) &&
+                (!availDate || s.date === availDate)
+              )
+              return (
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-charcoal/60 text-xs font-semibold">Musicians posting open slots near you</p>
@@ -1757,6 +1774,38 @@ export default function RestaurantDashboard() {
                   </button>
                 </div>
 
+                {/* Pay + date filters */}
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-1.5 bg-white rounded-xl px-3 py-2 shadow-sm flex-1">
+                    <label htmlFor="avail-minpay" className="text-charcoal/60 text-xs font-semibold shrink-0">Min pay</label>
+                    <select
+                      id="avail-minpay"
+                      value={availMinPay}
+                      onChange={e => setAvailMinPay(Number(e.target.value))}
+                      className="bg-transparent text-graphite text-sm font-bold focus:outline-none cursor-pointer flex-1"
+                    >
+                      <option value={0}>Any</option>
+                      {[100, 150, 200, 300, 500].map(v => <option key={v} value={v}>{formatMoney(v)}+</option>)}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-1.5 bg-white rounded-xl px-3 py-2 shadow-sm flex-1">
+                    <label htmlFor="avail-date" className="text-charcoal/60 text-xs font-semibold shrink-0">Date</label>
+                    <input
+                      id="avail-date"
+                      type="date"
+                      value={availDate}
+                      min={new Date().toISOString().slice(0, 10)}
+                      onChange={e => setAvailDate(e.target.value)}
+                      className="bg-transparent text-graphite text-sm font-bold focus:outline-none cursor-pointer flex-1 min-w-0"
+                    />
+                  </div>
+                  {(availMinPay !== 0 || availDate) && (
+                    <button onClick={() => { setAvailMinPay(0); setAvailDate('') }} aria-label="Clear filters" className="shrink-0 text-charcoal/50 hover:text-graphite p-2 rounded-lg hover:bg-white transition-colors">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </button>
+                  )}
+                </div>
+
                 {availabilityLoading ? (
                   <div className="space-y-3">
                     {[1, 2, 3].map(i => <div key={i} className="h-24 bg-white rounded-2xl animate-pulse shadow-sm" />)}
@@ -1770,9 +1819,14 @@ export default function RestaurantDashboard() {
                     <p className="text-graphite font-bold text-sm mb-1">No availability posted nearby</p>
                     <p className="text-charcoal/50 text-xs">Musicians within {discoveryRadius} miles haven't posted open slots yet.</p>
                   </div>
+                ) : filteredAvailability.length === 0 ? (
+                  <div className="bg-white rounded-2xl p-6 text-center shadow-sm">
+                    <p className="text-graphite font-bold text-sm mb-1">No slots match your filters</p>
+                    <button onClick={() => { setAvailMinPay(0); setAvailDate('') }} className="text-chestnut text-xs font-bold hover:underline mt-1">Clear filters</button>
+                  </div>
                 ) : (
                   <div className="space-y-3">
-                    {musicianAvailability.map(slot => (
+                    {filteredAvailability.map(slot => (
                       <div key={slot.id} className="bg-white rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow">
                         <div className="flex items-start gap-3 mb-3">
                           <div className="w-11 h-11 rounded-full overflow-hidden shrink-0 bg-graphite/10 flex items-center justify-center">
@@ -1822,7 +1876,8 @@ export default function RestaurantDashboard() {
                   </div>
                 )}
               </div>
-            )}
+              )
+            })()}
 
             {/* ---- MUSICIANS VIEW ---- */}
             {browseView === 'musicians' && (<>
@@ -2000,6 +2055,13 @@ export default function RestaurantDashboard() {
                         <RatingBadge rep={musicianReps.get(m.id)} className="mt-1" />
                         {m.bio && <p className="text-charcoal/70 text-xs mt-1.5 line-clamp-2 leading-relaxed">{m.bio}</p>}
                       </div>
+                      <SaveButton
+                        userId={userId}
+                        type="musician"
+                        id={m.id}
+                        saved={savedMusicians.has(savedKey('musician', m.id))}
+                        onChange={(next) => setSavedKey(savedKey('musician', m.id), next)}
+                      />
                     </div>
                     {m.genres.length > 0 && (
                       <div className="flex flex-wrap gap-1 mb-3">
