@@ -15,6 +15,7 @@ import AddToCalendar from '@/components/AddToCalendar'
 import { getSavedSet, savedKey } from '@/lib/saved'
 import { gigStartEnd } from '@/lib/ics'
 import { musicianNet } from '@/lib/fees'
+import { formatMoney } from '@/lib/analytics'
 import { TIME_OPTIONS, endTimeOptions } from '@/lib/time'
 import { groupReputations, type RepSummary } from '@/lib/reviews'
 import { RatingBadge } from '@/components/RatingBadge'
@@ -1035,7 +1036,7 @@ export default function MusicianDashboard() {
               <div className="grid grid-cols-3 gap-2.5 mb-7">
                 <StatCard value={upcomingGigs} label="Upcoming" color="text-teal" icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>} />
                 <StatCard value={pendingApps} label="Pending" color="text-chestnut" icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>} />
-                <StatCard value={`$${totalEarned.toFixed(2)}`} label="Earned" color="text-graphite" icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>} highlight />
+                <StatCard value={formatMoney(totalEarned)} label="Earned" color="text-graphite" icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>} highlight />
               </div>
             )}
 
@@ -1083,7 +1084,7 @@ export default function MusicianDashboard() {
                               event={{
                                 uid: b.id,
                                 title: `Gig at ${b.gig.venue.name}`,
-                                description: `Live music gig at ${b.gig.venue.name}. Pay: $${b.price}.`,
+                                description: `Live music gig at ${b.gig.venue.name}. Pay: ${formatMoney(b.price)}.`,
                                 location: b.gig.venue.name,
                                 ...gigStartEnd(b.gig.rawDate, b.gig.rawStartDatetime.slice(11), b.gig.rawEndDatetime.slice(11)),
                               }}
@@ -1091,7 +1092,7 @@ export default function MusicianDashboard() {
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="text-teal text-lg font-black">${b.price}</p>
+                          <p className="text-teal text-lg font-black">{formatMoney(b.price)}</p>
                           <div className="flex items-center gap-1 justify-end mt-1">
                             <div className="w-1.5 h-1.5 rounded-full bg-teal" />
                             <span className="text-teal text-[10px] font-bold">Confirmed</span>
@@ -1147,7 +1148,7 @@ export default function MusicianDashboard() {
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="text-teal font-black text-sm">${b.price}</p>
+                          <p className="text-teal font-black text-sm">{formatMoney(b.price)}</p>
                           {inviteAccepted && (
                             <span className="text-[10px] font-bold text-teal block mt-0.5">Awaiting payment</span>
                           )}
@@ -1327,7 +1328,7 @@ export default function MusicianDashboard() {
                       </div>
                       <div className="flex items-start gap-1 shrink-0">
                         <div className="text-right">
-                          <p className="text-teal font-black text-xl">${gig.budget}</p>
+                          <p className="text-teal font-black text-xl">{formatMoney(gig.budget)}</p>
                           <p className="text-charcoal/50 text-[9px] font-semibold uppercase tracking-wide">pay offered</p>
                         </div>
                         <SaveButton
@@ -1483,21 +1484,21 @@ export default function MusicianDashboard() {
                   <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-3">Earnings</p>
                   <div className="grid grid-cols-3 divide-x divide-white/10">
                     <div className="pr-3">
-                      <p className="text-snow text-2xl font-black">${totalConfirmedEarnings.toFixed(2)}</p>
+                      <p className="text-snow text-2xl font-black">{formatMoney(totalConfirmedEarnings)}</p>
                       <p className="text-snow/40 text-[10px] font-semibold uppercase tracking-wider mt-0.5">Total</p>
                     </div>
                     <div className="px-3">
-                      <p className="text-chestnut text-2xl font-black">${pendingEarnings.toFixed(2)}</p>
+                      <p className="text-chestnut text-2xl font-black">{formatMoney(pendingEarnings)}</p>
                       <p className="text-snow/40 text-[10px] font-semibold uppercase tracking-wider mt-0.5">Authorized</p>
                     </div>
                     <div className="pl-3">
-                      <p className="text-teal text-2xl font-black">${releasedEarnings.toFixed(2)}</p>
+                      <p className="text-teal text-2xl font-black">{formatMoney(releasedEarnings)}</p>
                       <p className="text-snow/40 text-[10px] font-semibold uppercase tracking-wider mt-0.5">Released</p>
                     </div>
                   </div>
                   {pendingEarnings > 0 && (
                     <p className="text-snow/50 text-xs mt-3 leading-relaxed">
-                      ${pendingEarnings.toFixed(2)} is authorized and will be released to your bank after each gig date passes.
+                      {formatMoney(pendingEarnings)} is authorized and will be released to your bank after each gig date passes.
                     </p>
                   )}
                 </div>
@@ -1563,7 +1564,7 @@ export default function MusicianDashboard() {
                                 </div>
                               </div>
                               <div className="text-right shrink-0">
-                                <p className="text-teal font-black text-sm">${b.price}</p>
+                                <p className="text-teal font-black text-sm">{formatMoney(b.price)}</p>
                                 <BookingBadge status={b.status} />
                               </div>
                             </div>
@@ -1597,7 +1598,7 @@ export default function MusicianDashboard() {
                                 </div>
                               </div>
                               <div className="text-right shrink-0">
-                                <p className="text-teal font-black">${b.price}</p>
+                                <p className="text-teal font-black">{formatMoney(b.price)}</p>
                                 {b.paymentStatus === 'paid' ? (
                                   <span className="inline-block bg-teal/10 text-teal text-[10px] font-black px-2 py-0.5 rounded-full mt-1">Paid</span>
                                 ) : b.paymentStatus === 'authorized' ? (
@@ -1628,7 +1629,7 @@ export default function MusicianDashboard() {
                               <p className="text-charcoal/60 text-xs">{b.gig.date} · {b.gig.time}</p>
                             </div>
                             <div className="text-right shrink-0">
-                              <p className="text-charcoal/50 font-black text-sm">${b.price}</p>
+                              <p className="text-charcoal/50 font-black text-sm">{formatMoney(b.price)}</p>
                               <span className="inline-block bg-charcoal/10 text-charcoal text-[10px] font-black px-2 py-0.5 rounded-full mt-0.5">Cancelled</span>
                             </div>
                           </div>
@@ -1681,7 +1682,7 @@ export default function MusicianDashboard() {
                               <p className="text-charcoal text-xs mt-0.5">{b.gig.time}</p>
                             </div>
                             <div className="text-right shrink-0">
-                              <p className="text-charcoal/60 font-black">${b.price}</p>
+                              <p className="text-charcoal/60 font-black">{formatMoney(b.price)}</p>
                               <span className="inline-flex items-center gap-0.5 bg-teal/10 text-teal text-[10px] font-black px-2 py-0.5 rounded-full mt-1">
                                 <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                                 Completed

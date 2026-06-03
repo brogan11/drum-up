@@ -5,8 +5,9 @@ import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
 import { bookingFee } from '@/lib/fees'
+import { formatMoney } from '@/lib/analytics'
 
-const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+const usd = (n: number) => formatMoney(n)
 
 interface Receipt {
   id: string

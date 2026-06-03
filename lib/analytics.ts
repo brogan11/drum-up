@@ -11,6 +11,17 @@ export const DASH_BG = {
 
 export const money = (n: number) => '$' + Math.round(n).toLocaleString('en-US')
 
+// Canonical money formatter for all customer-facing amounts (gig pay, fees,
+// payouts, spend). Shows cents only when the value isn't a whole dollar, so
+// whole-dollar pay reads as "$200" while an 8% fee reads as "$16.80".
+export const formatMoney = (n: number | null | undefined) => {
+  const v = Number(n) || 0
+  return '$' + v.toLocaleString('en-US', {
+    minimumFractionDigits: Number.isInteger(v) ? 0 : 2,
+    maximumFractionDigits: 2,
+  })
+}
+
 export const moneyAxis = (n: number) => (n >= 1000 ? '$' + (n / 1000).toFixed(0) + 'k' : '$' + Math.round(n))
 
 // Percent change of `cur` vs `prev`. null when there's no meaningful baseline.

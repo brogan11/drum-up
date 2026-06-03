@@ -23,6 +23,7 @@ import { groupReputations, type RepSummary } from '@/lib/reviews'
 import { RatingBadge } from '@/components/RatingBadge'
 import InvitePeopleModal from '@/components/InvitePeopleModal'
 import Modal from '@/components/Modal'
+import { formatMoney } from '@/lib/analytics'
 
 // ---- Types ----
 
@@ -253,19 +254,19 @@ function PaymentModalInner({ slot, app, onClose, onConfirmed }: {
             <div className="space-y-1.5 border-t border-charcoal/[0.08] pt-3">
               <div className="flex justify-between text-sm">
                 <span className="text-charcoal">Gig pay</span>
-                <span className="text-graphite font-semibold">${slot.budget.toFixed(2)}</span>
+                <span className="text-graphite font-semibold">{formatMoney(slot.budget)}</span>
               </div>
               <div className="flex justify-between text-xs text-charcoal/60">
                 <span>{waived ? 'Platform fee waived 🎉' : `Platform fee (${Math.round((feeAmount / (slot.budget || 1)) * 100)}%, absorbed by Drum Up)`}</span>
-                <span>${feeAmount.toFixed(2)}</span>
+                <span>{formatMoney(feeAmount)}</span>
               </div>
               <div className="flex justify-between text-xs text-charcoal/60">
                 <span>Musician receives</span>
-                <span>${musicianReceives.toFixed(2)}</span>
+                <span>{formatMoney(musicianReceives)}</span>
               </div>
               <div className="flex justify-between text-sm font-black border-t border-charcoal/[0.08] pt-2 mt-1">
                 <span className="text-graphite">You pay</span>
-                <span className="text-chestnut">${slot.budget.toFixed(2)}</span>
+                <span className="text-chestnut">{formatMoney(slot.budget)}</span>
               </div>
             </div>
           </div>
@@ -304,7 +305,7 @@ function PaymentModalInner({ slot, app, onClose, onConfirmed }: {
           >
             {processing
               ? <span className="flex items-center justify-center gap-2"><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg> Processing…</span>
-              : `Confirm & Pay $${slot.budget}`}
+              : `Confirm & Pay ${formatMoney(slot.budget)}`}
           </button>
           <button
             onClick={onClose}
@@ -1255,7 +1256,7 @@ export default function RestaurantDashboard() {
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="text-chestnut text-lg font-black">${slot.budget}</p>
+                          <p className="text-chestnut text-lg font-black">{formatMoney(slot.budget)}</p>
                           <div className="flex items-center gap-1 justify-end mt-1">
                             <div className="w-1.5 h-1.5 rounded-full bg-teal" />
                             <span className="text-teal text-[10px] font-bold">Confirmed</span>
@@ -1306,7 +1307,7 @@ export default function RestaurantDashboard() {
                             <div className="flex items-center justify-between gap-2">
                               <p className="text-graphite font-bold text-sm truncate">{app.musicianName}</p>
                               <div className="text-right shrink-0">
-                                <p className="text-teal font-black text-sm">${slot.budget}</p>
+                                <p className="text-teal font-black text-sm">{formatMoney(slot.budget)}</p>
                                 <p className="text-charcoal/50 text-[9px] uppercase tracking-wide">pay offered</p>
                               </div>
                             </div>
@@ -1410,7 +1411,7 @@ export default function RestaurantDashboard() {
                                 )}
                               </div>
                               <div className="text-right shrink-0">
-                                <p className="text-teal font-black text-sm">${slot.budget}</p>
+                                <p className="text-teal font-black text-sm">{formatMoney(slot.budget)}</p>
                                 <p className="text-charcoal/50 text-[9px] uppercase tracking-wide">pay</p>
                               </div>
                             </div>
@@ -1500,7 +1501,7 @@ export default function RestaurantDashboard() {
                                   </div>
                                 </div>
                                 <div className="text-right shrink-0">
-                                  <p className="text-teal font-black">${slot.budget}</p>
+                                  <p className="text-teal font-black">{formatMoney(slot.budget)}</p>
                                   {confirmedApp?.paymentStatus === 'paid' ? (
                                     <span className="inline-block bg-teal/10 text-teal text-[9px] font-black px-2 py-0.5 rounded-full mt-0.5">Released</span>
                                   ) : confirmedApp?.paymentStatus === 'authorized' ? (
@@ -1552,7 +1553,7 @@ export default function RestaurantDashboard() {
                                   </button>
                                   <p className="text-charcoal text-xs mt-0.5">{slot.time}</p>
                                 </div>
-                                <p className="text-charcoal font-black shrink-0">${slot.budget}</p>
+                                <p className="text-charcoal font-black shrink-0">{formatMoney(slot.budget)}</p>
                               </div>
                             </div>
                           )
@@ -1695,7 +1696,7 @@ export default function RestaurantDashboard() {
                                 <p className="text-charcoal/60 text-xs">{slot.time}</p>
                                 {confirmedApp && <p className="text-charcoal/60 text-xs mt-0.5">{confirmedApp.musicianName}</p>}
                               </div>
-                              <p className="text-charcoal/50 font-black shrink-0">${slot.budget}</p>
+                              <p className="text-charcoal/50 font-black shrink-0">{formatMoney(slot.budget)}</p>
                             </div>
                             {isPast && confirmedApp && (
                               <button
@@ -1807,7 +1808,7 @@ export default function RestaurantDashboard() {
                         )}
                         <div className="flex items-center justify-between">
                           {slot.min_pay != null ? (
-                            <span className="text-teal text-sm font-black">${slot.min_pay}+ min pay</span>
+                            <span className="text-teal text-sm font-black">{formatMoney(slot.min_pay)}+ min pay</span>
                           ) : (
                             <span className="text-charcoal/40 text-xs">No min pay set</span>
                           )}
@@ -2549,7 +2550,7 @@ export default function RestaurantDashboard() {
                           <p className="text-charcoal text-xs">{profile.address || 'Your Location'}</p>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="text-teal font-black text-lg">{newSlot.budget ? `$${newSlot.budget}` : '—'}</p>
+                          <p className="text-teal font-black text-lg">{newSlot.budget ? formatMoney(Number(newSlot.budget)) : '—'}</p>
                           <p className="text-charcoal/50 text-[9px] font-semibold uppercase tracking-wide">pay offered</p>
                         </div>
                       </div>
@@ -2710,7 +2711,7 @@ function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAc
         </div>
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-3 text-sm text-charcoal flex-wrap">
-            <span>Pay Offered: <span className="text-teal font-black">${slot.budget}</span></span>
+            <span>Pay Offered: <span className="text-teal font-black">{formatMoney(slot.budget)}</span></span>
             {slot.status === 'open' && (
               <span>{slot.applications.length} application{slot.applications.length !== 1 ? 's' : ''}</span>
             )}
@@ -2746,7 +2747,7 @@ function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAc
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-graphite font-bold text-sm truncate">{app.musicianName}</p>
                     <div className="text-right shrink-0">
-                      <p className="text-teal font-black text-sm">${slot.budget}</p>
+                      <p className="text-teal font-black text-sm">{formatMoney(slot.budget)}</p>
                       <p className="text-charcoal/50 text-[9px] uppercase tracking-wide">pay offered</p>
                     </div>
                   </div>

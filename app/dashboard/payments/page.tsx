@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { DASH_BG } from '@/lib/analytics'
+import { DASH_BG, formatMoney } from '@/lib/analytics'
 import { bookingFee } from '@/lib/fees'
 import { DollarSign, Calendar, Banknote, Hourglass, Ban } from '@/components/Icons'
 
 // Fees come from the fee actually charged on each booking (bookings.platform_fee),
 // which is 0 for fee-waived gigs. Legacy rows fall back to the default 8%.
-const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+const usd = (n: number) => formatMoney(n)
 
 interface Row {
   id: string
