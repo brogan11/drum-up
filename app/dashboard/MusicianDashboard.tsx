@@ -890,6 +890,17 @@ export default function MusicianDashboard() {
   const thisMonthEarned = bookings
     .filter(b => b.status === 'confirmed' && b.gig.rawDate.startsWith(monthPrefix))
     .reduce((sum, b) => sum + netPay(b), 0)
+
+  // Profile completeness — drives the prompt on the Profile tab.
+  const profileChecks = [
+    { done: !!profile.avatar, label: 'a photo' },
+    { done: !!profile.bio, label: 'a bio' },
+    { done: profile.genres.length > 0, label: 'genres' },
+    { done: !!profile.performerType, label: 'solo/band' },
+    { done: !!(profile.instagram || profile.youtube || profile.spotify || profile.tiktok || profile.website), label: 'a link' },
+  ]
+  const profilePct = Math.round((profileChecks.filter(c => c.done).length / profileChecks.length) * 100)
+  const profileMissing = profileChecks.filter(c => !c.done).map(c => c.label)
   const filteredGigs = gigs
     .filter(g => {
       const q = gigSearch.toLowerCase()
@@ -1767,6 +1778,20 @@ export default function MusicianDashboard() {
                 )}
               </div>
             </div>
+
+            {/* Profile completeness */}
+            {profilePct < 100 && (
+              <div className="bg-white rounded-2xl p-4 mb-4 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-graphite text-sm font-bold">Profile {profilePct}% complete</p>
+                  <button onClick={() => router.push('/settings')} className="text-chestnut text-xs font-bold hover:underline">Finish →</button>
+                </div>
+                <div className="h-2 bg-[#E8E4E0] rounded-full overflow-hidden mb-2">
+                  <div className="h-full bg-chestnut rounded-full transition-all" style={{ width: `${profilePct}%` }} />
+                </div>
+                <p className="text-charcoal/60 text-xs">Add {profileMissing.slice(0, 3).join(', ')}{profileMissing.length > 3 ? ', and more' : ''} to stand out to venues.</p>
+              </div>
+            )}
 
             {/* Action buttons */}
             <div className="grid grid-cols-2 gap-3 mb-4">
