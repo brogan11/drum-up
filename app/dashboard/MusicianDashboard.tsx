@@ -67,6 +67,7 @@ interface Booking {
   payoutReleased: boolean
   source: string
   inviteAccepted: boolean | null
+  createdAt: string | null
 }
 
 interface MusicianProfile {
@@ -114,6 +115,20 @@ const INITIAL_PROFILE: MusicianProfile = {
 }
 
 // ---- Helpers ----
+
+// Compact relative age, e.g. "just now", "3h ago", "2d ago".
+function timeAgo(iso: string | null): string {
+  if (!iso) return ''
+  const ms = Date.now() - new Date(iso).getTime()
+  if (Number.isNaN(ms) || ms < 0) return ''
+  const mins = Math.floor(ms / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  return `${days}d ago`
+}
 
 function fmt(t: string): string {
   if (!t) return ''
@@ -292,6 +307,7 @@ export default function MusicianDashboard() {
           payoutReleased: ((b as Record<string, unknown>).payout_released as boolean | null) ?? false,
           source: (b as Record<string, unknown>).source as string ?? 'application',
           inviteAccepted: (b as Record<string, unknown>).invite_accepted as boolean | null ?? null,
+          createdAt: (b as Record<string, unknown>).created_at as string | null ?? null,
         }
       })
       setBookings(mapped)
@@ -727,6 +743,7 @@ export default function MusicianDashboard() {
         payoutReleased: false,
         source: 'application',
         inviteAccepted: null,
+        createdAt: new Date().toISOString(),
       }
       setBookings(prev => [booking, ...prev])
       setGigs(prev => prev.filter(g => g.id !== gig.id))
@@ -1152,6 +1169,9 @@ export default function MusicianDashboard() {
                               )}
                             </div>
                             <p className="text-charcoal text-xs">{b.gig.date} · {b.gig.time}</p>
+                            {b.createdAt && (inviteAwaiting || (!isInvite && b.status === 'pending')) && (
+                              <p className="text-charcoal/40 text-[11px] mt-0.5">{isInvite ? 'Invited' : 'Applied'} {timeAgo(b.createdAt)}</p>
+                            )}
                           </div>
                         </div>
                         <div className="text-right shrink-0">
