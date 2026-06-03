@@ -114,6 +114,8 @@ interface MusicianAvailCard {
   dateLabel: string
   start_time: string | null
   end_time: string | null
+  rawStartTime: string | null  // HH:mm — for invite prefill (start_time/end_time are display-formatted)
+  rawEndTime: string | null
   genres: string[]
   min_pay: number | null
   notes: string | null
@@ -356,16 +358,13 @@ export default function RestaurantDashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const [editingProfile, setEditingProfile] = useState(false)
-  const [profileDraft, setProfileDraft] = useState<VenueProfile>(INITIAL_PROFILE)
   const [userId, setUserId] = useState('')
-  const [savingProfile, setSavingProfile] = useState(false)
   const [restaurantCoords, setRestaurantCoords] = useState<{ lat: number | null; lon: number | null }>({ lat: null, lon: null })
   const [discoveryRadius, setDiscoveryRadius] = useState(25)
   const [radiusDraft, setRadiusDraft] = useState(25)
   const [savingRadius, setSavingRadius] = useState(false)
-  const [radiusSaved, setRadiusSaved] = useState(false)
-  const [profileSaved, setProfileSaved] = useState(false)
+  const [declineApp, setDeclineApp] = useState<{ slotId: string; appId: string; name: string } | null>(null)
+  const [decliningApp, setDecliningApp] = useState(false)
   const [liveMusicians, setLiveMusicians] = useState<LiveMusician[]>([])
   // Aggregate reputation per musician, keyed by musician id, for browse cards.
   const [musicianReps, setMusicianReps] = useState<Map<string, RepSummary>>(new Map())
@@ -590,6 +589,8 @@ export default function RestaurantDashboard() {
             dateLabel: new Date(s.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
             start_time: fmtT(s.start_time?.slice(0, 5) ?? null),
             end_time: fmtT(s.end_time?.slice(0, 5) ?? null),
+            rawStartTime: s.start_time?.slice(0, 5) ?? null,
+            rawEndTime: s.end_time?.slice(0, 5) ?? null,
             genres: Array.isArray(s.genres) ? s.genres : [],
             min_pay: s.min_pay != null ? Number(s.min_pay) : null,
             notes: s.notes ?? null,
@@ -693,55 +694,19 @@ export default function RestaurantDashboard() {
 
   // ---- Actions ----
 
-  const saveProfile = async () => {
+  const saveRadius = async (value?: number) => {
     if (!userId) return
-    setSavingProfile(true)
-    try {
-      const { data: existing, error: fetchErr } = await supabase
-        .from('profiles').select('role_metadata').eq('id', userId).maybeSingle()
-      if (fetchErr) throw fetchErr
-      const meta = {
-        ...(existing?.role_metadata ?? {}),
-        venue_name: profileDraft.name || null,
-        cuisine_type: profileDraft.type || null,
-      }
-      const { error: upErr } = await supabase.from('profiles').update({
-        full_name: profileDraft.name || null,
-        bio: profileDraft.description || null,
-        location_text: profileDraft.address || null,
-        website: profileDraft.website || null,
-        instagram_url: profileDraft.instagram || null,
-        youtube_url: profileDraft.youtube || null,
-        tiktok_url: profileDraft.tiktok || null,
-        role_metadata: meta,
-      }).eq('id', userId)
-      if (upErr) throw upErr
-      setProfile(profileDraft)
-      setEditingProfile(false)
-      setProfileSaved(true)
-      setTimeout(() => setProfileSaved(false), 2000)
-      toast.success('Profile saved!')
-    } catch (err) {
-      console.error('Profile save failed:', err)
-      toast.error('Could not save your profile. Please try again.')
-    } finally {
-      setSavingProfile(false)
-    }
-  }
-
-  const saveRadius = async () => {
-    if (!userId) return
+    const radius = value ?? radiusDraft
     setSavingRadius(true)
     try {
       const { error } = await supabase.from('profiles').update({
-        discovery_radius_miles: radiusDraft,
+        discovery_radius_miles: radius,
       }).eq('id', userId)
       if (error) throw error
-      setDiscoveryRadius(radiusDraft)
-      setRadiusSaved(true)
-      setTimeout(() => setRadiusSaved(false), 2000)
+      setDiscoveryRadius(radius)
+      setRadiusDraft(radius)
       if (restaurantCoords.lat != null && restaurantCoords.lon != null) {
-        await loadMusicians(restaurantCoords.lat, restaurantCoords.lon, radiusDraft)
+        await loadMusicians(restaurantCoords.lat, restaurantCoords.lon, radius)
       }
       toast.success('Discovery radius updated!')
     } catch (err) {
@@ -876,10 +841,19 @@ export default function RestaurantDashboard() {
     }
   }
 
-  const handleApplicationAction = async (slotId: string, appId: string, action: 'accept' | 'decline') => {
+  const handleApplicationAction = (slotId: string, appId: string, action: 'accept' | 'decline') => {
     // Accepting requires payment and goes through the payment modal (openPaymentModal
-    // → handlePaymentConfirmed → /api/bookings/confirm). This handler only declines.
+    // → handlePaymentConfirmed → /api/bookings/confirm). This handler only declines,
+    // and declining is destructive, so confirm first.
     if (action !== 'decline') return
+    const name = slots.find(s => s.id === slotId)?.applications.find(a => a.id === appId)?.musicianName ?? 'this musician'
+    setDeclineApp({ slotId, appId, name })
+  }
+
+  const confirmDecline = async () => {
+    if (!declineApp) return
+    const { slotId, appId } = declineApp
+    setDecliningApp(true)
     try {
       const { error } = await supabase
         .from('bookings')
@@ -911,14 +885,23 @@ export default function RestaurantDashboard() {
           ),
         }
       }))
+      setDeclineApp(null)
     } catch (err) {
       console.error('Failed to decline application:', err)
       toast.error('Could not update the application. Please try again.')
+    } finally {
+      setDecliningApp(false)
     }
   }
 
   const handleEditSlot = async () => {
     if (!editingSlot || !userId) return
+    // getDateOptions prepends the slot's existing (possibly past) date, so guard against saving a date in the past.
+    const todayStr = new Date().toISOString().slice(0, 10)
+    if (editDraft.date && editDraft.date < todayStr) {
+      toast.error("That date is in the past — pick today or later.")
+      return
+    }
     setSavingEdit(true)
     try {
       const { error } = await supabase.from('availability').update({
@@ -1817,8 +1800,8 @@ export default function RestaurantDashboard() {
                               musicianId: slot.musicianId,
                               musicianName: slot.musicianName,
                               date: slot.date,
-                              startTime: slot.start_time ? undefined : undefined,
-                              endTime: slot.end_time ? undefined : undefined,
+                              startTime: slot.rawStartTime ?? undefined,
+                              endTime: slot.rawEndTime ?? undefined,
                             })}
                             className="bg-chestnut text-snow text-xs font-bold px-4 py-2 rounded-xl hover:opacity-90 transition-opacity shadow-sm"
                           >
@@ -1838,11 +1821,20 @@ export default function RestaurantDashboard() {
             {/* Radius filter bar */}
             <div className="flex items-center justify-between gap-3 mb-4 bg-white rounded-xl px-4 py-2.5 shadow-sm">
               <div className="flex items-center gap-2">
-                <svg className="w-4 h-4 text-chestnut shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg className="w-4 h-4 text-chestnut shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                <span className="text-charcoal text-sm font-semibold">Within {discoveryRadius} miles</span>
+                <label htmlFor="browse-radius" className="text-charcoal text-sm font-semibold">Within</label>
+                <select
+                  id="browse-radius"
+                  value={discoveryRadius}
+                  onChange={e => { const v = Number(e.target.value); setRadiusDraft(v); void saveRadius(v) }}
+                  disabled={savingRadius}
+                  className="bg-transparent text-charcoal text-sm font-bold focus:outline-none cursor-pointer disabled:opacity-50"
+                >
+                  {[10, 25, 50, 100].map(r => <option key={r} value={r}>{r} miles</option>)}
+                </select>
               </div>
               <button
                 onClick={() => {
@@ -1968,8 +1960,10 @@ export default function RestaurantDashboard() {
               <EmptyState
                 icon={<svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>}
                 title={`No musicians found within ${discoveryRadius} miles`}
-                body="Try increasing your discovery radius in your profile settings."
-                action={{ label: 'Update Radius in Profile', onClick: () => setActiveTab('profile') }}
+                body="Try widening your search radius to discover more talent nearby."
+                action={discoveryRadius < 100
+                  ? { label: `Widen to ${[25, 50, 100].find(r => r > discoveryRadius) ?? 100} miles`, onClick: () => void saveRadius([25, 50, 100].find(r => r > discoveryRadius) ?? 100) }
+                  : undefined}
               />
             )}
 
@@ -2396,6 +2390,21 @@ export default function RestaurantDashboard() {
               Done
             </button>
           </div>
+        </Modal>
+      )}
+
+      {/* ---- DECLINE APPLICATION MODAL ---- */}
+      {declineApp && (
+        <Modal onClose={() => setDeclineApp(null)} size="sm" labelledBy="decline-app-title">
+            <div className="p-6">
+              <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-4"><svg className="w-6 h-6 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></div>
+              <h3 id="decline-app-title" className="text-graphite text-xl font-black text-center mb-2">Decline {declineApp.name}?</h3>
+              <p className="text-charcoal text-sm text-center leading-relaxed mb-6">Their application will be declined and they'll be notified. This can't be undone.</p>
+              <div className="flex gap-3">
+                <button onClick={() => setDeclineApp(null)} disabled={decliningApp} className="flex-1 bg-snow text-charcoal py-3 rounded-xl text-sm font-medium border border-charcoal/10 hover:bg-[#E8E4E0] transition-colors disabled:opacity-50">Keep</button>
+                <button onClick={confirmDecline} disabled={decliningApp} className="flex-1 bg-red-500 text-white py-3 rounded-xl text-sm font-bold hover:bg-red-600 transition-colors disabled:opacity-50">{decliningApp ? 'Declining…' : 'Yes, Decline'}</button>
+              </div>
+            </div>
         </Modal>
       )}
 
@@ -2950,26 +2959,3 @@ function StyledSelect({ value, onChange, options, placeholder, className = '', d
   )
 }
 
-function ProfileField({ label, value, editing, onChange, multiline, placeholder }: {
-  label: string
-  value: string
-  editing: boolean
-  onChange: (v: string) => void
-  multiline?: boolean
-  placeholder?: string
-}) {
-  return (
-    <div>
-      <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">{label}</p>
-      {editing ? (
-        multiline ? (
-          <textarea value={value} onChange={e => onChange(e.target.value)} rows={3} className="w-full bg-snow rounded-xl px-3 py-2 text-sm text-graphite focus:outline-none resize-none border border-charcoal/10" placeholder={placeholder} />
-        ) : (
-          <input value={value} onChange={e => onChange(e.target.value)} className="w-full bg-snow rounded-xl px-3 py-2 text-sm text-graphite focus:outline-none border border-charcoal/10" placeholder={placeholder} />
-        )
-      ) : (
-        <p className="text-graphite text-sm">{value || <span className="text-charcoal/50">{placeholder || 'Not set'}</span>}</p>
-      )}
-    </div>
-  )
-}
