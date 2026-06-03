@@ -183,10 +183,7 @@ export default function MusicianDashboard() {
   const [newlyConfirmed, setNewlyConfirmed] = useState(0)
 
   // Profile
-  const [editingProfile, setEditingProfile] = useState(false)
-  const [profileDraft, setProfileDraft] = useState<MusicianProfile>(INITIAL_PROFILE)
   const [userId, setUserId] = useState('')
-  const [savingProfile, setSavingProfile] = useState(false)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
 
   // Analytics
@@ -513,43 +510,6 @@ export default function MusicianDashboard() {
 
   // ---- Actions ----
 
-  const saveProfile = async () => {
-    if (!userId) return
-    setSavingProfile(true)
-    try {
-      const { data: existing, error: fetchErr } = await supabase
-        .from('profiles').select('role_metadata').eq('id', userId).maybeSingle()
-      if (fetchErr) throw fetchErr
-
-      const meta = { ...(existing?.role_metadata ?? {}), genres: profileDraft.genres }
-      const { error: upErr } = await supabase.from('profiles').update({
-        full_name: profileDraft.name || null,
-        bio: profileDraft.bio || null,
-        instagram_url: profileDraft.instagram || null,
-        youtube_url: profileDraft.youtube || null,
-        spotify_url: profileDraft.spotify || null,
-        tiktok_url: profileDraft.tiktok || null,
-        website: profileDraft.website || null,
-        legal_name: profileDraft.legalName || null,
-        performer_type: profileDraft.performerType || null,
-        band_name: profileDraft.performerType === 'band' ? (profileDraft.name || null) : null,
-        band_members: profileDraft.performerType === 'band' ? (profileDraft.bandMembers ?? null) : null,
-        role_metadata: meta,
-      }).eq('id', userId)
-
-      if (upErr) throw upErr
-
-      setProfile(profileDraft)
-      setEditingProfile(false)
-      toast.success('Profile saved!')
-    } catch (err) {
-      console.error('Profile save failed:', err)
-      toast.error('Could not save your profile. Please try again.')
-    } finally {
-      setSavingProfile(false)
-    }
-  }
-
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut()
@@ -693,6 +653,21 @@ export default function MusicianDashboard() {
 
   const [applying, setApplying] = useState(false)
   const [applyError, setApplyError] = useState('')
+  // In-flight lock so a double-tap can't fire two accept/decline requests.
+  const [respondingId, setRespondingId] = useState<string | null>(null)
+
+  // Returns an already-confirmed booking that overlaps the given time window, or null.
+  // Datetimes are `${date}T${time}`; slice(11) pulls the HH:mm:ss. gigStartEnd is
+  // cross-midnight aware so a late gig ending after 00:00 still compares correctly.
+  const findConflict = (rawDate: string, rawStart: string, rawEnd: string, excludeId?: string): Booking | null => {
+    const t = gigStartEnd(rawDate, rawStart.slice(11) || null, rawEnd.slice(11) || '23:59')
+    return bookings.find(b =>
+      b.id !== excludeId && b.status === 'confirmed' && (() => {
+        const o = gigStartEnd(b.gig.rawDate, b.gig.rawStartDatetime.slice(11) || null, b.gig.rawEndDatetime.slice(11) || '23:59')
+        return t.start < o.end && o.start < t.end
+      })()
+    ) ?? null
+  }
 
   const openApply = (gigId: string) => {
     if (stripeOnboarded === false) {
@@ -706,6 +681,10 @@ export default function MusicianDashboard() {
     if (!applyGigId || !userId) return
     const gig = gigs.find(g => g.id === applyGigId)
     if (!gig) return
+    const clash = findConflict(gig.rawDate, gig.rawStartDatetime, gig.rawEndDatetime)
+    if (clash && !window.confirm(`This overlaps your confirmed gig at ${clash.gig.venue.name} on ${clash.gig.date}. Apply anyway?`)) {
+      return
+    }
     setApplying(true)
     setApplyError('')
     try {
@@ -766,6 +745,17 @@ export default function MusicianDashboard() {
   }
 
   const handleRespondInvite = async (bookingId: string, response: 'accept' | 'decline') => {
+    if (respondingId) return // already responding to one
+    if (response === 'accept') {
+      const target = bookings.find(b => b.id === bookingId)
+      if (target) {
+        const clash = findConflict(target.gig.rawDate, target.gig.rawStartDatetime, target.gig.rawEndDatetime, bookingId)
+        if (clash && !window.confirm(`This overlaps your confirmed gig at ${clash.gig.venue.name} on ${clash.gig.date}. Accept anyway?`)) {
+          return
+        }
+      }
+    }
+    setRespondingId(bookingId)
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { toast.error('Please log in again.'); return }
@@ -795,6 +785,8 @@ export default function MusicianDashboard() {
     } catch (err) {
       console.error('Respond invite failed:', err)
       toast.error(err instanceof Error ? err.message : 'Could not respond to invite. Please try again.')
+    } finally {
+      setRespondingId(null)
     }
   }
 
@@ -1169,15 +1161,17 @@ export default function MusicianDashboard() {
                         <div className="flex gap-2 mt-2">
                           <button
                             onClick={() => handleRespondInvite(b.id, 'decline')}
-                            className="flex-1 bg-snow text-charcoal py-2.5 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10"
+                            disabled={respondingId != null}
+                            className="flex-1 bg-snow text-charcoal py-2.5 rounded-xl text-sm font-medium hover:bg-[#E8E4E0] transition-colors border border-charcoal/10 disabled:opacity-50"
                           >
                             Decline
                           </button>
                           <button
                             onClick={() => handleRespondInvite(b.id, 'accept')}
-                            className="flex-1 bg-chestnut text-snow py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
+                            disabled={respondingId != null}
+                            className="flex-1 bg-chestnut text-snow py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
                           >
-                            Accept Invite
+                            {respondingId === b.id ? 'Working…' : 'Accept Invite'}
                           </button>
                         </div>
                       )}
@@ -2574,39 +2568,3 @@ function TabButton({ icon, label, active, onClick, badge, animation = 'bounce' }
   )
 }
 
-function ProfileField({ label, value, editing, onChange, multiline, placeholder }: {
-  label: string
-  value: string
-  editing: boolean
-  onChange: (v: string) => void
-  multiline?: boolean
-  placeholder?: string
-}) {
-  return (
-    <div>
-      <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">{label}</p>
-      {editing ? (
-        multiline ? (
-          <textarea
-            value={value}
-            onChange={e => onChange(e.target.value)}
-            rows={3}
-            className="w-full bg-snow rounded-xl px-3 py-2 text-sm text-graphite focus:outline-none resize-none border border-charcoal/10"
-            placeholder={placeholder}
-          />
-        ) : (
-          <input
-            value={value}
-            onChange={e => onChange(e.target.value)}
-            className="w-full bg-snow rounded-xl px-3 py-2 text-sm text-graphite focus:outline-none border border-charcoal/10"
-            placeholder={placeholder}
-          />
-        )
-      ) : (
-        <p className="text-graphite text-sm">
-          {value || <span className="text-charcoal/50">{placeholder || 'Not set'}</span>}
-        </p>
-      )}
-    </div>
-  )
-}
