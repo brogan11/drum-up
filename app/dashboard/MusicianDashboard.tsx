@@ -215,6 +215,7 @@ export default function MusicianDashboard() {
   type BookingFilter = 'pending' | 'confirmed' | 'cancelled' | 'all'
   const [bookingFilter, setBookingFilter] = useState<BookingFilter>('pending')
   const [bookingsDisplayCount, setBookingsDisplayCount] = useState(10)
+  const [bookingsView, setBookingsView] = useState<'list' | 'calendar'>('list')
   const [bookingArchiveOpen, setBookingArchiveOpen] = useState(false)
 
   // Cancellation
@@ -1533,6 +1534,22 @@ export default function MusicianDashboard() {
                 </div>
               )}
 
+              {/* List / Calendar toggle */}
+              <div className="flex bg-white rounded-xl p-1 mb-4 shadow-sm">
+                <button
+                  onClick={() => setBookingsView('list')}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${bookingsView === 'list' ? 'bg-chestnut text-snow shadow-sm' : 'text-charcoal hover:text-graphite'}`}
+                >List</button>
+                <button
+                  onClick={() => setBookingsView('calendar')}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${bookingsView === 'calendar' ? 'bg-chestnut text-snow shadow-sm' : 'text-charcoal hover:text-graphite'}`}
+                >Calendar</button>
+              </div>
+
+              {bookingsView === 'calendar' ? (
+                <BookingsCalendar gigs={[...upcomingConfirmed, ...pastGigs]} />
+              ) : (<>
+
               {/* Filter tabs */}
               <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
                 {([
@@ -1734,6 +1751,7 @@ export default function MusicianDashboard() {
                   )}
                 </div>
               )}
+              </>)}
             </>
           )
         })()}
@@ -2528,6 +2546,84 @@ function PostAvailabilityModal({ userId, myLat, myLon, onClose, onSuccess }: {
 }
 
 // ---- Sub-components ----
+
+// Month-grid view of confirmed gigs so musicians can spot clashes at a glance.
+function BookingsCalendar({ gigs }: { gigs: Booking[] }) {
+  const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1) })
+  const [selectedDay, setSelectedDay] = useState<string | null>(null)
+
+  const byDate = new Map<string, Booking[]>()
+  for (const b of gigs) {
+    if (!b.gig.rawDate) continue
+    const arr = byDate.get(b.gig.rawDate) ?? []
+    arr.push(b)
+    byDate.set(b.gig.rawDate, arr)
+  }
+
+  const year = month.getFullYear()
+  const m = month.getMonth()
+  const firstDow = new Date(year, m, 1).getDay()
+  const daysInMonth = new Date(year, m + 1, 0).getDate()
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const cells: (number | null)[] = [...Array(firstDow).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)]
+  const monthLabel = month.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  const selDayGigs = selectedDay ? (byDate.get(selectedDay) ?? []) : []
+  const selLabel = selectedDay ? new Date(selectedDay + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : null
+
+  return (
+    <>
+      <div className="flex items-center justify-between mb-3">
+        <button aria-label="Previous month" onClick={() => setMonth(new Date(year, m - 1, 1))} className="text-charcoal hover:text-graphite transition-colors text-xl min-w-[44px] min-h-[44px] flex items-center justify-center">‹</button>
+        <span className="text-graphite font-bold">{monthLabel}</span>
+        <button aria-label="Next month" onClick={() => setMonth(new Date(year, m + 1, 1))} className="text-charcoal hover:text-graphite transition-colors text-xl min-w-[44px] min-h-[44px] flex items-center justify-center">›</button>
+      </div>
+      <div className="grid grid-cols-7 mb-1">
+        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (
+          <div key={d} className="text-center text-xs font-semibold text-charcoal py-1">{d}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1 bg-white rounded-2xl p-3 shadow-sm mb-4">
+        {cells.map((day, i) => {
+          if (!day) return <div key={`e-${i}`} />
+          const dateStr = `${year}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+          const dayGigs = byDate.get(dateStr) ?? []
+          const isToday = dateStr === todayStr
+          const isSel = selectedDay === dateStr
+          const has = dayGigs.length > 0
+          return (
+            <button
+              key={dateStr}
+              onClick={() => setSelectedDay(has ? dateStr : null)}
+              disabled={!has}
+              className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs relative transition-colors ${isSel ? 'bg-chestnut text-snow' : isToday ? 'bg-chestnut/10 text-graphite' : 'text-charcoal'} ${has && !isSel ? 'font-black' : ''} ${has ? '' : 'opacity-60'}`}
+            >
+              {day}
+              {has && <span className={`w-1.5 h-1.5 rounded-full mt-0.5 ${isSel ? 'bg-snow' : 'bg-chestnut'}`} />}
+              {dayGigs.length > 1 && <span className={`absolute top-0.5 right-1 text-[9px] font-black ${isSel ? 'text-snow' : 'text-chestnut'}`}>{dayGigs.length}</span>}
+            </button>
+          )
+        })}
+      </div>
+      {selectedDay && (
+        <div className="mb-4">
+          <p className="text-graphite font-bold text-sm mb-2">{selLabel}</p>
+          <div className="space-y-2">
+            {selDayGigs.map(b => (
+              <div key={b.id} className="bg-white rounded-xl p-3 shadow-sm flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-graphite font-bold text-sm truncate">{b.gig.venue.name}</p>
+                  <p className="text-charcoal text-xs">{b.gig.time}</p>
+                </div>
+                <p className="text-teal font-black text-sm shrink-0">{formatMoney(b.price)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {gigs.length === 0 && <p className="text-center text-charcoal/50 text-sm py-6">No confirmed gigs to show yet.</p>}
+    </>
+  )
+}
 
 function SectionHeader({ title, eyebrow, accent }: { title: string; eyebrow?: string; accent?: string }) {
   return (
