@@ -1682,13 +1682,22 @@ export default function RestaurantDashboard() {
                               <p className="text-charcoal/50 font-black shrink-0">{formatMoney(slot.budget)}</p>
                             </div>
                             {isPast && confirmedApp && (
-                              <button
-                                onClick={() => { try { sessionStorage.setItem('drumup_open_review', '1') } catch { /* ignore */ } ; router.push('/profile/' + confirmedApp.musicianId) }}
-                                className="mt-3 w-full flex items-center justify-center gap-1.5 border border-chestnut/40 text-chestnut py-2 rounded-xl text-xs font-bold hover:bg-chestnut/10 transition-colors"
-                              >
-                                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                                Review {confirmedApp.musicianName.split(' ')[0]}
-                              </button>
+                              <div className="mt-3 flex gap-2">
+                                <button
+                                  onClick={() => { try { sessionStorage.setItem('drumup_open_review', '1') } catch { /* ignore */ } ; router.push('/profile/' + confirmedApp.musicianId) }}
+                                  className="flex-1 flex items-center justify-center gap-1.5 border border-chestnut/40 text-chestnut py-2 rounded-xl text-xs font-bold hover:bg-chestnut/10 transition-colors"
+                                >
+                                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                                  Review {confirmedApp.musicianName.split(' ')[0]}
+                                </button>
+                                <button
+                                  onClick={() => setInviteModal({ musicianId: confirmedApp.musicianId, musicianName: confirmedApp.musicianName })}
+                                  className="flex-1 flex items-center justify-center gap-1.5 bg-chestnut text-snow py-2 rounded-xl text-xs font-bold hover:opacity-90 transition-opacity"
+                                >
+                                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                                  Rebook
+                                </button>
+                              </div>
                             )}
                           </div>
                         )

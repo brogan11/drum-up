@@ -885,7 +885,11 @@ export default function MusicianDashboard() {
   const netPay = (b: Booking): number => musicianNet(b.price, b.platformFee)
   const upcomingGigs = bookings.filter(b => b.status === 'confirmed' && gigEndsAt(b.gig) >= now).length
   const pendingApps = bookings.filter(b => b.status === 'pending').length
-  const totalEarned = bookings.filter(b => b.status === 'confirmed').reduce((sum, b) => sum + netPay(b), 0)
+  // This-month net earnings (by gig date) — more actionable on the home stat than lifetime.
+  const monthPrefix = new Date().toISOString().slice(0, 7) // YYYY-MM
+  const thisMonthEarned = bookings
+    .filter(b => b.status === 'confirmed' && b.gig.rawDate.startsWith(monthPrefix))
+    .reduce((sum, b) => sum + netPay(b), 0)
   const filteredGigs = gigs
     .filter(g => {
       const q = gigSearch.toLowerCase()
@@ -1028,7 +1032,7 @@ export default function MusicianDashboard() {
               <div className="grid grid-cols-3 gap-2.5 mb-7">
                 <StatCard value={upcomingGigs} label="Upcoming" color="text-teal" icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>} />
                 <StatCard value={pendingApps} label="Pending" color="text-chestnut" icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>} />
-                <StatCard value={formatMoney(totalEarned)} label="Earned" color="text-graphite" icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>} highlight />
+                <StatCard value={formatMoney(thisMonthEarned)} label="This month" color="text-graphite" icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>} highlight />
               </div>
             )}
 
