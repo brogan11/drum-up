@@ -58,5 +58,24 @@ returns int language sql stable security definer set search_path = public as $$
   select count(*)::int from public.rsvps where booking_id = event_id;
 $$;
 
+-- ── 4. Shows the signed-in fan has attended (past gigs they RSVP'd to) ────────
+-- No uid param: always scoped to auth.uid() so one fan can't read another's
+-- attendance even though the function is SECURITY DEFINER.
+create or replace function public.fan_attended()
+returns table (booking_id uuid, musician_name text, venue_name text, gig_date date)
+language sql stable security definer set search_path = public as $$
+  select b.id, m.full_name::text,
+         coalesce(v.role_metadata->>'venue_name', v.full_name)::text, a.date
+  from public.rsvps r
+  join public.bookings b on b.id = r.booking_id
+  join public.availability a on a.id = b.availability_id
+  join public.profiles v on v.id = b.restaurant_id
+  join public.profiles m on m.id = b.musician_id
+  where r.user_id = auth.uid() and a.date < current_date
+  order by a.date desc
+  limit 100;
+$$;
+
 grant execute on function public.event_detail(uuid) to anon, authenticated;
 grant execute on function public.event_going_count(uuid) to anon, authenticated;
+grant execute on function public.fan_attended() to authenticated;

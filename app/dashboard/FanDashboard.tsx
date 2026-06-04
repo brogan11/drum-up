@@ -178,6 +178,8 @@ export default function FanDashboard() {
       if (on) next.add(key); else next.delete(key)
       return next
     })
+  const [savedProfiles, setSavedProfiles] = useState<{ id: string; name: string; avatar: string; subtitle: string; type: 'venue' | 'musician' }[]>([])
+  const [attended, setAttended] = useState<{ booking_id: string; musician_name: string; venue_name: string; gig_date: string }[]>([])
   const [fanCoords, setFanCoords] = useState<{ lat: number | null; lon: number | null }>({ lat: null, lon: null })
   const fanCoordsRef = useRef<{ lat: number | null; lon: number | null }>({ lat: null, lon: null })
 
@@ -313,6 +315,33 @@ export default function FanDashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Resolve saved venues/musicians into display rows (gigs reuse the loaded feed).
+  const loadSaved = useCallback(async (uid: string) => {
+    const { data: rows } = await supabase
+      .from('saved_items').select('item_type, item_id').eq('user_id', uid)
+    if (!rows) return
+    const profileIds = rows.filter(r => r.item_type === 'venue' || r.item_type === 'musician').map(r => r.item_id)
+    if (profileIds.length === 0) { setSavedProfiles([]); return }
+    const { data: profs } = await supabase
+      .from('profiles')
+      .select('id, full_name, avatar_url, user_type, location_text, role_metadata')
+      .in('id', profileIds)
+    if (!profs) return
+    setSavedProfiles(profs.map(p => {
+      const meta = (p.role_metadata ?? {}) as Record<string, unknown>
+      const isVenue = p.user_type === 'restaurant'
+      return {
+        id: p.id as string,
+        name: (isVenue ? (meta.venue_name as string) : null) || (p.full_name as string) || 'Unnamed',
+        avatar: (p.avatar_url as string) ?? '',
+        subtitle: isVenue
+          ? [meta.cuisine_type as string, p.location_text as string].filter(Boolean).join(' · ')
+          : (Array.isArray(meta.genres) ? (meta.genres as string[]).join(' · ') : (p.location_text as string) ?? ''),
+        type: isVenue ? 'venue' as const : 'musician' as const,
+      }
+    }))
+  }, [])
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -348,6 +377,11 @@ export default function FanDashboard() {
         const { data: followsData } = await supabase
           .from('follows').select('following_id').eq('follower_id', user.id)
         if (followsData) setFollowedIds(new Set(followsData.map(f => f.following_id)))
+
+        void loadSaved(user.id)
+        void supabase.rpc('fan_attended').then(({ data: att }) => {
+          if (att) setAttended(att)
+        })
 
         await loadFeed(lat, lon)
         setFeedLoading(false)
@@ -1166,6 +1200,59 @@ export default function FanDashboard() {
                 )}
               </>
             )}
+
+            {/* ── SAVED ── */}
+            {(() => {
+              const savedVenues = savedProfiles.filter(p => p.type === 'venue' && savedItems.has(savedKey('venue', p.id)))
+              const savedMus = savedProfiles.filter(p => p.type === 'musician' && savedItems.has(savedKey('musician', p.id)))
+              const savedGigs = feedGigs.filter(g => savedItems.has(savedKey('gig', g.id)))
+              if (savedVenues.length + savedMus.length + savedGigs.length === 0) return null
+              return (
+                <div className="mt-8">
+                  <SectionHeader eyebrow="Bookmarked" title="Saved" />
+                  {savedGigs.length > 0 && (
+                    <div className="space-y-3 mb-6">
+                      {savedGigs.map(gig => (
+                        <GigCard
+                          key={gig.id}
+                          gig={gig}
+                          followedIds={followedIds}
+                          onFollow={toggleFollow}
+                          onViewProfile={id => router.push('/profile/' + id)}
+                          userId={userId}
+                          saved
+                          onSaveChange={(next) => setSaved(savedKey('gig', gig.id), next)}
+                          onViewEvent={id => router.push('/event/' + id)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {[...savedVenues, ...savedMus].length > 0 && (
+                    <div className="space-y-2">
+                      {[...savedVenues, ...savedMus].map(p => (
+                        <div key={p.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3">
+                          <button onClick={() => router.push('/profile/' + p.id)} className="shrink-0">
+                            <Avatar src={p.avatar} className="w-11 h-11 rounded-full" textSize="text-xl" bg={p.type === 'musician' ? 'bg-chestnut/10' : undefined} />
+                          </button>
+                          <button onClick={() => router.push('/profile/' + p.id)} className="flex-1 min-w-0 text-left">
+                            <p className="text-graphite font-bold text-sm truncate hover:text-chestnut transition-colors">{p.name}</p>
+                            <p className="text-charcoal text-xs truncate">{[p.type === 'venue' ? 'Venue' : 'Musician', p.subtitle].filter(Boolean).join(' · ')}</p>
+                          </button>
+                          <SaveButton
+                            userId={userId}
+                            type={p.type}
+                            id={p.id}
+                            saved
+                            onChange={(next) => setSaved(savedKey(p.type, p.id), next)}
+                            size="sm"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
           </>
         )}
 
@@ -1204,7 +1291,7 @@ export default function FanDashboard() {
             </div>
 
             {/* Stats summary */}
-            <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="grid grid-cols-3 gap-3 mb-4">
               <div className="relative bg-white rounded-2xl p-4 shadow-sm text-center overflow-hidden">
                 <span className="absolute -bottom-1 -right-1 w-9 h-9 opacity-10 pointer-events-none select-none text-graphite"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg></span>
                 <p className="text-chestnut text-3xl font-black tracking-tight leading-none">{followedVenues.length}</p>
@@ -1215,7 +1302,34 @@ export default function FanDashboard() {
                 <p className="text-chestnut text-3xl font-black tracking-tight leading-none">{followedMusicians.length}</p>
                 <p className="text-charcoal text-[10px] font-bold uppercase tracking-[0.2em] mt-2">Musicians</p>
               </div>
+              <div className="relative bg-white rounded-2xl p-4 shadow-sm text-center overflow-hidden">
+                <span className="absolute -bottom-1 -right-1 w-9 h-9 opacity-10 pointer-events-none select-none text-graphite"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg></span>
+                <p className="text-chestnut text-3xl font-black tracking-tight leading-none">{attended.length}</p>
+                <p className="text-charcoal text-[10px] font-bold uppercase tracking-[0.2em] mt-2">Attended</p>
+              </div>
             </div>
+
+            {/* Attended history */}
+            {attended.length > 0 && (
+              <div className="bg-white rounded-2xl p-5 shadow-sm mb-4">
+                <h3 className="text-graphite font-bold mb-3 text-sm">Shows You&apos;ve Been To</h3>
+                <div className="space-y-2.5">
+                  {attended.slice(0, 8).map(a => (
+                    <button
+                      key={a.booking_id}
+                      onClick={() => router.push('/event/' + a.booking_id)}
+                      className="w-full flex items-center justify-between gap-3 text-left group"
+                    >
+                      <span className="min-w-0">
+                        <span className="block text-graphite text-sm font-bold truncate group-hover:text-chestnut transition-colors">{a.musician_name}</span>
+                        <span className="block text-charcoal text-xs truncate">{a.venue_name}</span>
+                      </span>
+                      <span className="text-charcoal/60 text-xs font-medium shrink-0">{new Date(a.gig_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Profile fields (edit via Settings) */}
             <div className="bg-white rounded-2xl p-5 shadow-sm space-y-4 mb-4">
