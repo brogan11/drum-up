@@ -58,6 +58,7 @@ interface Review {
   reviewer_id: string
   aspects: Record<string, number> | null
   tags: string[]
+  reply: string | null
 }
 
 interface PastGig {
@@ -404,7 +405,7 @@ export default function ProfilePage() {
       }
 
       const { data: rws, error: rwErr } = await supabase
-        .from('reviews').select('id, rating, review_text, created_at, verified, reviewer_id, booking_id, aspects, tags')
+        .from('reviews').select('id, rating, review_text, created_at, verified, reviewer_id, booking_id, aspects, tags, reply')
         .eq('reviewee_id', pid).order('created_at', { ascending: false })
       if (!rwErr && rws && rws.length > 0) {
         const rIds2 = [...new Set(rws.map(r => r.reviewer_id))]
@@ -421,6 +422,7 @@ export default function ProfilePage() {
             reviewer_avatar: rp?.avatar_url ?? null, reviewer_id: r.reviewer_id,
             aspects: rawAspects && typeof rawAspects === 'object' ? rawAspects as Record<string, number> : null,
             tags: Array.isArray(rawTags) ? rawTags as string[] : [],
+            reply: (r as { reply?: string | null }).reply ?? null,
           }
         }))
       }
@@ -549,7 +551,7 @@ export default function ProfilePage() {
           id: inserted.id, rating: reviewRating, review_text: textValue,
           created_at: new Date().toISOString(), verified: true,
           reviewer_name: 'You', reviewer_avatar: null, reviewer_id: viewerId,
-          aspects: aspectsForState, tags: reviewTags,
+          aspects: aspectsForState, tags: reviewTags, reply: null,
         }, ...prev])
         toast.success('Review submitted!')
       }
@@ -1080,6 +1082,12 @@ export default function ProfilePage() {
                         {r.tags.map(t => (
                           <span key={t} className="text-[11px] font-semibold px-2.5 py-1 rounded-full" style={{ background: 'rgba(108,154,139,0.18)', color: '#6C9A8B' }}>{t}</span>
                         ))}
+                      </div>
+                    )}
+                    {r.reply && (
+                      <div className="ml-12 mt-3 rounded-xl px-3 py-2.5" style={{ background: 'rgba(108,154,139,0.10)', borderLeft: '2px solid #6C9A8B' }}>
+                        <p className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{ color: '#6C9A8B' }}>Response from {displayName}</p>
+                        <p className="text-snow/70 text-sm leading-relaxed">{r.reply}</p>
                       </div>
                     )}
                   </div>

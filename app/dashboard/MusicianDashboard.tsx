@@ -102,6 +102,18 @@ interface MusicianProfile {
   payRange: string
 }
 
+interface MusicianReview {
+  id: string
+  rating: number
+  text: string
+  createdAt: string
+  reviewerName: string
+  reviewerAvatar: string
+  reviewerId: string
+  reply: string | null
+  repliedAt: string | null
+}
+
 interface MusicianAvailSlot {
   id: string
   date: string
@@ -228,6 +240,12 @@ export default function MusicianDashboard() {
   const [analyticsReviewCount, setAnalyticsReviewCount] = useState<number | null>(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
   const [analyticsLoaded, setAnalyticsLoaded] = useState(false)
+
+  // Reviews left for this musician (with reviewer + the musician's reply)
+  const [reviews, setReviews] = useState<MusicianReview[]>([])
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({})
+  const [replyingId, setReplyingId] = useState<string | null>(null)
+  const [editingReplyId, setEditingReplyId] = useState<string | null>(null)
 
   // Bookings tab
   type BookingFilter = 'pending' | 'confirmed' | 'cancelled' | 'all'
@@ -464,6 +482,7 @@ export default function MusicianDashboard() {
     if (activeTab === 'profile' && userId) {
       loadAnalytics(userId)
       void loadMyAvailability(userId)
+      void loadReviews(userId)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, userId])
@@ -618,6 +637,47 @@ export default function MusicianDashboard() {
       console.error('Analytics load failed:', err)
     } finally {
       setAnalyticsLoading(false)
+    }
+  }
+
+  const loadReviews = async (uid: string) => {
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('id, rating, review_text, created_at, reviewer_id, reply, replied_at, reviewer:reviewer_id(full_name, avatar_url)')
+      .eq('reviewee_id', uid)
+      .order('created_at', { ascending: false })
+    if (error || !data) return
+    setReviews(data.map(r => {
+      const reviewer = Array.isArray(r.reviewer) ? r.reviewer[0] : r.reviewer
+      return {
+        id: r.id as string,
+        rating: r.rating as number,
+        text: (r.review_text as string) ?? '',
+        createdAt: r.created_at as string,
+        reviewerName: (reviewer?.full_name as string) ?? 'A venue',
+        reviewerAvatar: (reviewer?.avatar_url as string) ?? '',
+        reviewerId: r.reviewer_id as string,
+        reply: (r.reply as string | null) ?? null,
+        repliedAt: (r.replied_at as string | null) ?? null,
+      }
+    }))
+  }
+
+  const submitReply = async (reviewId: string) => {
+    const text = (replyDrafts[reviewId] ?? '').trim()
+    if (!text || replyingId) return
+    setReplyingId(reviewId)
+    try {
+      const { error } = await supabase.rpc('reply_to_review', { review_id: reviewId, reply_text: text })
+      if (error) throw error
+      setReviews(prev => prev.map(r => r.id === reviewId ? { ...r, reply: text, repliedAt: new Date().toISOString() } : r))
+      setEditingReplyId(null)
+      toast.success('Reply posted')
+    } catch (err) {
+      console.error('Reply failed:', err)
+      toast.error('Could not post reply')
+    } finally {
+      setReplyingId(null)
     }
   }
 
@@ -1985,6 +2045,83 @@ export default function MusicianDashboard() {
                 </div>
               </div>
             </div>
+
+            {/* Reviews + replies */}
+            {reviews.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-sm mb-4 overflow-hidden">
+                <div className="px-5 pt-4 pb-3">
+                  <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em]">Reviews</p>
+                </div>
+                <div className="divide-y divide-charcoal/[0.07]">
+                  {reviews.map(r => (
+                    <div key={r.id} className="px-5 py-4">
+                      <div className="flex items-center gap-3 mb-2">
+                        <button onClick={() => router.push('/profile/' + r.reviewerId)} className="shrink-0">
+                          <Avatar src={r.reviewerAvatar} className="w-9 h-9 rounded-full" textSize="text-sm" />
+                        </button>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-graphite font-bold text-sm truncate">{r.reviewerName}</p>
+                          <div className="flex items-center gap-1.5">
+                            <span className="flex" aria-label={`${r.rating} out of 5 stars`}>
+                              {[1, 2, 3, 4, 5].map(n => (
+                                <svg key={n} className={`w-3 h-3 ${n <= r.rating ? 'text-chestnut' : 'text-charcoal/20'}`} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01L12 2z"/></svg>
+                              ))}
+                            </span>
+                            <span className="text-charcoal/50 text-[11px]">{new Date(r.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                          </div>
+                        </div>
+                      </div>
+                      {r.text && <p className="text-charcoal text-sm leading-relaxed mb-2">{r.text}</p>}
+
+                      {/* Reply: shown if present and not editing; otherwise reply form */}
+                      {r.reply && editingReplyId !== r.id ? (
+                        <div className="bg-teal/[0.07] border-l-2 border-teal rounded-r-xl px-3 py-2.5 mt-2">
+                          <div className="flex items-center justify-between gap-2 mb-0.5">
+                            <p className="text-teal text-[10px] font-bold uppercase tracking-wider">Your reply</p>
+                            <button
+                              onClick={() => { setEditingReplyId(r.id); setReplyDrafts(d => ({ ...d, [r.id]: r.reply ?? '' })) }}
+                              className="text-charcoal/50 text-[11px] font-bold hover:text-chestnut transition-colors"
+                            >
+                              Edit
+                            </button>
+                          </div>
+                          <p className="text-charcoal text-sm leading-relaxed">{r.reply}</p>
+                        </div>
+                      ) : editingReplyId === r.id ? (
+                        <div className="mt-2">
+                          <textarea
+                            value={replyDrafts[r.id] ?? ''}
+                            onChange={e => setReplyDrafts(d => ({ ...d, [r.id]: e.target.value }))}
+                            rows={2}
+                            maxLength={500}
+                            placeholder="Thank them or add context…"
+                            className="w-full bg-snow rounded-xl px-3 py-2 text-sm text-charcoal shadow-sm focus:outline-none focus:shadow-md transition-shadow resize-none"
+                          />
+                          <div className="flex items-center gap-2 mt-2">
+                            <button
+                              onClick={() => submitReply(r.id)}
+                              disabled={replyingId === r.id || !(replyDrafts[r.id] ?? '').trim()}
+                              className="bg-chestnut text-snow text-xs font-bold px-4 py-1.5 rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity"
+                            >
+                              {replyingId === r.id ? 'Posting…' : 'Post reply'}
+                            </button>
+                            <button onClick={() => setEditingReplyId(null)} className="text-charcoal/60 text-xs font-bold px-2 py-1.5 hover:text-charcoal transition-colors">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setEditingReplyId(r.id); setReplyDrafts(d => ({ ...d, [r.id]: '' })) }}
+                          className="inline-flex items-center gap-1 text-chestnut text-xs font-bold hover:opacity-70 transition-opacity mt-1"
+                        >
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                          Reply
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* My Availability */}
             <div className="bg-white rounded-2xl shadow-sm mb-4 overflow-hidden">
