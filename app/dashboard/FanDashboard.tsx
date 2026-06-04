@@ -565,7 +565,7 @@ export default function FanDashboard() {
           <div className="flex items-center gap-1">
             <NotificationBell userId={userId} />
             <div className="relative">
-              <button onClick={() => setHeaderMenuOpen(o => !o)} className="flex items-center gap-2 group">
+              <button onClick={() => setHeaderMenuOpen(o => !o)} aria-label="Account menu" aria-expanded={headerMenuOpen} aria-haspopup="menu" className="flex items-center gap-2 group">
                 {profile.avatar
                   ? <img src={profile.avatar} alt="" className="w-8 h-8 rounded-full object-cover border-2 border-chestnut/40 group-hover:border-chestnut transition-colors" />
                   : <div className="w-8 h-8 rounded-full bg-graphite border-2 border-chestnut/40 group-hover:border-chestnut transition-colors flex items-center justify-center text-snow text-xs font-black">
@@ -964,7 +964,7 @@ export default function FanDashboard() {
                               return (
                                 <div key={gig.id} className="bg-white rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow">
                                   <div className="flex items-start gap-3 mb-3">
-                                    <button onClick={() => router.push('/profile/' + gig.restaurantId)} className="shrink-0">
+                                    <button aria-label={`View ${gig.restaurantName} profile`} onClick={() => router.push('/profile/' + gig.restaurantId)} className="shrink-0">
                                       <Avatar src={gig.restaurantAvatar} className="w-11 h-11 rounded-full" textSize="text-xl" />
                                     </button>
                                     <div className="flex-1 min-w-0">
@@ -992,7 +992,7 @@ export default function FanDashboard() {
                                     )}
                                   </div>
                                   <div className="flex items-center gap-2 mb-3 pl-14">
-                                    <button onClick={() => router.push('/profile/' + gig.musicianId)}>
+                                    <button aria-label={`View ${gig.musicianName} profile`} onClick={() => router.push('/profile/' + gig.musicianId)}>
                                       <Avatar src={gig.musicianAvatar} className="w-7 h-7 rounded-full" textSize="text-sm" />
                                     </button>
                                     <button onClick={() => router.push('/profile/' + gig.musicianId)} className="flex-1 min-w-0 text-left">
@@ -1100,7 +1100,7 @@ export default function FanDashboard() {
                         const isFollowing = followedIds.has(v.id)
                         return (
                           <div key={v.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-4">
-                            <button onClick={() => router.push('/profile/' + v.id)} className="shrink-0">
+                            <button aria-label={`View ${v.name} profile`} onClick={() => router.push('/profile/' + v.id)} className="shrink-0">
                               <Avatar src={v.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" />
                             </button>
                             <button onClick={() => router.push('/profile/' + v.id)} className="flex-1 min-w-0 text-left">
@@ -1147,7 +1147,7 @@ export default function FanDashboard() {
                         return (
                           <div key={m.id} className="bg-white rounded-2xl p-4 shadow-sm">
                             <div className="flex items-center gap-4 mb-2">
-                              <button onClick={() => router.push('/profile/' + m.id)} className="shrink-0">
+                              <button aria-label={`View ${m.name} profile`} onClick={() => router.push('/profile/' + m.id)} className="shrink-0">
                                 <Avatar src={m.avatar} className="w-12 h-12 rounded-full" textSize="text-2xl" bg="bg-chestnut/10" />
                               </button>
                               <button onClick={() => router.push('/profile/' + m.id)} className="flex-1 min-w-0 text-left">
@@ -1213,7 +1213,7 @@ export default function FanDashboard() {
                     <div className="space-y-2 mb-6">
                       {followedVenues.map(v => (
                         <div key={v.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3">
-                          <button onClick={() => router.push('/profile/' + v.id)} className="shrink-0">
+                          <button aria-label={`View ${v.name} profile`} onClick={() => router.push('/profile/' + v.id)} className="shrink-0">
                             <Avatar src={v.avatar} className="w-11 h-11 rounded-full" textSize="text-xl" />
                           </button>
                           <button onClick={() => router.push('/profile/' + v.id)} className="flex-1 min-w-0 text-left">
@@ -1238,7 +1238,7 @@ export default function FanDashboard() {
                     <div className="space-y-2">
                       {followedMusicians.map(m => (
                         <div key={m.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3">
-                          <button onClick={() => router.push('/profile/' + m.id)} className="shrink-0">
+                          <button aria-label={`View ${m.name} profile`} onClick={() => router.push('/profile/' + m.id)} className="shrink-0">
                             <Avatar src={m.avatar} className="w-11 h-11 rounded-full" textSize="text-xl" bg="bg-chestnut/10" />
                           </button>
                           <button onClick={() => router.push('/profile/' + m.id)} className="flex-1 min-w-0 text-left">
@@ -1289,7 +1289,7 @@ export default function FanDashboard() {
                     <div className="space-y-2">
                       {[...savedVenues, ...savedMus].map(p => (
                         <div key={p.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3">
-                          <button onClick={() => router.push('/profile/' + p.id)} className="shrink-0">
+                          <button aria-label={`View ${p.name} profile`} onClick={() => router.push('/profile/' + p.id)} className="shrink-0">
                             <Avatar src={p.avatar} className="w-11 h-11 rounded-full" textSize="text-xl" bg={p.type === 'musician' ? 'bg-chestnut/10' : undefined} />
                           </button>
                           <button onClick={() => router.push('/profile/' + p.id)} className="flex-1 min-w-0 text-left">
