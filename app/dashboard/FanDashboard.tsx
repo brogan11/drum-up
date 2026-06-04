@@ -1,6 +1,7 @@
 ﻿'use client'
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { eqBarStyle } from '@/lib/eq'
@@ -21,6 +22,13 @@ import {
   SkeletonMusicianCard,
   SkeletonGigCard,
 } from '@/components/Skeleton'
+
+// Lazy-load the map (vanilla Leaflet) so it stays out of the main bundle and
+// never runs on the server.
+const EventsMap = dynamic(() => import('@/components/EventsMap'), {
+  ssr: false,
+  loading: () => <div className="w-full h-[420px] rounded-2xl bg-white/60 shadow-sm animate-pulse" />,
+})
 
 // ---- Types ----
 
@@ -45,6 +53,8 @@ interface FeedGig {
   distance: number | null
   genres: string[]
   coverCharge: number | null
+  lat: number | null
+  lon: number | null
 }
 
 // Row shape returned by the fan_feed PostGIS RPC.
@@ -64,6 +74,8 @@ interface FanFeedRow {
   start_time: string | null
   end_time: string | null
   cover_charge: number | null
+  venue_lat: number | null
+  venue_lon: number | null
   distance_m: number | null
 }
 
@@ -168,6 +180,7 @@ export default function FanDashboard() {
   const [eventsDistanceFilter, setEventsDistanceFilter] = useState(25)
   const [eventsFreeOnly, setEventsFreeOnly] = useState(false)
   const [eventsGenreOnly, setEventsGenreOnly] = useState(false)
+  const [eventsLayout, setEventsLayout] = useState<'list' | 'map'>('list')
 
   // Fan state
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set())
@@ -250,6 +263,8 @@ export default function FanDashboard() {
           distance: r.distance_m != null ? r.distance_m / 1609.34 : null,
           genres: Array.isArray(r.genres) ? r.genres : [],
           coverCharge: r.cover_charge != null ? Number(r.cover_charge) : null,
+          lat: r.venue_lat != null ? Number(r.venue_lat) : null,
+          lon: r.venue_lon != null ? Number(r.venue_lon) : null,
         } satisfies FeedGig]
       })
 
@@ -882,7 +897,50 @@ export default function FanDashboard() {
                     )}
                   </div>
 
-                  {feedLoading ? (
+                  {/* List / Map toggle */}
+                  <div className="flex justify-end mb-3">
+                    <div className="inline-flex bg-white rounded-full p-0.5 shadow-sm">
+                      {(['list', 'map'] as const).map(v => (
+                        <button
+                          key={v}
+                          onClick={() => setEventsLayout(v)}
+                          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all ${eventsLayout === v ? 'bg-graphite text-snow shadow-sm' : 'text-charcoal hover:text-graphite'}`}
+                        >
+                          {v === 'list' ? (
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>
+                          ) : (
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                          )}
+                          {v === 'list' ? 'List' : 'Map'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {eventsLayout === 'map' ? (
+                    (() => {
+                      const pins = eventGigs.filter(g => g.lat != null && g.lon != null).map(g => ({
+                        id: g.id, lat: g.lat as number, lon: g.lon as number,
+                        musicianName: g.musicianName, venueName: g.restaurantName, date: `${g.date} · ${g.time}`,
+                      }))
+                      if (pins.length === 0) {
+                        return (
+                          <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
+                            <p className="text-graphite font-bold text-sm mb-1">Nothing to map</p>
+                            <p className="text-charcoal/50 text-xs">No events with a location match these filters.</p>
+                          </div>
+                        )
+                      }
+                      return (
+                        <EventsMap
+                          pins={pins}
+                          fanLat={fanCoords.lat}
+                          fanLon={fanCoords.lon}
+                          onSelect={id => router.push('/event/' + id)}
+                        />
+                      )
+                    })()
+                  ) : feedLoading ? (
                     <div className="space-y-3">
                       <SkeletonGigCard /><SkeletonGigCard /><SkeletonGigCard />
                     </div>

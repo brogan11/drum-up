@@ -16,7 +16,8 @@ returns table (
   booking_id uuid, restaurant_id uuid, musician_id uuid,
   venue_name text, venue_avatar text, venue_location text,
   musician_name text, musician_avatar text, performer_type text, band_members int,
-  genres text[], gig_date date, start_time time, end_time time, cover_charge numeric, distance_m float8
+  genres text[], gig_date date, start_time time, end_time time, cover_charge numeric,
+  venue_lat numeric, venue_lon numeric, distance_m float8
 ) language sql stable security invoker as $$
   select b.id, b.restaurant_id, b.musician_id,
          coalesce(v.role_metadata->>'venue_name', v.full_name)::text,
@@ -24,6 +25,7 @@ returns table (
          m.full_name::text, m.avatar_url::text, m.performer_type::text, m.band_members::int,
          array(select jsonb_array_elements_text(coalesce(m.role_metadata->'genres', '[]'::jsonb))),
          a.date, a.start_time, a.end_time, a.cover_charge,
+         v.latitude, v.longitude,
          case when fan_lat is null or v.latitude is null then null
               else st_distance(st_makepoint(v.longitude, v.latitude)::geography,
                                st_makepoint(fan_lon, fan_lat)::geography) end
