@@ -8,11 +8,10 @@ import { milesBetween } from '@/lib/distance'
 import { Avatar } from '@/components/Avatar'
 import MessagingTab, { MessagingTabRef } from '@/components/MessagingTab'
 import { useToast } from '@/components/Toast'
-import NotificationBell from '@/components/NotificationBell'
 import { SkeletonStatCard, SkeletonBookingCard, SkeletonMusicianCard } from '@/components/Skeleton'
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { stripePromise } from '@/lib/stripe-client'
-import { buildSocialUrl } from '@/lib/social-urls'
+import { SectionHeader, EmptyState, StatCard, SocialLinks, DashboardHeader, DashboardTabBar } from '@/components/dashboard'
 import { GENRE_GROUPS } from '@/lib/genres'
 import { GenreSelector } from '@/components/GenreSelector'
 import InviteModal from '@/components/InviteModal'
@@ -395,7 +394,6 @@ export default function RestaurantDashboard() {
   // Aggregate reputation per musician, keyed by musician id, for browse cards.
   const [musicianReps, setMusicianReps] = useState<Map<string, RepSummary>>(new Map())
   const [browseLoading, setBrowseLoading] = useState(false)
-  const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
 
   // Browse view toggle + musician availability
   const [browseView, setBrowseView] = useState<'musicians' | 'availability'>('musicians')
@@ -1131,55 +1129,7 @@ export default function RestaurantDashboard() {
     <div className="min-h-screen pb-24" style={{ background: 'radial-gradient(ellipse 50% 40% at 12% 8%, rgba(108,154,139,0.10), transparent 70%), radial-gradient(ellipse 50% 40% at 88% 92%, rgba(220,127,65,0.12), transparent 70%), #E8E4E0' }}>
 
       {/* HEADER */}
-      <header className="sticky top-0 z-40 backdrop-blur-md bg-graphite/95 border-b border-charcoal/30">
-        <div className="max-w-2xl mx-auto px-5 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="bg-white rounded-lg p-1">
-              <img src="/orange-drum-up.png" alt="Drum Up" className="w-6 h-6 object-contain" />
-            </div>
-            <h1 className="text-snow text-lg font-black tracking-tight">Drum Up</h1>
-            <span className="relative flex h-2 w-2 ml-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-chestnut opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-chestnut" />
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
-            <NotificationBell userId={userId} />
-            <div className="relative">
-              <button
-                onClick={() => setHeaderMenuOpen(o => !o)}
-                className="flex items-center gap-2 group"
-              >
-                {profile.avatar
-                  ? <img src={profile.avatar} alt="" className="w-8 h-8 rounded-full object-cover border-2 border-chestnut/40 group-hover:border-chestnut transition-colors" />
-                  : <div className="w-8 h-8 rounded-full bg-graphite border-2 border-chestnut/40 group-hover:border-chestnut transition-colors flex items-center justify-center text-snow text-xs font-black">
-                      {profile.name.slice(0, 2).toUpperCase() || 'DU'}
-                    </div>}
-              </button>
-              {headerMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setHeaderMenuOpen(false)} />
-                  <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl z-50 overflow-hidden border border-charcoal/10">
-                    <button onClick={() => { router.push('/profile/' + userId); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
-                      <svg className="w-4 h-4 text-charcoal/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                      View Profile
-                    </button>
-                    <button onClick={() => { router.push('/settings'); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
-                      <svg className="w-4 h-4 text-charcoal/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-                      Settings
-                    </button>
-                    <div className="border-t border-charcoal/10" />
-                    <button onClick={() => { handleLogout(); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-medium text-charcoal hover:bg-snow transition-colors flex items-center gap-2">
-                      <svg className="w-4 h-4 text-charcoal/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
-                      Log Out
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
+      <DashboardHeader profileName={profile.name} avatarUrl={profile.avatar} userId={userId} onLogout={handleLogout} />
 
       <main className="max-w-2xl mx-auto px-4 py-5">
 
@@ -1221,10 +1171,10 @@ export default function RestaurantDashboard() {
               </div>
             ) : (
               <div className="grid grid-cols-4 gap-2.5 mb-7">
-                <StatCard value={openSlots} label="Open" color="text-teal" icon={<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>} />
-                <StatCard value={pendingApps} label="Pending" color="text-chestnut" icon={<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>} highlight />
-                <StatCard value={upcomingGigs} label="Booked" color="text-graphite" icon={<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>} />
-                <StatCard value={pastGigs} label="Past" color="text-charcoal" icon={<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>} />
+                <StatCard iconPlacement="top" value={openSlots} label="Open" color="text-teal" icon={<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>} />
+                <StatCard iconPlacement="top" value={pendingApps} label="Pending" color="text-chestnut" icon={<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>} highlight />
+                <StatCard iconPlacement="top" value={upcomingGigs} label="Booked" color="text-graphite" icon={<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>} />
+                <StatCard iconPlacement="top" value={pastGigs} label="Past" color="text-charcoal" icon={<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>} />
               </div>
             )}
 
@@ -1298,7 +1248,7 @@ export default function RestaurantDashboard() {
                 <SkeletonBookingCard /><SkeletonBookingCard /><SkeletonBookingCard />
               </div>
             ) : pendingApps === 0 ? (
-              <EmptyState
+              <EmptyState seed={17}
                 icon={<svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>}
                 title="No pending applications"
                 body="Post a slot to start receiving applications from musicians."
@@ -1344,9 +1294,7 @@ export default function RestaurantDashboard() {
                         )}
                         {(app.instagram || app.youtube || app.spotify) && (
                           <div className="flex flex-wrap gap-3 mb-3">
-                            {app.instagram && <a href={buildSocialUrl('instagram', app.instagram)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg>Instagram</a>}
-                            {app.youtube && <a href={buildSocialUrl('youtube', app.youtube)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 3 14 9-14 9V3z"/></svg>YouTube</a>}
-                            {app.spotify && <a href={buildSocialUrl('spotify', app.spotify)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>Spotify</a>}
+                            <SocialLinks instagram={app.instagram} youtube={app.youtube} spotify={app.spotify} />
                           </div>
                         )}
                         <div className="flex gap-2">
@@ -1395,7 +1343,7 @@ export default function RestaurantDashboard() {
               <div className="mb-8">
                 <SectionHeader eyebrow="Review" title="Pending" accent="Applications." />
                 {allPendingApps.length === 0 ? (
-                  <EmptyState
+                  <EmptyState seed={17}
                     icon={<svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>}
                     title="No pending applications"
                     body="Post a slot to start receiving applications from musicians."
@@ -1447,9 +1395,7 @@ export default function RestaurantDashboard() {
                         )}
                         {(app.instagram || app.youtube || app.spotify) && (
                           <div className="flex flex-wrap gap-3 mb-3">
-                            {app.instagram && <a href={buildSocialUrl('instagram', app.instagram)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg>Instagram</a>}
-                            {app.youtube && <a href={buildSocialUrl('youtube', app.youtube)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 3 14 9-14 9V3z"/></svg>YouTube</a>}
-                            {app.spotify && <a href={buildSocialUrl('spotify', app.spotify)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>Spotify</a>}
+                            <SocialLinks instagram={app.instagram} youtube={app.youtube} spotify={app.spotify} />
                           </div>
                         )}
                         <div className="flex gap-2">
@@ -1475,7 +1421,7 @@ export default function RestaurantDashboard() {
               <div className="mb-8">
                 <SectionHeader eyebrow="Confirmed" title="Booked" accent="Gigs." />
                 {upcomingBooked.length === 0 && pastBooked.length === 0 ? (
-                  <EmptyState
+                  <EmptyState seed={17}
                     icon={<svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
                     title="No confirmed bookings yet"
                     body="Accept a musician's application to create a confirmed booking."
@@ -1612,7 +1558,7 @@ export default function RestaurantDashboard() {
 
                     {/* Slot list with pagination */}
                     {filteredSlots.length === 0 ? (
-                      <EmptyState icon={<svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>} title="No slots found" body="Post a slot to start receiving applications from musicians." />
+                      <EmptyState seed={17} icon={<svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>} title="No slots found" body="Post a slot to start receiving applications from musicians." />
                     ) : (
                       <>
                         <p className="text-charcoal/50 text-xs mb-3">Showing {Math.min(slotsDisplayCount, filteredSlots.length)} of {filteredSlots.length} slots</p>
@@ -2027,7 +1973,7 @@ export default function RestaurantDashboard() {
 
             {/* No location */}
             {!browseLoading && restaurantCoords.lat == null && (
-              <EmptyState
+              <EmptyState seed={17}
                 icon={<svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>}
                 title="Location not set"
                 body="Add your location in Settings so we can find musicians near you."
@@ -2036,7 +1982,7 @@ export default function RestaurantDashboard() {
 
             {/* Empty state */}
             {!browseLoading && restaurantCoords.lat != null && filteredMusicians.length === 0 && (
-              <EmptyState
+              <EmptyState seed={17}
                 icon={<svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>}
                 title={`No musicians found within ${discoveryRadius} miles`}
                 body="Try widening your search radius to discover more talent nearby."
@@ -2091,9 +2037,7 @@ export default function RestaurantDashboard() {
                     )}
                     {(m.instagram || m.youtube || m.spotify) && (
                       <div className="flex flex-wrap gap-3 mb-3">
-                        {m.instagram && <a href={buildSocialUrl('instagram', m.instagram)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg>Instagram</a>}
-                        {m.youtube && <a href={buildSocialUrl('youtube', m.youtube)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 3 14 9-14 9V3z"/></svg>YouTube</a>}
-                        {m.spotify && <a href={buildSocialUrl('spotify', m.spotify)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>Spotify</a>}
+                        <SocialLinks instagram={m.instagram} youtube={m.youtube} spotify={m.spotify} />
                       </div>
                     )}
                     <div className="flex gap-2">
@@ -2155,15 +2099,7 @@ export default function RestaurantDashboard() {
                 <div>
                   <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-2">Links</p>
                   <div className="flex flex-wrap gap-2">
-                    {selectedLiveMusician.instagram && (
-                      <a href={buildSocialUrl('instagram', selectedLiveMusician.instagram)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 bg-snow px-3 py-1.5 rounded-xl text-xs font-medium text-charcoal hover:bg-[#E8E4E0] transition-colors"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg>Instagram</a>
-                    )}
-                    {selectedLiveMusician.youtube && (
-                      <a href={buildSocialUrl('youtube', selectedLiveMusician.youtube)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 bg-snow px-3 py-1.5 rounded-xl text-xs font-medium text-charcoal hover:bg-[#E8E4E0] transition-colors"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 3 14 9-14 9V3z"/></svg>YouTube</a>
-                    )}
-                    {selectedLiveMusician.spotify && (
-                      <a href={buildSocialUrl('spotify', selectedLiveMusician.spotify)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 bg-snow px-3 py-1.5 rounded-xl text-xs font-medium text-charcoal hover:bg-[#E8E4E0] transition-colors"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>Spotify</a>
-                    )}
+                    <SocialLinks size="pill" instagram={selectedLiveMusician.instagram} youtube={selectedLiveMusician.youtube} spotify={selectedLiveMusician.spotify} />
                   </div>
                 </div>
               )}
@@ -2366,15 +2302,13 @@ export default function RestaurantDashboard() {
       </div>
 
       {/* ---- BOTTOM TAB BAR ---- */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-graphite/95 backdrop-blur-md border-t border-charcoal/30 z-40">
-        <div className="max-w-2xl mx-auto grid grid-cols-5 px-2 py-2">
-          <TabButton animation="bounce" icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>} label="Home" active={activeTab === 'home'} onClick={() => setActiveTab('home')} />
-          <TabButton animation="toss"   icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>} label="Bookings" active={activeTab === 'slots'} onClick={() => setActiveTab('slots')} badge={pendingApps > 0 ? pendingApps : undefined} />
-          <TabButton animation="spin"   icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>} label="Browse" active={activeTab === 'browse'} onClick={() => setActiveTab('browse')} />
-          <TabButton animation="pop"    icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>} label="Messages" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} badge={msgUnread} />
-          <TabButton animation="pulse"  icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>} label="Profile" active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
-        </div>
-      </nav>
+      <DashboardTabBar iconWrapClass="flex items-center justify-center" iconColorInactive="text-charcoal/60" items={[
+        { animation: 'bounce', icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>, label: 'Home', active: activeTab === 'home', onClick: () => setActiveTab('home') },
+        { animation: 'toss', icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>, label: 'Bookings', active: activeTab === 'slots', onClick: () => setActiveTab('slots'), badge: pendingApps > 0 ? pendingApps : undefined },
+        { animation: 'spin', icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>, label: 'Browse', active: activeTab === 'browse', onClick: () => setActiveTab('browse') },
+        { animation: 'pop', icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>, label: 'Messages', active: activeTab === 'messages', onClick: () => setActiveTab('messages'), badge: msgUnread },
+        { animation: 'pulse', icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>, label: 'Profile', active: activeTab === 'profile', onClick: () => setActiveTab('profile') },
+      ]} />
 
       {/* ---- EDIT SLOT MODAL ---- */}
       {editingSlot && (
@@ -2728,79 +2662,6 @@ export default function RestaurantDashboard() {
 
 // ---- Sub-components ----
 
-function SectionHeader({ title, eyebrow, accent }: { title: string; eyebrow?: string; accent?: string }) {
-  return (
-    <div className="mb-5 mt-3">
-      {eyebrow && <p className="text-chestnut text-[10px] font-bold uppercase tracking-[0.3em] mb-1">{eyebrow}</p>}
-      <h3 className="text-graphite text-[1.65rem] font-black tracking-tight leading-none">
-        {title}
-        {accent && <span className="text-chestnut italic"> {accent}</span>}
-      </h3>
-    </div>
-  )
-}
-
-function EmptyState({ icon, title, body, action }: {
-  icon: React.ReactNode
-  title: string
-  body: string
-  action?: { label: string; onClick: () => void }
-}) {
-  return (
-    <div className="relative bg-graphite rounded-3xl overflow-hidden shadow-md">
-      <div className="absolute inset-x-0 bottom-0 top-2/3 flex items-end justify-around opacity-[0.08] pointer-events-none">
-        {Array.from({ length: 14 }).map((_, i) => (
-          <div key={i} className="eq-bar w-1.5 bg-chestnut rounded-t" style={eqBarStyle(i, 17)} />
-        ))}
-      </div>
-      <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-chestnut opacity-15 blur-2xl pointer-events-none" />
-      <div className="relative z-10 p-8 text-center">
-        <div className="w-16 h-16 bg-chestnut/20 border border-chestnut/30 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner text-chestnut">{icon}</div>
-        <p className="text-snow font-black text-lg mb-1.5 tracking-tight">{title}</p>
-        <p className="text-snow/60 text-sm leading-relaxed mb-5 max-w-xs mx-auto">{body}</p>
-        {action && (
-          <button onClick={action.onClick} className="bg-chestnut text-snow px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:opacity-90 transition-opacity">
-            {action.label} →
-          </button>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function StatCard({ value, label, color, icon, highlight }: { value: number | string; label: string; color: string; icon: React.ReactNode; highlight?: boolean }) {
-  if (highlight) {
-    return (
-      <div className="relative bg-chestnut rounded-2xl p-4 shadow-md overflow-hidden">
-        <span className="absolute top-2 right-2 text-snow/20 pointer-events-none">{icon}</span>
-        <p className="text-snow text-3xl font-black tracking-tight leading-none">{value}</p>
-        <p className="text-snow/70 text-[9px] font-bold uppercase tracking-[0.2em] mt-2">{label}</p>
-      </div>
-    )
-  }
-  return (
-    <div className="relative bg-white rounded-2xl p-4 shadow-sm overflow-hidden">
-      <span className="absolute top-2 right-2 text-charcoal/10 pointer-events-none">{icon}</span>
-      <p className={`text-3xl font-black tracking-tight leading-none ${color}`}>{value}</p>
-      <p className="text-charcoal text-[9px] font-bold uppercase tracking-[0.2em] mt-2">{label}</p>
-    </div>
-  )
-}
-
-function TabButton({ icon, label, active, onClick, badge, animation = 'bounce' }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void; badge?: number; animation?: string }) {
-  return (
-    <button onClick={onClick} className={`py-1 min-h-[44px] flex flex-col items-center justify-center gap-1 transition-colors relative tab-hover-${animation}`}>
-      <div className={`relative w-11 h-9 rounded-xl flex items-center justify-center transition-all ${active ? 'bg-chestnut shadow-md' : ''}`}>
-        <span className={`tab-icon flex items-center justify-center ${active ? 'text-snow' : 'text-charcoal/60'}`}>{icon}</span>
-        {badge != null && badge > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-chestnut border-2 border-graphite rounded-full text-[9px] text-snow font-bold flex items-center justify-center">{badge}</span>
-        )}
-      </div>
-      <span className={`text-[10px] font-semibold tracking-wide ${active ? 'text-chestnut' : 'text-snow/50'}`}>{label}</span>
-    </button>
-  )
-}
-
 function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAction, onAccept, onMessage, onEdit, onCancel }: {
   slot: Slot
   selectedSlotId: string | null
@@ -2873,9 +2734,7 @@ function SlotCard({ slot, selectedSlotId, setSelectedSlotId, handleApplicationAc
               </div>
               {(app.instagram || app.youtube || app.spotify) && (
                 <div className="flex flex-wrap gap-3 mb-2">
-                  {app.instagram && <a href={buildSocialUrl('instagram', app.instagram)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg>Instagram</a>}
-                  {app.youtube && <a href={buildSocialUrl('youtube', app.youtube)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 3 14 9-14 9V3z"/></svg>YouTube</a>}
-                  {app.spotify && <a href={buildSocialUrl('spotify', app.spotify)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-charcoal/60 hover:text-chestnut font-medium transition-colors"><svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>Spotify</a>}
+                  <SocialLinks instagram={app.instagram} youtube={app.youtube} spotify={app.spotify} />
                 </div>
               )}
               {app.note && <div className="bg-snow rounded-lg px-3 py-2 mb-2"><p className="text-charcoal text-sm italic">"{app.note}"</p></div>}

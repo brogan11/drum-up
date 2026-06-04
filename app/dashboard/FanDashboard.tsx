@@ -8,7 +8,6 @@ import { eqBarStyle } from '@/lib/eq'
 import { Avatar } from '@/components/Avatar'
 import MessagingTab, { MessagingTabRef } from '@/components/MessagingTab'
 import { useToast } from '@/components/Toast'
-import NotificationBell from '@/components/NotificationBell'
 import SaveButton from '@/components/SaveButton'
 import AddToCalendar from '@/components/AddToCalendar'
 import { ShareButton } from '@/components/ShareButton'
@@ -22,6 +21,7 @@ import {
   SkeletonMusicianCard,
   SkeletonGigCard,
 } from '@/components/Skeleton'
+import { SectionHeader, EmptyState, StatCard, ProfileField, DashboardHeader, DashboardTabBar } from '@/components/dashboard'
 
 // Lazy-load the map (vanilla Leaflet) so it stays out of the main bundle and
 // never runs on the server.
@@ -201,7 +201,6 @@ export default function FanDashboard() {
   const [fanGenres, setFanGenres] = useState<string[]>([])   // favorite genres from onboarding, for personalization
   const [feedGenreFilter, setFeedGenreFilter] = useState(false)  // toggle: only show gigs matching favorites
   const [userId, setUserId] = useState('')
-  const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
   const [dataLoading, setDataLoading] = useState(true)
   const { toast } = useToast()
 
@@ -550,49 +549,7 @@ export default function FanDashboard() {
     <div className="min-h-screen pb-24" style={{ background: 'radial-gradient(ellipse 50% 40% at 12% 8%, rgba(108,154,139,0.10), transparent 70%), radial-gradient(ellipse 50% 40% at 88% 92%, rgba(220,127,65,0.12), transparent 70%), #E8E4E0' }}>
 
       {/* HEADER */}
-      <header className="sticky top-0 z-40 backdrop-blur-md bg-graphite/95 border-b border-charcoal/30">
-        <div className="max-w-2xl mx-auto px-5 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="bg-white rounded-lg p-1">
-              <img src="/orange-drum-up.png" alt="Drum Up" className="w-6 h-6 object-contain" />
-            </div>
-            <h1 className="text-snow text-lg font-black tracking-tight">Drum Up</h1>
-            <span className="relative flex h-2 w-2 ml-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-chestnut opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-chestnut" />
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
-            <NotificationBell userId={userId} />
-            <div className="relative">
-              <button onClick={() => setHeaderMenuOpen(o => !o)} aria-label="Account menu" aria-expanded={headerMenuOpen} aria-haspopup="menu" className="flex items-center gap-2 group">
-                {profile.avatar
-                  ? <img src={profile.avatar} alt="" className="w-8 h-8 rounded-full object-cover border-2 border-chestnut/40 group-hover:border-chestnut transition-colors" />
-                  : <div className="w-8 h-8 rounded-full bg-graphite border-2 border-chestnut/40 group-hover:border-chestnut transition-colors flex items-center justify-center text-snow text-xs font-black">
-                      {profile.name.slice(0, 2).toUpperCase() || 'DU'}
-                    </div>}
-              </button>
-              {headerMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setHeaderMenuOpen(false)} />
-                  <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl z-50 overflow-hidden border border-charcoal/10">
-                    <button onClick={() => { router.push('/profile/' + userId); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
-                      <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> View Profile
-                    </button>
-                    <button onClick={() => { router.push('/settings'); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-semibold text-graphite hover:bg-snow transition-colors flex items-center gap-2">
-                      <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg> Settings
-                    </button>
-                    <div className="border-t border-charcoal/10" />
-                    <button onClick={() => { handleLogout(); setHeaderMenuOpen(false) }} className="w-full px-4 py-3 text-left text-sm font-medium text-charcoal hover:bg-snow transition-colors flex items-center gap-2">
-                      <svg className="w-4 h-4 text-charcoal/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg> Log Out
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
+      <DashboardHeader profileName={profile.name} avatarUrl={profile.avatar} userId={userId} onLogout={handleLogout} />
 
       <main className="max-w-2xl mx-auto px-4 py-5">
 
@@ -632,7 +589,7 @@ export default function FanDashboard() {
             ) : (
               <div className="grid grid-cols-3 gap-2.5 mb-7">
                 <StatCard value={followingCount} label="Following" color="text-chestnut" icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>} />
-                <StatCard value={tonightCount} label="Tonight" color="text-teal" icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>} highlight={tonightCount > 0} />
+                <StatCard value={tonightCount} label="Tonight" color="text-teal" icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>} highlight={tonightCount > 0} accent="teal" />
                 <StatCard value={thisWeekCount} label="This Week" color="text-graphite" icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>} />
               </div>
             )}
@@ -663,7 +620,7 @@ export default function FanDashboard() {
 
             {followedIds.size === 0 ? (
               <div className="mb-8">
-                <EmptyState
+                <EmptyState seed={29}
                   icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>}
                   title="You're not following anyone yet"
                   body="Follow restaurants and musicians to see their upcoming gigs right here in your feed."
@@ -681,7 +638,7 @@ export default function FanDashboard() {
               </div>
             ) : followingGigs.length === 0 ? (
               <div className="mb-8">
-                <EmptyState
+                <EmptyState seed={29}
                   icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>}
                   title="No upcoming shows from your follows"
                   body="The venues and artists you follow don't have confirmed shows in the next 30 days yet."
@@ -736,7 +693,7 @@ export default function FanDashboard() {
             </div>
 
             {fanCoords.lat == null ? (
-              <EmptyState
+              <EmptyState seed={29}
                 icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>}
                 title="Set your location to discover live music near you"
                 body="Update your location in your profile to see shows near you."
@@ -748,7 +705,7 @@ export default function FanDashboard() {
                 <SkeletonGigCard />
               </div>
             ) : nearbyGigs.length === 0 ? (
-              <EmptyState
+              <EmptyState seed={29}
                 icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>}
                 title={`No upcoming shows within ${discoverRadius} miles`}
                 body="Try increasing your discovery radius in the Discover tab."
@@ -1089,7 +1046,7 @@ export default function FanDashboard() {
               <>
                 {discoverView === 'venues' && (
                   filteredVenues.length === 0 ? (
-                    <EmptyState
+                    <EmptyState seed={29}
                       icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>}
                       title="No venues nearby"
                       body={fanCoords.lat == null ? 'Set your location in Profile to find venues.' : `No venues found within ${discoverRadius} miles. Try a larger radius.`}
@@ -1135,7 +1092,7 @@ export default function FanDashboard() {
 
                 {discoverView === 'musicians' && (
                   filteredMusicians.length === 0 ? (
-                    <EmptyState
+                    <EmptyState seed={29}
                       icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>}
                       title="No musicians nearby"
                       body={fanCoords.lat == null ? 'Set your location in Profile to find musicians.' : `No musicians found within ${discoverRadius} miles. Try a larger radius.`}
@@ -1199,7 +1156,7 @@ export default function FanDashboard() {
             </div>
 
             {followingCount === 0 ? (
-              <EmptyState
+              <EmptyState seed={29}
                 icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>}
                 title="Not following anyone yet"
                 body="Discover venues and musicians and follow them to see their shows in your feed."
@@ -1415,15 +1372,13 @@ export default function FanDashboard() {
       </div>
 
       {/* ---- BOTTOM TAB BAR ---- */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-graphite/95 backdrop-blur-md border-t border-charcoal/30 z-40">
-        <div className="max-w-2xl mx-auto grid grid-cols-5 px-2 py-2">
-          <TabButton animation="sway"    icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>} label="Feed"      active={activeTab === 'feed'}      onClick={() => setActiveTab('feed')} />
-          <TabButton animation="shake"   icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>} label="Events"  active={activeTab === 'events'}  onClick={() => setActiveTab('events')} />
-          <TabButton animation="ping"    icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>} label="Following" active={activeTab === 'following'} onClick={() => setActiveTab('following')} badge={followingCount} />
-          <TabButton animation="pop"     icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>} label="Messages"  active={activeTab === 'messages'}  onClick={() => setActiveTab('messages')} badge={msgUnread} />
-          <TabButton animation="float"   icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>} label="Profile"   active={activeTab === 'profile'}   onClick={() => setActiveTab('profile')} />
-        </div>
-      </nav>
+      <DashboardTabBar items={[
+        { animation: 'sway', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>, label: 'Feed', active: activeTab === 'feed', onClick: () => setActiveTab('feed') },
+        { animation: 'shake', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>, label: 'Events', active: activeTab === 'events', onClick: () => setActiveTab('events') },
+        { animation: 'ping', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>, label: 'Following', active: activeTab === 'following', onClick: () => setActiveTab('following'), badge: followingCount },
+        { animation: 'pop', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>, label: 'Messages', active: activeTab === 'messages', onClick: () => setActiveTab('messages'), badge: msgUnread },
+        { animation: 'float', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>, label: 'Profile', active: activeTab === 'profile', onClick: () => setActiveTab('profile') },
+      ]} />
 
     </div>
   )
@@ -1596,128 +1551,6 @@ function DateGroupHeader({ label }: { label: string }) {
       <div className="w-0.5 h-4 bg-chestnut rounded-full shrink-0" />
       <span className="text-charcoal text-[10px] font-black uppercase tracking-[0.25em]">{label}</span>
       <div className="flex-1 h-px bg-charcoal/10" />
-    </div>
-  )
-}
-
-function SectionHeader({ title, eyebrow, accent, live }: { title: string; eyebrow?: string; accent?: string; live?: boolean }) {
-  return (
-    <div className="mb-5 mt-3">
-      {(eyebrow || live) && (
-        <div className="flex items-center gap-2 mb-1">
-          {live && (
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-teal" />
-            </span>
-          )}
-          {eyebrow && <p className={`text-[10px] font-bold uppercase tracking-[0.3em] ${live ? 'text-teal' : 'text-chestnut'}`}>{eyebrow}</p>}
-        </div>
-      )}
-      <h3 className="text-graphite text-[1.65rem] font-black tracking-tight leading-none">
-        {title}
-        {accent && <span className={`italic ${live ? 'text-teal' : 'text-chestnut'}`}> {accent}</span>}
-      </h3>
-    </div>
-  )
-}
-
-function EmptyState({ icon, title, body, action, twoActions }: {
-  icon: React.ReactNode
-  title: string
-  body: string
-  action?: { label: string; onClick: () => void }
-  twoActions?: { label: string; onClick: () => void }[]
-}) {
-  return (
-    <div className="relative bg-graphite rounded-3xl overflow-hidden shadow-md">
-      <div className="absolute inset-x-0 bottom-0 top-2/3 flex items-end justify-around opacity-[0.08] pointer-events-none">
-        {Array.from({ length: 14 }).map((_, i) => (
-          <div key={i} className="eq-bar w-1.5 bg-chestnut rounded-t" style={eqBarStyle(i, 29)} />
-        ))}
-      </div>
-      <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-chestnut opacity-15 blur-2xl pointer-events-none" />
-      <div className="relative z-10 p-8 text-center">
-        <div className="w-16 h-16 bg-chestnut/20 border border-chestnut/30 rounded-2xl flex items-center justify-center text-chestnut mx-auto mb-4 shadow-inner">{icon}</div>
-        <p className="text-snow font-black text-lg mb-1.5 tracking-tight">{title}</p>
-        <p className="text-snow/60 text-sm leading-relaxed mb-5 max-w-xs mx-auto">{body}</p>
-        {twoActions ? (
-          <div className="flex gap-3 justify-center">
-            {twoActions.map(a => (
-              <button key={a.label} onClick={a.onClick} className="bg-chestnut/20 border border-chestnut/40 text-snow px-4 py-2 rounded-xl font-bold text-xs hover:bg-chestnut transition-colors">
-                {a.label}
-              </button>
-            ))}
-          </div>
-        ) : action ? (
-          <button onClick={action.onClick} className="bg-chestnut text-snow px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:opacity-90 transition-opacity">
-            {action.label} →
-          </button>
-        ) : null}
-      </div>
-    </div>
-  )
-}
-
-function StatCard({ value, label, color, icon, highlight }: {
-  value: number
-  label: string
-  color: string
-  icon: React.ReactNode
-  highlight?: boolean
-}) {
-  if (highlight) {
-    return (
-      <div className="relative bg-teal rounded-2xl p-4 shadow-md overflow-hidden">
-        <span className="absolute -bottom-1 -right-1 w-10 h-10 opacity-20 pointer-events-none select-none text-snow">{icon}</span>
-        <p className="text-snow text-3xl font-black tracking-tight leading-none">{value}</p>
-        <p className="text-snow/80 text-[9px] font-bold uppercase tracking-[0.2em] mt-2">{label}</p>
-      </div>
-    )
-  }
-  return (
-    <div className="relative bg-white rounded-2xl p-4 shadow-sm overflow-hidden">
-      <span className="absolute -bottom-1 -right-1 w-10 h-10 opacity-10 pointer-events-none select-none text-graphite">{icon}</span>
-      <p className={`text-3xl font-black tracking-tight leading-none ${color}`}>{value}</p>
-      <p className="text-charcoal text-[9px] font-bold uppercase tracking-[0.2em] mt-2">{label}</p>
-    </div>
-  )
-}
-
-function TabButton({ icon, label, active, onClick, badge, animation = 'bounce' }: {
-  icon: React.ReactNode
-  label: string
-  active: boolean
-  onClick: () => void
-  badge?: number
-  animation?: string
-}) {
-  return (
-    <button onClick={onClick} className={`py-1 min-h-[44px] flex flex-col items-center justify-center gap-1 transition-colors relative tab-hover-${animation}`}>
-      <div className={`relative w-11 h-9 rounded-xl flex items-center justify-center transition-all ${active ? 'bg-chestnut shadow-md' : ''}`}>
-        <span className={`tab-icon w-5 h-5 ${active ? 'text-snow' : 'text-snow/50'}`}>{icon}</span>
-        {badge != null && badge > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-chestnut border-2 border-graphite rounded-full text-[9px] text-snow font-bold flex items-center justify-center">
-            {badge}
-          </span>
-        )}
-      </div>
-      <span className={`text-[10px] font-semibold tracking-wide ${active ? 'text-chestnut' : 'text-snow/50'}`}>{label}</span>
-    </button>
-  )
-}
-
-function ProfileField({ label, value, placeholder }: {
-  label: string
-  value: string
-  placeholder?: string
-}) {
-  return (
-    <div>
-      <p className="text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">{label}</p>
-      <p className="text-graphite text-sm">
-        {value || <span className="text-charcoal/50">{placeholder || 'Not set'}</span>}
-      </p>
     </div>
   )
 }
