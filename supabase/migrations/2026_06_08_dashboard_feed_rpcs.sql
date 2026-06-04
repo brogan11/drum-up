@@ -53,7 +53,7 @@ returns table (
          p.role_metadata, p.performer_type::text, p.band_members::int,
          case when lat is null or p.latitude is null then null
               else st_distance(st_makepoint(p.longitude, p.latitude)::geography,
-                               st_makepoint(lon, lat)::geography) end
+                               st_makepoint(lon, lat)::geography) end as distance_m
   from public.profiles p
   where p.user_type = 'musician'
     and p.latitude is not null and p.longitude is not null
@@ -73,7 +73,7 @@ returns table (
   select p.id, p.full_name::text, p.user_type::text, p.avatar_url::text, p.bio::text,
          p.location_text::text, p.role_metadata,
          st_distance(st_makepoint(p.longitude, p.latitude)::geography,
-                     st_makepoint(lon, lat)::geography)
+                     st_makepoint(lon, lat)::geography) as distance_m
   from public.profiles p
   where p.user_type = any(types)
     and p.latitude is not null and p.longitude is not null
@@ -97,7 +97,7 @@ returns table (
          v.avatar_url::text,
          case when lat is null or a.latitude is null then null
               else st_distance(st_makepoint(a.longitude, a.latitude)::geography,
-                               st_makepoint(lon, lat)::geography) end
+                               st_makepoint(lon, lat)::geography) end as distance_m
   from public.availability a
   join public.profiles v on v.id = a.restaurant_id
   where a.status = 'open' and coalesce(a.is_private, false) = false
