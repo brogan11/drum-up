@@ -4,6 +4,11 @@
 -- Powers app/event/[id]: a public-safe detail view of a single confirmed gig,
 -- plus a lightweight RSVP so fans can mark "I'm going" and see a going-count.
 
+-- ── 0. Cover charge guard ─────────────────────────────────────────────────────
+-- Also added by 2026_06_08_dashboard_feed_rpcs.sql; repeated here (idempotent)
+-- so this migration works regardless of which one is run first.
+alter table public.availability add column if not exists cover_charge numeric;
+
 -- ── 1. RSVPs ─────────────────────────────────────────────────────────────────
 create table if not exists public.rsvps (
   id uuid primary key default gen_random_uuid(),
