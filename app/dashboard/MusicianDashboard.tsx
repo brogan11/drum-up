@@ -99,6 +99,7 @@ interface MusicianProfile {
   legalName: string
   performerType: 'solo' | 'band' | ''
   bandMembers: number | null
+  payRange: string
 }
 
 interface MusicianAvailSlot {
@@ -128,6 +129,7 @@ const INITIAL_PROFILE: MusicianProfile = {
   legalName: '',
   performerType: '',
   bandMembers: null,
+  payRange: '',
 }
 
 // ---- Helpers ----
@@ -372,6 +374,7 @@ export default function MusicianDashboard() {
           legalName: privateFields.legal_name ?? '',
           performerType: pt === 'solo' || pt === 'band' ? pt : '',
           bandMembers: (data as Record<string, unknown>).band_members as number | null ?? null,
+          payRange: typeof meta.pay_range === 'string' ? meta.pay_range : '',
         })
         // Treat the musician as onboarded only if the flag is set AND a Stripe
         // account ID actually exists. If the ID was removed (e.g. deleted in
@@ -1806,6 +1809,16 @@ export default function MusicianDashboard() {
                     ))}
                   </div>
                 )}
+                {/* Typical pay — what venues see when gauging price pre-invite */}
+                <div className="mt-4 flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 text-teal text-[10px] font-bold uppercase tracking-[0.15em]">
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    Typical pay
+                  </span>
+                  {profile.payRange
+                    ? <span className="text-snow font-bold text-sm">{profile.payRange}</span>
+                    : <button onClick={() => router.push('/settings')} className="text-snow/50 text-sm font-medium hover:text-snow transition-colors underline decoration-dotted">Set your rate so venues can gauge price →</button>}
+                </div>
               </div>
             </div>
 

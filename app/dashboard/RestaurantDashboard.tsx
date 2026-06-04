@@ -90,6 +90,7 @@ interface LiveMusician {
   spotify: string
   performerType: string
   bandMembers: number | null
+  payRange: string
 }
 
 // Row shape returned by the musicians_near PostGIS RPC.
@@ -548,6 +549,7 @@ export default function RestaurantDashboard() {
         spotify: m.spotify_url ?? '',
         performerType: m.performer_type ?? '',
         bandMembers: m.band_members ?? null,
+        payRange: typeof meta.pay_range === 'string' ? meta.pay_range : '',
       }
     })
 
@@ -2066,6 +2068,12 @@ export default function RestaurantDashboard() {
                         {m.location && <p className="text-charcoal text-xs mt-0.5">{m.location}</p>}
                         <p className="inline-flex items-center gap-0.5 text-chestnut text-xs font-semibold mt-0.5"><svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>{m.distanceStr}</p>
                         <RatingBadge rep={musicianReps.get(m.id)} className="mt-1" />
+                        {m.payRange && (
+                          <p className="inline-flex items-center gap-1 text-[11px] font-bold text-teal bg-teal/10 px-2 py-0.5 rounded-full mt-1.5">
+                            <svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                            Typical pay: {m.payRange}
+                          </p>
+                        )}
                         {m.bio && <p className="text-charcoal/70 text-xs mt-1.5 line-clamp-2 leading-relaxed">{m.bio}</p>}
                       </div>
                       <SaveButton
