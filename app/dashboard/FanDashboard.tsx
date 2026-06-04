@@ -10,6 +10,7 @@ import { useToast } from '@/components/Toast'
 import NotificationBell from '@/components/NotificationBell'
 import SaveButton from '@/components/SaveButton'
 import AddToCalendar from '@/components/AddToCalendar'
+import { ShareButton } from '@/components/ShareButton'
 import { getSavedSet, savedKey } from '@/lib/saved'
 import { gigStartEnd } from '@/lib/ics'
 import { formatMoney } from '@/lib/analytics'
@@ -655,6 +656,7 @@ export default function FanDashboard() {
                           userId={userId}
                           saved={savedItems.has(savedKey('gig', gig.id))}
                           onSaveChange={(next) => setSaved(savedKey('gig', gig.id), next)}
+                          onViewEvent={id => router.push('/event/' + id)}
                         />
                       ))}
                     </div>
@@ -720,6 +722,7 @@ export default function FanDashboard() {
                           userId={userId}
                           saved={savedItems.has(savedKey('gig', gig.id))}
                           onSaveChange={(next) => setSaved(savedKey('gig', gig.id), next)}
+                          onViewEvent={id => router.push('/event/' + id)}
                         />
                       ))}
                     </div>
@@ -1266,6 +1269,7 @@ function GigCard({
   userId = '',
   saved = false,
   onSaveChange,
+  onViewEvent,
 }: {
   gig: FeedGig
   followedIds: Set<string>
@@ -1276,6 +1280,7 @@ function GigCard({
   userId?: string
   saved?: boolean
   onSaveChange?: (next: boolean) => void
+  onViewEvent?: (gigId: string) => void
 }) {
   const isFollowingRestaurant = followedIds.has(gig.restaurantId)
   const isFollowingMusician = followedIds.has(gig.musicianId)
@@ -1309,9 +1314,13 @@ function GigCard({
         )}
       </div>
 
-      {/* Musician section — graphite with subtle glow */}
+      {/* Musician section — graphite with subtle glow; tap for event details */}
       <div
-        className="px-4 py-5"
+        onClick={onViewEvent ? () => onViewEvent(gig.id) : undefined}
+        role={onViewEvent ? 'button' : undefined}
+        tabIndex={onViewEvent ? 0 : undefined}
+        onKeyDown={onViewEvent ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onViewEvent(gig.id) } } : undefined}
+        className={`px-4 py-5 ${onViewEvent ? 'cursor-pointer' : ''}`}
         style={{
           background: 'radial-gradient(ellipse 80% 60% at 10% 20%, rgba(220,127,65,0.05), transparent 70%), radial-gradient(ellipse 80% 60% at 90% 80%, rgba(108,154,139,0.05), transparent 70%), #333333',
         }}
@@ -1373,8 +1382,26 @@ function GigCard({
         )}
       </div>
 
-      {/* Add to calendar */}
-      <div className="px-4 pb-3 -mt-1 flex justify-end">
+      {/* Details + share + add to calendar */}
+      <div className="px-4 pb-3 -mt-1 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-3">
+          {onViewEvent && (
+            <button
+              onClick={() => onViewEvent(gig.id)}
+              className="inline-flex items-center gap-1 text-chestnut text-xs font-bold hover:opacity-80 transition-opacity"
+            >
+              Event details
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+          )}
+          <ShareButton
+            url={typeof window !== 'undefined' ? `${window.location.origin}/event/${gig.id}` : ''}
+            title={`${gig.musicianName} at ${gig.restaurantName}`}
+            text={`Live music: ${gig.musicianName} at ${gig.restaurantName} · ${gig.date}`}
+            label="Share"
+            className="text-charcoal text-xs"
+          />
+        </div>
         <AddToCalendar
           filename={`show-${gig.musicianName}`}
           label="Add to Calendar"
