@@ -13,7 +13,7 @@ import NotificationBell from '@/components/NotificationBell'
 import SaveButton from '@/components/SaveButton'
 import AddToCalendar from '@/components/AddToCalendar'
 import { getSavedSet, savedKey } from '@/lib/saved'
-import { gigStartEnd } from '@/lib/ics'
+import { gigStartEnd, parseICSDates } from '@/lib/ics'
 import { musicianNet } from '@/lib/fees'
 import { formatMoney } from '@/lib/analytics'
 import { TIME_OPTIONS, endTimeOptions } from '@/lib/time'
@@ -124,6 +124,13 @@ interface MusicianAvailSlot {
   min_pay: number | null
   notes: string | null
   status: string
+}
+
+interface Blackout {
+  id: string
+  date: string
+  reason: string | null
+  source: string
 }
 
 // ---- Constants ----
@@ -272,6 +279,10 @@ export default function MusicianDashboard() {
   const [profileLat, setProfileLat] = useState<number | null>(null)
   const [profileLon, setProfileLon] = useState<number | null>(null)
 
+  // Block-out dates (musician marks dates unavailable; also fed by calendar import)
+  const [blackouts, setBlackouts] = useState<Blackout[]>([])
+  const [importingCal, setImportingCal] = useState(false)
+
   // ---- Data loading ----
 
   const loadMyBookings = async (uid: string, myLat: number | null, myLon: number | null) => {
@@ -410,6 +421,7 @@ export default function MusicianDashboard() {
         setProfileLon(myLon)
 
         await loadMyBookings(user.id, myLat, myLon)
+        void loadBlackouts(user.id)
         setDataLoading(false)
 
         if (myLat == null || myLon == null) {
@@ -492,7 +504,7 @@ export default function MusicianDashboard() {
   useEffect(() => {
     if (activeTab === 'bookings') {
       setNewlyConfirmed(0)
-      if (userId) void loadMyBookings(userId, profileLat, profileLon)
+      if (userId) { void loadMyBookings(userId, profileLat, profileLon); void loadBlackouts(userId) }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab])
@@ -716,6 +728,137 @@ export default function MusicianDashboard() {
     }
   }
 
+  // ---- Block-out dates ----
+
+  const loadBlackouts = async (uid: string) => {
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      const { data } = await supabase
+        .from('musician_blackouts')
+        .select('id, date, reason, source')
+        .eq('musician_id', uid)
+        .gte('date', today)
+        .order('date', { ascending: true })
+      if (data) {
+        setBlackouts(data.map(b => ({
+          id: b.id as string,
+          date: b.date as string,
+          reason: (b.reason as string | null) ?? null,
+          source: (b.source as string) ?? 'manual',
+        })))
+      }
+    } catch (err) {
+      console.error('Failed to load blackouts:', err)
+    }
+  }
+
+  const addBlackout = async (date: string, reason: string) => {
+    if (!userId || !date) return
+    try {
+      const { data, error } = await supabase
+        .from('musician_blackouts')
+        .upsert(
+          { musician_id: userId, date, reason: reason.trim() || null, source: 'manual' },
+          { onConflict: 'musician_id,date' },
+        )
+        .select('id, date, reason, source')
+        .single()
+      if (error) throw error
+      setBlackouts(prev => {
+        const next = prev.filter(b => b.date !== date)
+        next.push({
+          id: data.id as string,
+          date: data.date as string,
+          reason: (data.reason as string | null) ?? null,
+          source: (data.source as string) ?? 'manual',
+        })
+        return next.sort((a, b) => a.date.localeCompare(b.date))
+      })
+      toast.success('Date marked unavailable')
+    } catch (err) {
+      console.error('Failed to add blackout:', err)
+      toast.error('Could not block that date. Please try again.')
+    }
+  }
+
+  const removeBlackout = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('musician_blackouts')
+        .delete()
+        .eq('id', id)
+        .eq('musician_id', userId)
+      if (error) throw error
+      setBlackouts(prev => prev.filter(b => b.id !== id))
+      toast.success('Date is available again')
+    } catch (err) {
+      console.error('Failed to remove blackout:', err)
+      toast.error('Could not remove that block. Please try again.')
+    }
+  }
+
+  // Bulk-insert imported busy dates as source='import' blackouts. Resilient: skips
+  // past dates, de-dupes against what's already blocked, and never throws to the UI.
+  const importCalendarDates = async (dates: string[]) => {
+    if (!userId) return
+    const today = new Date().toISOString().slice(0, 10)
+    const existing = new Set(blackouts.map(b => b.date))
+    const fresh = [...new Set(dates)].filter(d => d >= today && !existing.has(d))
+    if (fresh.length === 0) {
+      toast.info('No new busy dates found to import.')
+      return
+    }
+    setImportingCal(true)
+    try {
+      const rows = fresh.map(date => ({ musician_id: userId, date, reason: 'Imported', source: 'import' }))
+      const { error } = await supabase
+        .from('musician_blackouts')
+        .upsert(rows, { onConflict: 'musician_id,date' })
+      if (error) throw error
+      await loadBlackouts(userId)
+      toast.success(`Imported ${fresh.length} busy date${fresh.length !== 1 ? 's' : ''}`)
+    } catch (err) {
+      console.error('Calendar import failed:', err)
+      toast.error('Could not import that calendar. Please try again.')
+    } finally {
+      setImportingCal(false)
+    }
+  }
+
+  const importCalendarFile = async (file: File) => {
+    try {
+      const text = await file.text()
+      const dates = parseICSDates(text)
+      if (dates.length === 0) { toast.error('No events found in that file.'); return }
+      await importCalendarDates(dates)
+    } catch (err) {
+      console.error('Failed to read .ics file:', err)
+      toast.error('Could not read that file.')
+    }
+  }
+
+  const importCalendarUrl = async (url: string) => {
+    const trimmed = url.trim()
+    if (!/^https?:\/\//i.test(trimmed) && !/^webcal:\/\//i.test(trimmed)) {
+      toast.error('Enter a valid iCal URL (https:// or webcal://).')
+      return
+    }
+    setImportingCal(true)
+    try {
+      const res = await fetch(`/api/calendar/proxy?url=${encodeURIComponent(trimmed)}`)
+      const text = await res.text()
+      if (!res.ok) throw new Error('fetch failed')
+      const dates = parseICSDates(text)
+      if (dates.length === 0) { toast.error('No events found at that URL.'); return }
+      await importCalendarDates(dates)
+    } catch (err) {
+      console.error('Failed to fetch calendar URL:', err)
+      toast.error('Could not load that calendar URL.')
+    } finally {
+      setImportingCal(false)
+    }
+  }
+
   const [applying, setApplying] = useState(false)
   const [applyError, setApplyError] = useState('')
   // In-flight lock so a double-tap can't fire two accept/decline requests.
@@ -748,6 +891,10 @@ export default function MusicianDashboard() {
     if (!gig) return
     const clash = findConflict(gig.rawDate, gig.rawStartDatetime, gig.rawEndDatetime)
     if (clash && !window.confirm(`This overlaps your confirmed gig at ${clash.gig.venue.name} on ${clash.gig.date}. Apply anyway?`)) {
+      return
+    }
+    const blockedDay = blackouts.find(bl => bl.date === gig.rawDate)
+    if (blockedDay && !window.confirm(`You marked ${gig.date} as unavailable${blockedDay.reason ? ` (${blockedDay.reason})` : ''}. Apply anyway?`)) {
       return
     }
     setApplying(true)
@@ -817,6 +964,10 @@ export default function MusicianDashboard() {
       if (target) {
         const clash = findConflict(target.gig.rawDate, target.gig.rawStartDatetime, target.gig.rawEndDatetime, bookingId)
         if (clash && !window.confirm(`This overlaps your confirmed gig at ${clash.gig.venue.name} on ${clash.gig.date}. Accept anyway?`)) {
+          return
+        }
+        const blockedDay = blackouts.find(bl => bl.date === target.gig.rawDate)
+        if (blockedDay && !window.confirm(`You marked ${target.gig.date} as unavailable${blockedDay.reason ? ` (${blockedDay.reason})` : ''}. Accept anyway?`)) {
           return
         }
       }
@@ -1602,7 +1753,15 @@ export default function MusicianDashboard() {
               </div>
 
               {bookingsView === 'calendar' ? (
-                <BookingsCalendar gigs={[...upcomingConfirmed, ...pastGigs]} />
+                <BookingsCalendar
+                  gigs={[...upcomingConfirmed, ...pastGigs]}
+                  blackouts={blackouts}
+                  importing={importingCal}
+                  onAddBlackout={addBlackout}
+                  onRemoveBlackout={removeBlackout}
+                  onImportFile={importCalendarFile}
+                  onImportUrl={importCalendarUrl}
+                />
               ) : (<>
 
               {/* Filter tabs */}
@@ -2691,9 +2850,20 @@ function PostAvailabilityModal({ userId, myLat, myLon, onClose, onSuccess }: {
 // ---- Sub-components ----
 
 // Month-grid view of confirmed gigs so musicians can spot clashes at a glance.
-function BookingsCalendar({ gigs }: { gigs: Booking[] }) {
+function BookingsCalendar({ gigs, blackouts, importing, onAddBlackout, onRemoveBlackout, onImportFile, onImportUrl }: {
+  gigs: Booking[]
+  blackouts: Blackout[]
+  importing: boolean
+  onAddBlackout: (date: string, reason: string) => void
+  onRemoveBlackout: (id: string) => void
+  onImportFile: (file: File) => void
+  onImportUrl: (url: string) => void
+}) {
   const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1) })
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
+  const [blackoutReason, setBlackoutReason] = useState('')
+  const [calUrl, setCalUrl] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const byDate = new Map<string, Booking[]>()
   for (const b of gigs) {
@@ -2702,6 +2872,7 @@ function BookingsCalendar({ gigs }: { gigs: Booking[] }) {
     arr.push(b)
     byDate.set(b.gig.rawDate, arr)
   }
+  const blackoutByDate = new Map(blackouts.map(b => [b.date, b]))
 
   const year = month.getFullYear()
   const m = month.getMonth()
@@ -2711,7 +2882,9 @@ function BookingsCalendar({ gigs }: { gigs: Booking[] }) {
   const cells: (number | null)[] = [...Array(firstDow).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)]
   const monthLabel = month.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
   const selDayGigs = selectedDay ? (byDate.get(selectedDay) ?? []) : []
+  const selBlackout = selectedDay ? (blackoutByDate.get(selectedDay) ?? null) : null
   const selLabel = selectedDay ? new Date(selectedDay + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : null
+  const selIsFuture = selectedDay ? selectedDay >= todayStr : false
 
   return (
     <>
@@ -2725,7 +2898,7 @@ function BookingsCalendar({ gigs }: { gigs: Booking[] }) {
           <div key={d} className="text-center text-xs font-semibold text-charcoal py-1">{d}</div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-1 bg-white rounded-2xl p-3 shadow-sm mb-4">
+      <div className="grid grid-cols-7 gap-1 bg-white rounded-2xl p-3 shadow-sm mb-3">
         {cells.map((day, i) => {
           if (!day) return <div key={`e-${i}`} />
           const dateStr = `${year}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
@@ -2733,20 +2906,31 @@ function BookingsCalendar({ gigs }: { gigs: Booking[] }) {
           const isToday = dateStr === todayStr
           const isSel = selectedDay === dateStr
           const has = dayGigs.length > 0
+          const isBlackout = blackoutByDate.has(dateStr)
+          // Selectable if it has a gig, is blocked, or is a future/today date (so it can be blocked).
+          const selectable = has || isBlackout || dateStr >= todayStr
           return (
             <button
               key={dateStr}
-              onClick={() => setSelectedDay(has ? dateStr : null)}
-              disabled={!has}
-              className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs relative transition-colors ${isSel ? 'bg-chestnut text-snow' : isToday ? 'bg-chestnut/10 text-graphite' : 'text-charcoal'} ${has && !isSel ? 'font-black' : ''} ${has ? '' : 'opacity-60'}`}
+              onClick={() => setSelectedDay(selectable ? dateStr : null)}
+              disabled={!selectable}
+              className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs relative transition-colors ${isSel ? 'bg-chestnut text-snow' : isBlackout ? 'bg-charcoal/10 text-charcoal/60' : isToday ? 'bg-chestnut/10 text-graphite' : 'text-charcoal'} ${has && !isSel ? 'font-black' : ''} ${!selectable ? 'opacity-60' : ''} ${isBlackout && !isSel ? 'line-through' : ''}`}
             >
               {day}
               {has && <span className={`w-1.5 h-1.5 rounded-full mt-0.5 ${isSel ? 'bg-snow' : 'bg-chestnut'}`} />}
+              {!has && isBlackout && <span className={`w-1.5 h-1.5 rounded-full mt-0.5 ${isSel ? 'bg-snow' : 'bg-charcoal/50'}`} />}
               {dayGigs.length > 1 && <span className={`absolute top-0.5 right-1 text-[9px] font-black ${isSel ? 'text-snow' : 'text-chestnut'}`}>{dayGigs.length}</span>}
             </button>
           )
         })}
       </div>
+
+      {/* Legend */}
+      <div className="flex items-center justify-center gap-4 mb-4 text-[11px] text-charcoal/60">
+        <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-chestnut" />Gig</span>
+        <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-charcoal/50" />Unavailable</span>
+      </div>
+
       {selectedDay && (
         <div className="mb-4">
           <p className="text-graphite font-bold text-sm mb-2">{selLabel}</p>
@@ -2760,10 +2944,76 @@ function BookingsCalendar({ gigs }: { gigs: Booking[] }) {
                 <p className="text-teal font-black text-sm shrink-0">{formatMoney(b.price)}</p>
               </div>
             ))}
+
+            {selBlackout ? (
+              <div className="bg-charcoal/[0.06] border border-charcoal/10 rounded-xl p-3 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-charcoal font-bold text-sm">Marked unavailable</p>
+                  {selBlackout.reason && <p className="text-charcoal/60 text-xs truncate">{selBlackout.reason}{selBlackout.source === 'import' ? ' · from calendar' : ''}</p>}
+                </div>
+                <button
+                  onClick={() => onRemoveBlackout(selBlackout.id)}
+                  className="shrink-0 text-charcoal/60 text-xs font-bold hover:text-red-500 transition-colors"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : selIsFuture && (
+              <div className="bg-white rounded-xl p-3 shadow-sm">
+                <input
+                  value={blackoutReason}
+                  onChange={e => setBlackoutReason(e.target.value)}
+                  placeholder="Reason (optional) — e.g. Out of town"
+                  className="w-full bg-snow rounded-lg px-3 py-2 text-sm focus:outline-none focus:shadow-sm transition-shadow mb-2"
+                />
+                <button
+                  onClick={() => { onAddBlackout(selectedDay, blackoutReason); setBlackoutReason('') }}
+                  className="w-full bg-graphite text-snow py-2.5 rounded-lg text-sm font-bold hover:opacity-90 transition-opacity"
+                >
+                  Mark Unavailable
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
-      {gigs.length === 0 && <p className="text-center text-charcoal/50 text-sm py-6">No confirmed gigs to show yet.</p>}
+
+      {gigs.length === 0 && blackouts.length === 0 && <p className="text-center text-charcoal/50 text-sm py-6">No confirmed gigs to show yet. Tap a date to block it off.</p>}
+
+      {/* Calendar import */}
+      <div className="bg-white rounded-2xl p-4 shadow-sm">
+        <p className="text-graphite font-bold text-sm mb-1">Sync an external calendar</p>
+        <p className="text-charcoal/60 text-xs mb-3 leading-relaxed">Import an .ics file or a public iCal/Google Calendar URL. Events show as unavailable so you don&rsquo;t double-book.</p>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".ics,text/calendar"
+          className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) onImportFile(f); if (fileRef.current) fileRef.current.value = '' }}
+        />
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={importing}
+          className="w-full bg-snow text-charcoal py-2.5 rounded-xl text-sm font-bold hover:bg-[#E8E4E0] transition-colors border border-charcoal/10 disabled:opacity-50 mb-2"
+        >
+          {importing ? 'Importing…' : 'Upload .ics File'}
+        </button>
+        <div className="flex gap-2">
+          <input
+            value={calUrl}
+            onChange={e => setCalUrl(e.target.value)}
+            placeholder="https://…/calendar.ics"
+            className="flex-1 min-w-0 bg-snow rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:shadow-sm transition-shadow"
+          />
+          <button
+            onClick={() => { onImportUrl(calUrl); setCalUrl('') }}
+            disabled={importing || !calUrl.trim()}
+            className="shrink-0 bg-chestnut text-snow px-4 py-2.5 rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            Import
+          </button>
+        </div>
+      </div>
     </>
   )
 }

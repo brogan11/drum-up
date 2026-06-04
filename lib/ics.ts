@@ -63,6 +63,45 @@ export function googleCalendarUrl(ev: GigEvent): string {
   return `https://calendar.google.com/calendar/render?${params.toString()}`
 }
 
+// ---- Import (the inverse of the export helpers above) ----
+
+// Pull a `YYYY-MM-DD` local date out of an ICS DTSTART value. Handles the two
+// common forms: a DATE value `20260612` and a DATE-TIME `20260612T193000Z` (or
+// floating, without the trailing Z). Returns null if it can't parse a date.
+function icsDateToYMD(raw: string): string | null {
+  const v = raw.trim()
+  const m = v.match(/^(\d{4})(\d{2})(\d{2})/)
+  if (!m) return null
+  const [, y, mo, d] = m
+  const month = Number(mo)
+  const day = Number(d)
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null
+  return `${y}-${mo}-${d}`
+}
+
+// Parse a raw .ics / iCal feed into the set of distinct local dates that have an
+// event. Deliberately tiny and forgiving: we only need DTSTART dates, we unfold
+// RFC 5545 line continuations, ignore property parameters (everything before the
+// first `:` after the key), and skip anything we can't read. Never throws.
+export function parseICSDates(ics: string): string[] {
+  if (!ics || typeof ics !== 'string') return []
+  try {
+    // Unfold folded lines: a CRLF/LF followed by a space or tab continues the prior line.
+    const unfolded = ics.replace(/\r?\n[ \t]/g, '')
+    const dates = new Set<string>()
+    for (const line of unfolded.split(/\r?\n/)) {
+      // Match DTSTART, optionally with parameters like ;VALUE=DATE or ;TZID=...
+      const m = line.match(/^DTSTART[^:]*:(.+)$/i)
+      if (!m) continue
+      const ymd = icsDateToYMD(m[1])
+      if (ymd) dates.add(ymd)
+    }
+    return [...dates].sort()
+  } catch {
+    return []
+  }
+}
+
 // Build a Date from a `YYYY-MM-DD` date string + `HH:MM[:SS]` time string (local time).
 export function gigDateTime(date: string, time: string | null | undefined): Date {
   const t = (time ?? '00:00').slice(0, 5)
