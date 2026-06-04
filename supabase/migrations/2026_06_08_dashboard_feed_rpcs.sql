@@ -7,20 +7,23 @@
 -- the same rows the old direct queries did). Columns are cast to the declared
 -- return types so the functions don't break if a column's stored type differs.
 
+-- ── 0. Cover charge on a gig (powers fan "Free entry" filter + card display) ──
+alter table public.availability add column if not exists cover_charge numeric;
+
 -- ── 1. Fan feed — confirmed gigs near the fan in the next `days` days ──────────
 create or replace function public.fan_feed(fan_lat float8, fan_lon float8, radius_m float8, days int)
 returns table (
   booking_id uuid, restaurant_id uuid, musician_id uuid,
   venue_name text, venue_avatar text, venue_location text,
   musician_name text, musician_avatar text, performer_type text, band_members int,
-  genres text[], gig_date date, start_time time, end_time time, distance_m float8
+  genres text[], gig_date date, start_time time, end_time time, cover_charge numeric, distance_m float8
 ) language sql stable security invoker as $$
   select b.id, b.restaurant_id, b.musician_id,
          coalesce(v.role_metadata->>'venue_name', v.full_name)::text,
          v.avatar_url::text, v.location_text::text,
          m.full_name::text, m.avatar_url::text, m.performer_type::text, m.band_members::int,
          array(select jsonb_array_elements_text(coalesce(m.role_metadata->'genres', '[]'::jsonb))),
-         a.date, a.start_time, a.end_time,
+         a.date, a.start_time, a.end_time, a.cover_charge,
          case when fan_lat is null or v.latitude is null then null
               else st_distance(st_makepoint(v.longitude, v.latitude)::geography,
                                st_makepoint(fan_lon, fan_lat)::geography) end

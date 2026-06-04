@@ -349,7 +349,7 @@ export default function RestaurantDashboard() {
   const [profile, setProfile] = useState<VenueProfile>(INITIAL_PROFILE)
 
   const [postSlotOpen, setPostSlotOpen] = useState(false)
-  const [newSlot, setNewSlot] = useState({ date: '', startTime: '', endTime: '', genres: [] as string[], budget: '', notes: '' })
+  const [newSlot, setNewSlot] = useState({ date: '', startTime: '', endTime: '', genres: [] as string[], budget: '', notes: '', coverCharge: '' })
 
   const [slotFilter, setSlotFilter] = useState<SlotFilter>('open')
   const [slotsDisplayCount, setSlotsDisplayCount] = useState(10)
@@ -831,12 +831,13 @@ export default function RestaurantDashboard() {
         pay: parseInt(newSlot.budget),
         status: 'open',
         genres: newSlot.genres,
+        cover_charge: newSlot.coverCharge === '' ? null : parseInt(newSlot.coverCharge),
         latitude: restaurantCoords.lat,
         longitude: restaurantCoords.lon,
       }).select('id').single()
       if (insertErr) throw insertErr
       setPostSlotOpen(false)
-      setNewSlot({ date: '', startTime: '', endTime: '', genres: [], budget: '', notes: '' })
+      setNewSlot({ date: '', startTime: '', endTime: '', genres: [], budget: '', notes: '', coverCharge: '' })
       await loadSlots(userId)
       setActiveTab('slots')
       toast.success('Slot posted! Musicians can now apply.')
@@ -2609,6 +2610,21 @@ export default function RestaurantDashboard() {
                   step="1"
                   value={newSlot.budget}
                   onChange={e => setNewSlot(p => ({ ...p, budget: e.target.value.replace(/[^0-9]/g, '') }))}
+                  className="w-full bg-white rounded-xl pl-8 pr-4 py-2.5 shadow-sm focus:outline-none text-sm border border-charcoal/10"
+                />
+              </div>
+              <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">
+                Cover Charge <span className="text-charcoal/40 font-normal normal-case">(optional — shown to fans; leave blank if unknown, 0 for free entry)</span>
+              </label>
+              <div className="relative mb-5">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-charcoal font-bold text-sm pointer-events-none">$</span>
+                <input
+                  type="number"
+                  placeholder="e.g. 0 for free, 10 for $10 at the door"
+                  min="0"
+                  step="1"
+                  value={newSlot.coverCharge}
+                  onChange={e => setNewSlot(p => ({ ...p, coverCharge: e.target.value.replace(/[^0-9]/g, '') }))}
                   className="w-full bg-white rounded-xl pl-8 pr-4 py-2.5 shadow-sm focus:outline-none text-sm border border-charcoal/10"
                 />
               </div>

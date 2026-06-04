@@ -12,6 +12,7 @@ import SaveButton from '@/components/SaveButton'
 import AddToCalendar from '@/components/AddToCalendar'
 import { getSavedSet, savedKey } from '@/lib/saved'
 import { gigStartEnd } from '@/lib/ics'
+import { formatMoney } from '@/lib/analytics'
 import { groupReputations, type RepSummary } from '@/lib/reviews'
 import { RatingBadge } from '@/components/RatingBadge'
 import {
@@ -42,6 +43,7 @@ interface FeedGig {
   rawEndDatetime: string
   distance: number | null
   genres: string[]
+  coverCharge: number | null
 }
 
 // Row shape returned by the fan_feed PostGIS RPC.
@@ -60,6 +62,7 @@ interface FanFeedRow {
   gig_date: string | null
   start_time: string | null
   end_time: string | null
+  cover_charge: number | null
   distance_m: number | null
 }
 
@@ -162,6 +165,8 @@ export default function FanDashboard() {
   const [eventsView, setEventsView] = useState<'events' | 'browse'>('events')
   const [eventsDateFilter, setEventsDateFilter] = useState<'all' | 'weekend' | 'week' | 'month'>('all')
   const [eventsDistanceFilter, setEventsDistanceFilter] = useState(25)
+  const [eventsFreeOnly, setEventsFreeOnly] = useState(false)
+  const [eventsGenreOnly, setEventsGenreOnly] = useState(false)
 
   // Fan state
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set())
@@ -241,6 +246,7 @@ export default function FanDashboard() {
           rawEndDatetime: `${rawDate}T${endTime}`,
           distance: r.distance_m != null ? r.distance_m / 1609.34 : null,
           genres: Array.isArray(r.genres) ? r.genres : [],
+          coverCharge: r.cover_charge != null ? Number(r.cover_charge) : null,
         } satisfies FeedGig]
       })
 
@@ -766,6 +772,8 @@ export default function FanDashboard() {
                   const endDt = gigStartEnd(g.rawDate, g.rawStartDatetime.slice(11) || null, g.rawEndDatetime.slice(11) || '23:59').end
                   if (endDt < now) return false
                   if (g.distance != null && g.distance > eventsDistanceFilter) return false
+                  if (eventsFreeOnly && g.coverCharge !== 0) return false
+                  if (eventsGenreOnly && !matchesFavorite(g)) return false
                   if (eventsDateFilter === 'weekend') {
                     const d = new Date(g.rawDate + 'T00:00:00')
                     return d >= fridayDate && d <= sundayDate
@@ -817,6 +825,24 @@ export default function FanDashboard() {
                         </button>
                       ))}
                     </div>
+                  </div>
+
+                  {/* Toggle filters: free entry + favorite genres */}
+                  <div className="flex gap-2 mb-4 flex-wrap">
+                    <button
+                      onClick={() => setEventsFreeOnly(v => !v)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${eventsFreeOnly ? 'bg-teal text-snow shadow-sm' : 'bg-white text-charcoal shadow-sm hover:bg-snow'}`}
+                    >
+                      Free entry
+                    </button>
+                    {fanGenres.length > 0 && (
+                      <button
+                        onClick={() => setEventsGenreOnly(v => !v)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${eventsGenreOnly ? 'bg-chestnut text-snow shadow-sm' : 'bg-white text-charcoal shadow-sm hover:bg-snow'}`}
+                      >
+                        My genres
+                      </button>
+                    )}
                   </div>
 
                   {feedLoading ? (
@@ -1298,6 +1324,11 @@ function GigCard({
           </span>
         ) : <div className="mb-3" />}
         <p className="text-chestnut font-black text-sm">{gig.date} · {gig.time}</p>
+        {gig.coverCharge != null && (
+          <span className={`inline-block text-[11px] font-bold px-2.5 py-1 rounded-full mt-2 ${gig.coverCharge === 0 ? 'bg-teal/20 text-teal' : 'bg-white/10 text-snow/80 border border-white/10'}`}>
+            {gig.coverCharge === 0 ? 'Free entry' : `${formatMoney(gig.coverCharge)} cover`}
+          </span>
+        )}
         {gig.genres.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-3">
             {gig.genres.slice(0, 3).map(g => (
