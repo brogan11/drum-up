@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { eqBarStyle } from '@/lib/eq'
-import { milesBetween } from '@/lib/distance'
 import { Avatar } from '@/components/Avatar'
 import MessagingTab, { MessagingTabRef } from '@/components/MessagingTab'
 import { useToast } from '@/components/Toast'
@@ -43,6 +42,37 @@ interface FeedGig {
   rawEndDatetime: string
   distance: number | null
   genres: string[]
+}
+
+// Row shape returned by the fan_feed PostGIS RPC.
+interface FanFeedRow {
+  booking_id: string
+  restaurant_id: string
+  musician_id: string
+  venue_name: string | null
+  venue_avatar: string | null
+  venue_location: string | null
+  musician_name: string | null
+  musician_avatar: string | null
+  performer_type: string | null
+  band_members: number | null
+  genres: string[] | null
+  gig_date: string | null
+  start_time: string | null
+  end_time: string | null
+  distance_m: number | null
+}
+
+// Row shape returned by the profiles_near PostGIS RPC.
+interface ProfilesNearRow {
+  id: string
+  full_name: string | null
+  user_type: string
+  avatar_url: string | null
+  bio: string | null
+  location_text: string | null
+  role_metadata: Record<string, unknown> | null
+  distance_m: number | null
 }
 
 interface DiscoverVenue {
@@ -172,92 +202,47 @@ export default function FanDashboard() {
 
   const loadFeed = useCallback(async (lat: number | null, lon: number | null) => {
     try {
-      const today = new Date().toISOString().slice(0, 10)
-      const thirtyDays = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)
-
-      // Reads the column-safe confirmed_gigs view (no pay/Stripe data) — the
-      // bookings base table only exposes a viewer's own rows.
-      const { data: bookings, error: bErr } = await supabase
-        .from('confirmed_gigs')
-        .select('id, restaurant_id, musician_id, availability_id')
-        .eq('status', 'confirmed')
-
-      if (bErr) { console.error('[Feed] bookings:', bErr.message); return }
-      if (!bookings?.length) { setFeedGigs([]); return }
-
-      const availIds = [...new Set(bookings.map(b => b.availability_id))]
-      const venueIds = [...new Set(bookings.map(b => b.restaurant_id))]
-      const musicianIds = [...new Set(bookings.map(b => b.musician_id))]
-
-      const [{ data: avails }, { data: vProfiles }, { data: mProfiles }] = await Promise.all([
-        supabase.from('availability')
-          .select('id, date, start_time, end_time')
-          .in('id', availIds)
-          .gte('date', today)
-          .lte('date', thirtyDays),
-        supabase.from('profiles')
-          .select('id, full_name, avatar_url, role_metadata, location_text, latitude, longitude')
-          .in('id', venueIds),
-        supabase.from('profiles')
-          .select('id, full_name, avatar_url, performer_type, band_members, role_metadata')
-          .in('id', musicianIds),
-      ])
-
-      const availById = new Map((avails ?? []).map(a => [a.id, a as Record<string, unknown>]))
-      const venueById = new Map((vProfiles ?? []).map(v => [v.id, v as Record<string, unknown>]))
-      const musicianById = new Map((mProfiles ?? []).map(m => [m.id, m as Record<string, unknown>]))
+      // Server-side PostGIS: confirmed gigs within 100mi over the next 30 days,
+      // capped + sorted in Postgres (see fan_feed RPC). 100mi covers "local"
+      // following; a far-away followed venue is an accepted edge case.
+      const { data, error } = await supabase.rpc('fan_feed', {
+        fan_lat: lat, fan_lon: lon, radius_m: 100 * 1609.34, days: 30,
+      })
+      if (error) { console.error('[Feed]', error.message); return }
 
       const now = new Date()
-      const gigs: FeedGig[] = bookings
-        .filter(b => availById.has(b.availability_id))
-        .flatMap(b => {
-          const a = availById.get(b.availability_id)!
-          const venue = venueById.get(b.restaurant_id)
-          const musician = musicianById.get(b.musician_id)
+      const gigs: FeedGig[] = (data ?? []).flatMap((r: FanFeedRow) => {
+        const rawDate = r.gig_date ?? ''
+        const startTime = r.start_time ?? ''
+        const endTime = r.end_time ?? '23:59:00'
+        // Cross-midnight aware: a gig ending after midnight isn't already past on its start date.
+        if (gigStartEnd(rawDate, startTime || null, endTime).end < now) return []
 
-          const rawDate = a.date as string ?? ''
-          const startTime = a.start_time as string ?? ''
-          const endTime = a.end_time as string ?? '23:59:00'
-          const rawEndDatetime = `${rawDate}T${endTime}`
-          // Cross-midnight aware (gigStartEnd): a gig ending after midnight must not be
-          // treated as already past on its start date.
-          if (gigStartEnd(rawDate, startTime || null, endTime).end < now) return []
+        const pt = r.performer_type
+        const performerType: 'solo' | 'band' | null = (pt === 'solo' || pt === 'band') ? pt : null
 
-          const meta = (venue?.role_metadata ?? {}) as Record<string, unknown>
-          const vLat = venue?.latitude as number | null ?? null
-          const vLng = venue?.longitude as number | null ?? null
-          const distance = (lat != null && lon != null && vLat != null && vLng != null)
-            ? milesBetween(lat, lon, vLat, vLng)
-            : null
-
-          const pt = musician?.performer_type as string | null
-          const performerType: 'solo' | 'band' | null = (pt === 'solo' || pt === 'band') ? pt : null
-          const mMeta = (musician?.role_metadata ?? {}) as Record<string, unknown>
-          const genres = Array.isArray(mMeta.genres) ? (mMeta.genres as string[]) : []
-
-          return [{
-            id: b.id,
-            restaurantId: b.restaurant_id,
-            restaurantName: (meta.venue_name as string | undefined) ?? venue?.full_name as string ?? 'Venue',
-            restaurantAvatar: venue?.avatar_url as string ?? '',
-            restaurantLocation: venue?.location_text as string ?? '',
-            musicianId: b.musician_id,
-            musicianName: musician?.full_name as string ?? 'Musician',
-            musicianAvatar: musician?.avatar_url as string ?? '',
-            performerType,
-            bandMembers: musician?.band_members as number | null ?? null,
-            rawDate,
-            date: rawDate
-              ? new Date(rawDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-              : '',
-            time: `${fmt(startTime.slice(0, 5))} – ${fmt(endTime.slice(0, 5))}`,
-            rawStartDatetime: `${rawDate}T${startTime || '00:00:00'}`,
-            rawEndDatetime,
-            distance,
-            genres,
-          } satisfies FeedGig]
-        })
-        .sort((a, b) => a.rawDate.localeCompare(b.rawDate) || a.time.localeCompare(b.time))
+        return [{
+          id: r.booking_id,
+          restaurantId: r.restaurant_id,
+          restaurantName: r.venue_name ?? 'Venue',
+          restaurantAvatar: r.venue_avatar ?? '',
+          restaurantLocation: r.venue_location ?? '',
+          musicianId: r.musician_id,
+          musicianName: r.musician_name ?? 'Musician',
+          musicianAvatar: r.musician_avatar ?? '',
+          performerType,
+          bandMembers: r.band_members ?? null,
+          rawDate,
+          date: rawDate
+            ? new Date(rawDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+            : '',
+          time: `${fmt(startTime.slice(0, 5))} – ${fmt(endTime.slice(0, 5))}`,
+          rawStartDatetime: `${rawDate}T${startTime || '00:00:00'}`,
+          rawEndDatetime: `${rawDate}T${endTime}`,
+          distance: r.distance_m != null ? r.distance_m / 1609.34 : null,
+          genres: Array.isArray(r.genres) ? r.genres : [],
+        } satisfies FeedGig]
+      })
 
       setFeedGigs(gigs)
     } catch (err) {
@@ -268,25 +253,19 @@ export default function FanDashboard() {
   const loadDiscover = useCallback(async (lat: number, lon: number, radius: number, uid: string) => {
     setDiscoverLoading(true)
     try {
-      const { data: profiles, error: discErr } = await supabase
-        .from('profiles')
-        .select('id, full_name, user_type, avatar_url, bio, location_text, latitude, longitude, role_metadata')
-        .in('user_type', ['restaurant', 'musician'])
-        .neq('id', uid)
-
+      // Server-side PostGIS: restaurants + musicians within radius (see profiles_near RPC).
+      const { data: profiles, error: discErr } = await supabase.rpc('profiles_near', {
+        lat, lon, radius_m: radius * 1609.34, types: ['restaurant', 'musician'],
+      })
       if (discErr) throw discErr
       if (!profiles) return
 
-      const inRange = profiles
-        .filter(p => p.latitude != null && p.longitude != null)
-        .map(p => ({ ...p, dist: milesBetween(lat, lon, p.latitude as number, p.longitude as number) }))
-        .filter(p => p.dist <= radius)
-        .sort((a, b) => a.dist - b.dist)
-
       const newVenues: DiscoverVenue[] = []
       const newMusicians: DiscoverMusician[] = []
-      for (const p of inRange) {
+      for (const p of profiles as ProfilesNearRow[]) {
+        if (p.id === uid) continue
         const meta = (p.role_metadata ?? {}) as Record<string, unknown>
+        const distMi = p.distance_m != null ? p.distance_m / 1609.34 : 0
         if (p.user_type === 'restaurant') {
           newVenues.push({
             id: p.id,
@@ -294,7 +273,7 @@ export default function FanDashboard() {
             type: (meta.cuisine_type as string | undefined) ?? '',
             location: p.location_text ?? '',
             avatar: p.avatar_url ?? '',
-            distance: `${p.dist.toFixed(1)} mi`,
+            distance: `${distMi.toFixed(1)} mi`,
           })
         } else {
           newMusicians.push({
@@ -303,7 +282,7 @@ export default function FanDashboard() {
             genres: Array.isArray(meta.genres) ? (meta.genres as string[]) : [],
             avatar: p.avatar_url ?? '',
             bio: p.bio ?? '',
-            distance: `${p.dist.toFixed(1)} mi`,
+            distance: `${distMi.toFixed(1)} mi`,
           })
         }
       }

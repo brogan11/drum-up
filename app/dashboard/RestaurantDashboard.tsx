@@ -92,6 +92,22 @@ interface LiveMusician {
   bandMembers: number | null
 }
 
+// Row shape returned by the musicians_near PostGIS RPC.
+interface MusiciansNearRow {
+  id: string
+  full_name: string | null
+  avatar_url: string | null
+  bio: string | null
+  location_text: string | null
+  instagram_url: string | null
+  youtube_url: string | null
+  spotify_url: string | null
+  role_metadata: Record<string, unknown> | null
+  performer_type: string | null
+  band_members: number | null
+  distance_m: number | null
+}
+
 interface VenueProfile {
   name: string
   type: string
@@ -508,36 +524,32 @@ export default function RestaurantDashboard() {
   const loadMusicians = async (lat: number, lon: number, radius: number) => {
     setBrowseLoading(true)
     try {
-    const { data, error: musErr } = await supabase
-      .from('profiles')
-      .select('id, full_name, avatar_url, bio, location_text, latitude, longitude, instagram_url, youtube_url, spotify_url, role_metadata, performer_type, band_members')
-      .eq('user_type', 'musician')
+    // Server-side PostGIS distance filter (see musicians_near RPC).
+    const { data, error: musErr } = await supabase.rpc('musicians_near', {
+      lat, lon, radius_m: radius * 1609.34,
+    })
     if (musErr) throw musErr
     if (!data) { setBrowseLoading(false); return }
 
-    const results: LiveMusician[] = data
-      .filter(m => m.latitude != null && m.longitude != null)
-      .map(m => {
-        const dist = milesBetween(lat, lon, m.latitude as number, m.longitude as number)
-        const meta = (m.role_metadata ?? {}) as Record<string, unknown>
-        return {
-          id: m.id,
-          name: m.full_name ?? 'Unknown',
-          genres: Array.isArray(meta.genres) ? meta.genres as string[] : [],
-          bio: m.bio ?? '',
-          avatar: m.avatar_url ?? '',
-          location: m.location_text ?? '',
-          distance: dist,
-          distanceStr: dist < 1 ? 'Less than 1 mile away' : `${Math.round(dist)} mile${Math.round(dist) === 1 ? '' : 's'} away`,
-          instagram: m.instagram_url ?? '',
-          youtube: m.youtube_url ?? '',
-          spotify: m.spotify_url ?? '',
-          performerType: (m as Record<string, unknown>).performer_type as string ?? '',
-          bandMembers: (m as Record<string, unknown>).band_members as number | null ?? null,
-        }
-      })
-      .filter(m => m.distance <= radius)
-      .sort((a, b) => a.distance - b.distance)
+    const results: LiveMusician[] = (data as MusiciansNearRow[]).map(m => {
+      const dist = m.distance_m != null ? m.distance_m / 1609.34 : 0
+      const meta = (m.role_metadata ?? {}) as Record<string, unknown>
+      return {
+        id: m.id,
+        name: m.full_name ?? 'Unknown',
+        genres: Array.isArray(meta.genres) ? meta.genres as string[] : [],
+        bio: m.bio ?? '',
+        avatar: m.avatar_url ?? '',
+        location: m.location_text ?? '',
+        distance: dist,
+        distanceStr: dist < 1 ? 'Less than 1 mile away' : `${Math.round(dist)} mile${Math.round(dist) === 1 ? '' : 's'} away`,
+        instagram: m.instagram_url ?? '',
+        youtube: m.youtube_url ?? '',
+        spotify: m.spotify_url ?? '',
+        performerType: m.performer_type ?? '',
+        bandMembers: m.band_members ?? null,
+      }
+    })
 
     setLiveMusicians(results)
 

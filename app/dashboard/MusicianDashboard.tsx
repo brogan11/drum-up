@@ -56,6 +56,22 @@ interface Gig {
   description: string
 }
 
+// Row shape returned by the open_gigs_near PostGIS RPC.
+interface OpenGigRow {
+  id: string
+  restaurant_id: string
+  gig_date: string
+  start_time: string | null
+  end_time: string | null
+  description: string | null
+  pay: number | null
+  genres: string[] | null
+  venue_name: string | null
+  venue_type: string | null
+  venue_avatar: string | null
+  distance_m: number | null
+}
+
 interface Booking {
   id: string
   gig: Gig
@@ -380,8 +396,6 @@ export default function MusicianDashboard() {
           return
         }
 
-        const today = new Date().toISOString().slice(0, 10)
-
         const { data: existingBookings, error: existErr } = await supabase
           .from('bookings')
           .select('availability_id')
@@ -390,68 +404,39 @@ export default function MusicianDashboard() {
 
         const appliedIds = new Set((existingBookings ?? []).map(b => b.availability_id))
 
-        const { data: slots, error: slotsErr } = await supabase
-          .from('availability')
-          .select('id, restaurant_id, date, start_time, end_time, description, pay, genres, latitude, longitude')
-          .eq('status', 'open')
-          .eq('is_private', false)
-          .gte('date', today)
-          .order('date', { ascending: true })
-
+        // Server-side PostGIS: open public gigs within range (see open_gigs_near RPC).
+        const { data: slots, error: slotsErr } = await supabase.rpc('open_gigs_near', {
+          lat: myLat, lon: myLon, radius_m: maxMiles * 1609.34,
+        })
         if (slotsErr) throw slotsErr
+        if (!slots || slots.length === 0) { setGigsLoading(false); return }
 
-        if (!slots || slots.length === 0) {
-          setGigsLoading(false)
-          return
-        }
-
-        const unapplied = slots.filter(s => !appliedIds.has(s.id))
+        const unapplied = (slots as OpenGigRow[]).filter(s => !appliedIds.has(s.id))
         if (unapplied.length === 0) { setGigs([]); setGigsLoading(false); return }
 
-        const inRange = unapplied
-          .filter(s => s.latitude != null && s.longitude != null)
-          .map(s => ({
-            slot: s,
-            distance: milesBetween(myLat, myLon, s.latitude as number, s.longitude as number),
-          }))
-          .filter(x => x.distance <= maxMiles)
-          .sort((a, b) => a.distance - b.distance)
-
-        if (inRange.length === 0) { setGigs([]); setGigsLoading(false); return }
-
-        const venueIds = Array.from(new Set(inRange.map(x => x.slot.restaurant_id)))
-        const { data: venues, error: venuesErr } = await supabase
-          .from('profiles')
-          .select('id, full_name, role_metadata, avatar_url')
-          .in('id', venueIds)
-        if (venuesErr) throw venuesErr
-
-        const venueById = new Map((venues ?? []).map(v => [v.id, v]))
-
+        const venueIds = Array.from(new Set(unapplied.map(s => s.restaurant_id)))
         // Reputation badges for the venues in view (one query, grouped client-side).
         void supabase.from('reviews').select('reviewee_id, rating, tags').in('reviewee_id', venueIds)
           .then(({ data: revRows }) => {
             if (revRows) setVenueReps(groupReputations(revRows as { reviewee_id: string; rating: number; tags: string[] | null }[]))
           })
 
-        const nearby: Gig[] = inRange.map(({ slot: s, distance }) => {
-          const v = venueById.get(s.restaurant_id)
-          const vMeta = (v?.role_metadata ?? {}) as Record<string, unknown>
-          const name = (vMeta.venue_name as string | undefined) ?? v?.full_name ?? 'Venue'
-          const dateLabel = new Date(s.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+        const nearby: Gig[] = unapplied.map(s => {
+          const distance = s.distance_m != null ? s.distance_m / 1609.34 : 0
+          const dateLabel = new Date(s.gig_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
           return {
             id: s.id,
             venue: {
               id: s.restaurant_id,
-              name,
-              type: (vMeta.cuisine_type as string | undefined) ?? '',
+              name: s.venue_name ?? 'Venue',
+              type: s.venue_type ?? '',
               distance: `${distance.toFixed(1)} mi`,
-              avatar: v?.avatar_url || '',
+              avatar: s.venue_avatar ?? '',
             },
             date: dateLabel,
-            rawDate: s.date,
-            rawStartDatetime: `${s.date}T${s.start_time ?? '00:00:00'}`,
-            rawEndDatetime: `${s.date}T${s.end_time ?? '23:59:00'}`,
+            rawDate: s.gig_date,
+            rawStartDatetime: `${s.gig_date}T${s.start_time ?? '00:00:00'}`,
+            rawEndDatetime: `${s.gig_date}T${s.end_time ?? '23:59:00'}`,
             time: `${fmt(s.start_time?.slice(0, 5) ?? '')} – ${fmt(s.end_time?.slice(0, 5) ?? '')}`,
             genres: Array.isArray(s.genres) ? s.genres : [],
             budget: Number(s.pay) || 0,
