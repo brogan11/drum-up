@@ -88,7 +88,7 @@ export default function HomePage() {
       </nav>
 
       {/* ── HERO ── */}
-      <section className="relative min-h-screen bg-graphite overflow-hidden pt-20 flex flex-col justify-center">
+      <section className="relative min-h-svh bg-graphite overflow-hidden pt-20 flex flex-col justify-center">
 
         <div aria-hidden="true" className="absolute inset-x-0 bottom-0 top-1/3 flex items-end justify-around opacity-[0.12] pointer-events-none">
           {Array.from({ length: EQ_BARS }).map((_, i) => (
@@ -96,9 +96,18 @@ export default function HomePage() {
           ))}
         </div>
 
-        <div aria-hidden="true" className="absolute top-[20%] left-1/2 -translate-x-1/2 w-[900px] h-[900px] rounded-full bg-chestnut opacity-10 blur-3xl pointer-events-none" />
-        <div aria-hidden="true" className="absolute -bottom-32 -left-32 w-[500px] h-[500px] rounded-full bg-teal opacity-10 blur-3xl pointer-events-none" />
-        <div aria-hidden="true" className="absolute -top-20 -right-20 w-[500px] h-[500px] rounded-full bg-chestnut opacity-[0.08] blur-3xl pointer-events-none" />
+        {/* Soft glows as radial gradients (not filter:blur — large blurred layers
+            render with hard seam lines and lag during scroll on mobile GPUs) */}
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'radial-gradient(ellipse 520px 520px at 50% 42%, rgba(220,127,65,0.10), transparent 70%), ' +
+              'radial-gradient(ellipse 320px 320px at 8% 100%, rgba(108,154,139,0.10), transparent 70%), ' +
+              'radial-gradient(ellipse 320px 320px at 96% 0%, rgba(220,127,65,0.08), transparent 70%)',
+          }}
+        />
 
         <div className="relative z-10 px-6 md:px-8 max-w-7xl mx-auto w-full py-20">
 
@@ -350,7 +359,11 @@ export default function HomePage() {
 
       {/* ── FOR MUSICIANS ── */}
       <section className="bg-graphite py-28 md:py-36 px-6 md:px-8 relative overflow-hidden">
-        <div aria-hidden="true" className="absolute -left-32 top-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full bg-teal opacity-[0.07] blur-3xl pointer-events-none" />
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: 'radial-gradient(ellipse 300px 300px at 0% 50%, rgba(108,154,139,0.07), transparent 70%)' }}
+        />
 
         <div className="relative max-w-6xl mx-auto grid md:grid-cols-2 gap-16 md:gap-20 items-center">
 
@@ -536,7 +549,11 @@ export default function HomePage() {
             <div key={i} className="eq-bar w-2 md:w-3 bg-teal rounded-t" style={eqBarStyle(i, 29)} />
           ))}
         </div>
-        <div aria-hidden="true" className="absolute -bottom-20 left-1/2 -translate-x-1/2 w-[700px] h-[700px] rounded-full bg-chestnut opacity-10 blur-3xl pointer-events-none" />
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: 'radial-gradient(ellipse 450px 380px at 50% 100%, rgba(220,127,65,0.10), transparent 70%)' }}
+        />
 
         <div className="relative z-10 text-center max-w-3xl mx-auto">
           <h2 className="text-snow text-4xl md:text-7xl font-black leading-[0.95] mb-6">
