@@ -81,6 +81,35 @@ export default function HomePage() {
             <Link href="#how" className="text-snow hover:text-chestnut transition-colors font-medium hidden md:inline">How It Works</Link>
             <Link href="#why" className="text-snow hover:text-chestnut transition-colors font-medium hidden md:inline">Why Us</Link>
             <Link href="#faq" className="text-snow hover:text-chestnut transition-colors font-medium hidden md:inline">FAQ</Link>
+
+            {/* Social — brand chestnut */}
+            <div className="flex items-center gap-2">
+              <a
+                href="https://www.instagram.com/drumup.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Drum Up on Instagram"
+                className="text-chestnut hover:opacity-75 transition-opacity rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-chestnut"
+              >
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+                  <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+                  <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+                </svg>
+              </a>
+              <a
+                href="https://www.facebook.com/profile.php?id=61590497710592"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Drum Up on Facebook"
+                className="text-chestnut hover:opacity-75 transition-opacity rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-chestnut"
+              >
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+                  <path d="M22 12a10 10 0 1 0-11.56 9.88v-6.99H7.9V12h2.54V9.8c0-2.5 1.49-3.89 3.78-3.89 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56V12h2.78l-.44 2.89h-2.34v6.99A10 10 0 0 0 22 12z" />
+                </svg>
+              </a>
+            </div>
+
             <Link href="/auth/login" className="text-snow hover:text-chestnut transition-colors font-medium">Log In</Link>
             <Link href="/auth/signup" className={`${primaryBtn} px-5 py-2 rounded-xl font-bold`}>Sign Up</Link>
           </div>
@@ -586,7 +615,35 @@ export default function HomePage() {
                 </div>
                 <span className="text-snow text-lg font-black tracking-tight">Drum Up</span>
               </div>
-              <p className="text-snow/60 text-sm">Where restaurants meet live music.</p>
+              <p className="text-snow/60 text-sm mb-5">Where restaurants meet live music.</p>
+
+              <p className="text-snow/50 text-[10px] font-bold uppercase tracking-widest mb-3">Follow along</p>
+              <div className="flex items-center gap-3">
+                <a
+                  href="https://www.instagram.com/drumup.app/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Drum Up on Instagram"
+                  className="flex items-center justify-center w-10 h-10 rounded-xl bg-chestnut/10 text-chestnut hover:bg-chestnut hover:text-snow transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-chestnut"
+                >
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+                    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+                    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+                  </svg>
+                </a>
+                <a
+                  href="https://www.facebook.com/profile.php?id=61590497710592"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Drum Up on Facebook"
+                  className="flex items-center justify-center w-10 h-10 rounded-xl bg-chestnut/10 text-chestnut hover:bg-chestnut hover:text-snow transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-chestnut"
+                >
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+                    <path d="M22 12a10 10 0 1 0-11.56 9.88v-6.99H7.9V12h2.54V9.8c0-2.5 1.49-3.89 3.78-3.89 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56V12h2.78l-.44 2.89h-2.34v6.99A10 10 0 0 0 22 12z" />
+                  </svg>
+                </a>
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-x-12 gap-y-6">

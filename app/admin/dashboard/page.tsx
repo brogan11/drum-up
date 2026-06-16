@@ -824,7 +824,7 @@ export default function AdminDashboard() {
 
   // ---- Render ----
   return (
-    <div className="min-h-screen" style={{ background: '#FCFAF9' }}>
+    <div className="min-h-screen" style={{ background: 'radial-gradient(ellipse 50% 40% at 12% 8%, rgba(108,154,139,0.10), transparent 70%), radial-gradient(ellipse 50% 40% at 88% 92%, rgba(220,127,65,0.12), transparent 70%), #E8E4E0' }}>
 
       {/* Flash */}
       {flash && (

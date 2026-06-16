@@ -54,7 +54,7 @@ Also: `#E8E4E0` is used as the darker right-side background on auth pages and as
   ```
   style={{ background: 'radial-gradient(ellipse 50% 40% at 12% 8%, rgba(108,154,139,0.10), transparent 70%), radial-gradient(ellipse 50% 40% at 88% 92%, rgba(220,127,65,0.12), transparent 70%), #E8E4E0' }}
   ```
-  Used on every authenticated app screen (restaurant, musician, fan dashboards, onboarding, settings). Provides warmth while keeping the UI light and readable.
+  Used on every authenticated app screen (restaurant, musician, fan dashboards, onboarding, settings, admin dashboard). Provides warmth while keeping the UI light and readable.
 
 ---
 
