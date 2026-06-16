@@ -25,6 +25,8 @@ import Modal from '@/components/Modal'
 import { formatMoney } from '@/lib/analytics'
 import SaveButton from '@/components/SaveButton'
 import { getSavedSet, savedKey } from '@/lib/saved'
+import { PrettySelect } from '@/components/PrettySelect'
+import { PrettyDatePicker } from '@/components/PrettyDatePicker'
 
 // ---- Types ----
 
@@ -363,6 +365,14 @@ export default function RestaurantDashboard() {
   const [musicianSortBy, setMusicianSortBy] = useState<'distance' | 'name-az' | 'name-za'>('distance')
   const [typeFilter, setTypeFilter] = useState<'all' | 'solo' | 'band'>('all')
   const [genrePanelOpen, setGenrePanelOpen] = useState(false)
+  // Relationship scope for the musician browse: everyone nearby, ones you've saved,
+  // ones you follow, or ones that follow you. Saved/following/followers are fetched
+  // by id so they show regardless of distance — that's what makes saving useful.
+  const [relationFilter, setRelationFilter] = useState<'all' | 'saved' | 'following' | 'followers'>('all')
+  const [followingIds, setFollowingIds] = useState<Set<string>>(new Set())
+  const [followerIds, setFollowerIds] = useState<Set<string>>(new Set())
+  const [relMusicians, setRelMusicians] = useState<LiveMusician[]>([])
+  const [relLoading, setRelLoading] = useState(false)
   const [selectedLiveMusician, setSelectedLiveMusician] = useState<LiveMusician | null>(null)
 
   // Messaging
@@ -380,7 +390,7 @@ export default function RestaurantDashboard() {
   const [restaurantCoords, setRestaurantCoords] = useState<{ lat: number | null; lon: number | null }>({ lat: null, lon: null })
   const [discoveryRadius, setDiscoveryRadius] = useState(25)
   const [radiusDraft, setRadiusDraft] = useState(25)
-  const [savingRadius, setSavingRadius] = useState(false)
+  const [, setSavingRadius] = useState(false)  // tracked for saveRadius; UI no longer reads it
   const [declineApp, setDeclineApp] = useState<{ slotId: string; appId: string; name: string } | null>(null)
   const [decliningApp, setDecliningApp] = useState(false)
   const [savedMusicians, setSavedMusicians] = useState<Set<string>>(new Set())
@@ -399,6 +409,7 @@ export default function RestaurantDashboard() {
   const [browseView, setBrowseView] = useState<'musicians' | 'availability'>('musicians')
   const [musicianAvailability, setMusicianAvailability] = useState<MusicianAvailCard[]>([])
   const [availMinPay, setAvailMinPay] = useState(0)   // min-pay filter for the availability view
+  const [availMaxPay, setAvailMaxPay] = useState(0)   // max-pay filter (0 = no upper bound)
   const [availDate, setAvailDate] = useState('')       // exact-date filter (YYYY-MM-DD) for the availability view
   const [availabilityLoading, setAvailabilityLoading] = useState(false)
   const [inviteModal, setInviteModal] = useState<{ musicianId: string; musicianName: string; date?: string; startTime?: string; endTime?: string } | null>(null)
@@ -569,6 +580,63 @@ export default function RestaurantDashboard() {
     }
   }
 
+  // Fetch a specific set of musicians by id (saved / following / followers), independent
+  // of the radius search. Distance is computed client-side from the venue's coords so the
+  // cards still show "X miles away" when both sides have a location.
+  const loadMusiciansByIds = async (ids: string[], lat: number | null, lon: number | null) => {
+    setRelLoading(true)
+    try {
+      if (ids.length === 0) { setRelMusicians([]); return }
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, bio, avatar_url, location_text, latitude, longitude, instagram_url, youtube_url, spotify_url, performer_type, band_members, role_metadata')
+        .in('id', ids)
+        .eq('user_type', 'musician')
+      if (error) throw error
+
+      const results: LiveMusician[] = (data ?? []).map(m => {
+        const meta = (m.role_metadata ?? {}) as Record<string, unknown>
+        const hasDist = lat != null && lon != null && m.latitude != null && m.longitude != null
+        const dist = hasDist ? milesBetween(lat, lon, m.latitude as number, m.longitude as number) : 0
+        return {
+          id: m.id as string,
+          name: (m.full_name as string) ?? 'Unknown',
+          genres: Array.isArray(meta.genres) ? meta.genres as string[] : [],
+          bio: (m.bio as string) ?? '',
+          avatar: (m.avatar_url as string) ?? '',
+          location: (m.location_text as string) ?? '',
+          distance: dist,
+          distanceStr: !hasDist ? '' : dist < 1 ? 'Less than 1 mile away' : `${Math.round(dist)} mile${Math.round(dist) === 1 ? '' : 's'} away`,
+          instagram: (m.instagram_url as string) ?? '',
+          youtube: (m.youtube_url as string) ?? '',
+          spotify: (m.spotify_url as string) ?? '',
+          performerType: (m.performer_type as string) ?? '',
+          bandMembers: (m.band_members as number | null) ?? null,
+          payRange: typeof meta.pay_range === 'string' ? meta.pay_range : '',
+        }
+      })
+      setRelMusicians(results)
+
+      // Merge in reputation badges for these musicians.
+      const musIds = results.map(r => r.id)
+      if (musIds.length > 0) {
+        void supabase.from('reviews').select('reviewee_id, rating, tags').in('reviewee_id', musIds)
+          .then(({ data: revRows }) => {
+            if (revRows) setMusicianReps(prev => {
+              const merged = new Map(prev)
+              groupReputations(revRows as { reviewee_id: string; rating: number; tags: string[] | null }[]).forEach((v, k) => merged.set(k, v))
+              return merged
+            })
+          })
+      }
+    } catch (err) {
+      console.error('Failed to load musicians by id:', err)
+      toast.error('Could not load those musicians. Please try again.')
+    } finally {
+      setRelLoading(false)
+    }
+  }
+
   const loadMusicianAvailability = async (lat: number, lon: number, radius: number) => {
     setAvailabilityLoading(true)
     try {
@@ -640,6 +708,18 @@ export default function RestaurantDashboard() {
       if (!user) return
       setUserId(user.id)
       void getSavedSet(user.id).then(setSavedMusicians)
+      // Relationship sets for the browse scope filter: musicians I follow, and musicians
+      // who follow me. We embed the counterpart profile's user_type and keep only
+      // musicians, so the "Follows You" / "Following" counts reflect what a venue
+      // actually browses (fans and other venues are excluded).
+      void supabase.from('follows').select('following_id, following:following_id(user_type)').eq('follower_id', user.id)
+        .then(({ data }) => setFollowingIds(new Set((data ?? [])
+          .filter(r => (r.following as { user_type?: string } | null)?.user_type === 'musician')
+          .map(r => r.following_id as string))))
+      void supabase.from('follows').select('follower_id, follower:follower_id(user_type)').eq('following_id', user.id)
+        .then(({ data }) => setFollowerIds(new Set((data ?? [])
+          .filter(r => (r.follower as { user_type?: string } | null)?.user_type === 'musician')
+          .map(r => r.follower_id as string))))
       // NOTE: Never include legal_name in queries unless fetching the current user's own profile
       // or in server-side Stripe routes. legal_name is private.
       const { data, error: profileErr } = await supabase
@@ -715,6 +795,22 @@ export default function RestaurantDashboard() {
     if (activeTab === 'profile' && userId) loadAnalytics(userId)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, userId])
+
+  // When a relationship scope (saved / following / followers) is active, fetch that set
+  // of musicians by id. Re-runs when membership changes (e.g. saving/unsaving a musician
+  // while viewing the Saved tab), so the list stays live.
+  const savedMusicianKey = [...savedMusicians].filter(k => k.startsWith('musician:')).sort().join(',')
+  const followingKey = [...followingIds].sort().join(',')
+  const followerKey = [...followerIds].sort().join(',')
+  useEffect(() => {
+    if (relationFilter === 'all') return
+    const ids =
+      relationFilter === 'saved' ? savedMusicianKey.split(',').filter(Boolean).map(k => k.slice('musician:'.length))
+      : relationFilter === 'following' ? followingKey.split(',').filter(Boolean)
+      : followerKey.split(',').filter(Boolean)
+    void loadMusiciansByIds(ids, restaurantCoords.lat, restaurantCoords.lon)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [relationFilter, savedMusicianKey, followingKey, followerKey, restaurantCoords.lat, restaurantCoords.lon])
 
   // ---- Actions ----
 
@@ -921,7 +1017,8 @@ export default function RestaurantDashboard() {
 
   const handleEditSlot = async () => {
     if (!editingSlot || !userId) return
-    // getDateOptions prepends the slot's existing (possibly past) date, so guard against saving a date in the past.
+    // The date picker disables past days, but an existing slot may already hold a past
+    // date — guard against saving one anyway.
     const todayStr = new Date().toISOString().slice(0, 10)
     if (editDraft.date && editDraft.date < todayStr) {
       toast.error("That date is in the past — pick today or later.")
@@ -1112,7 +1209,17 @@ export default function RestaurantDashboard() {
       case 'cancelled': return slots.filter(s => s.status === 'cancelled').sort((a, b) => b.rawDate.localeCompare(a.rawDate))
     }
   })()
-  const filteredMusicians = liveMusicians
+  // Musician ids the venue has saved (bookmarked), derived from the saved-items set.
+  const savedMusicianIds = [...savedMusicians].filter(k => k.startsWith('musician:')).map(k => k.slice('musician:'.length))
+  // When a relationship scope is active we browse that fetched set; otherwise the radius search.
+  const baseMusicians = relationFilter === 'all' ? liveMusicians : relMusicians
+  const browseListLoading = relationFilter === 'all' ? browseLoading : relLoading
+  const relationCounts = {
+    saved: savedMusicianIds.length,
+    following: followingIds.size,
+    followers: followerIds.size,
+  }
+  const filteredMusicians = baseMusicians
     .filter(m => {
       const q = search.toLowerCase()
       const matchSearch = !q || m.name.toLowerCase().includes(q) || m.genres.some(g => g.toLowerCase().includes(q))
@@ -1716,6 +1823,7 @@ export default function RestaurantDashboard() {
             {browseView === 'availability' && (() => {
               const filteredAvailability = musicianAvailability.filter(s =>
                 (availMinPay === 0 || (s.min_pay ?? 0) >= availMinPay) &&
+                (availMaxPay === 0 || (s.min_pay ?? 0) <= availMaxPay) &&
                 (!availDate || s.date === availDate)
               )
               return (
@@ -1736,32 +1844,44 @@ export default function RestaurantDashboard() {
                 </div>
 
                 {/* Pay + date filters */}
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="flex items-center gap-1.5 bg-white rounded-xl px-3 py-2 shadow-sm flex-1">
-                    <label htmlFor="avail-minpay" className="text-charcoal/60 text-xs font-semibold shrink-0">Min pay</label>
-                    <select
-                      id="avail-minpay"
-                      value={availMinPay}
-                      onChange={e => setAvailMinPay(Number(e.target.value))}
-                      className="bg-transparent text-graphite text-sm font-bold focus:outline-none cursor-pointer flex-1"
-                    >
-                      <option value={0}>Any</option>
-                      {[100, 150, 200, 300, 500].map(v => <option key={v} value={v}>{formatMoney(v)}+</option>)}
-                    </select>
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
+                  <div className="flex items-center gap-2 bg-white rounded-xl px-3 py-2 shadow-sm">
+                    <span className="text-charcoal/60 text-xs font-semibold shrink-0">Pay</span>
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-charcoal/40 text-sm pointer-events-none">$</span>
+                      <input
+                        type="number" inputMode="numeric" min={0} step={25}
+                        aria-label="Minimum pay"
+                        placeholder="Min"
+                        value={availMinPay || ''}
+                        onChange={e => setAvailMinPay(Number(e.target.value) || 0)}
+                        className="w-20 pl-5 pr-2 py-1 rounded-lg bg-snow text-graphite text-sm font-bold shadow-sm focus:shadow-md focus:outline-none transition-shadow"
+                      />
+                    </div>
+                    <span className="text-charcoal/40 text-xs">–</span>
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-charcoal/40 text-sm pointer-events-none">$</span>
+                      <input
+                        type="number" inputMode="numeric" min={0} step={25}
+                        aria-label="Maximum pay"
+                        placeholder="Max"
+                        value={availMaxPay || ''}
+                        onChange={e => setAvailMaxPay(Number(e.target.value) || 0)}
+                        className="w-20 pl-5 pr-2 py-1 rounded-lg bg-snow text-graphite text-sm font-bold shadow-sm focus:shadow-md focus:outline-none transition-shadow"
+                      />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5 bg-white rounded-xl px-3 py-2 shadow-sm flex-1">
-                    <label htmlFor="avail-date" className="text-charcoal/60 text-xs font-semibold shrink-0">Date</label>
-                    <input
-                      id="avail-date"
-                      type="date"
+                  <div className="flex items-center gap-2 bg-white rounded-xl px-3 py-2 shadow-sm flex-1 min-w-[10rem]">
+                    <span className="text-charcoal/60 text-xs font-semibold shrink-0">Date</span>
+                    <PrettyDatePicker
                       value={availDate}
+                      onChange={setAvailDate}
                       min={new Date().toISOString().slice(0, 10)}
-                      onChange={e => setAvailDate(e.target.value)}
-                      className="bg-transparent text-graphite text-sm font-bold focus:outline-none cursor-pointer flex-1 min-w-0"
+                      className="flex-1 min-w-0"
                     />
                   </div>
-                  {(availMinPay !== 0 || availDate) && (
-                    <button onClick={() => { setAvailMinPay(0); setAvailDate('') }} aria-label="Clear filters" className="shrink-0 text-charcoal/50 hover:text-graphite p-2 rounded-lg hover:bg-white transition-colors">
+                  {(availMinPay !== 0 || availMaxPay !== 0 || availDate) && (
+                    <button onClick={() => { setAvailMinPay(0); setAvailMaxPay(0); setAvailDate('') }} aria-label="Clear filters" className="shrink-0 text-charcoal/50 hover:text-graphite p-2 rounded-lg hover:bg-white transition-colors">
                       <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                     </button>
                   )}
@@ -1783,7 +1903,7 @@ export default function RestaurantDashboard() {
                 ) : filteredAvailability.length === 0 ? (
                   <div className="bg-white rounded-2xl p-6 text-center shadow-sm">
                     <p className="text-graphite font-bold text-sm mb-1">No slots match your filters</p>
-                    <button onClick={() => { setAvailMinPay(0); setAvailDate('') }} className="text-chestnut text-xs font-bold hover:underline mt-1">Clear filters</button>
+                    <button onClick={() => { setAvailMinPay(0); setAvailMaxPay(0); setAvailDate('') }} className="text-chestnut text-xs font-bold hover:underline mt-1">Clear filters</button>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -1843,23 +1963,21 @@ export default function RestaurantDashboard() {
             {/* ---- MUSICIANS VIEW ---- */}
             {browseView === 'musicians' && (<>
 
-            {/* Radius filter bar */}
+            {/* Radius filter bar — only meaningful for the radius-based "All Nearby" scope */}
+            {relationFilter === 'all' && (
             <div className="flex items-center justify-between gap-3 mb-4 bg-white rounded-xl px-4 py-2.5 shadow-sm">
               <div className="flex items-center gap-2">
                 <svg className="w-4 h-4 text-chestnut shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                <label htmlFor="browse-radius" className="text-charcoal text-sm font-semibold">Within</label>
-                <select
-                  id="browse-radius"
-                  value={discoveryRadius}
-                  onChange={e => { const v = Number(e.target.value); setRadiusDraft(v); void saveRadius(v) }}
-                  disabled={savingRadius}
-                  className="bg-transparent text-charcoal text-sm font-bold focus:outline-none cursor-pointer disabled:opacity-50"
-                >
-                  {[10, 25, 50, 100].map(r => <option key={r} value={r}>{r} miles</option>)}
-                </select>
+                <label className="text-charcoal text-sm font-semibold">Within</label>
+                <PrettySelect
+                  ariaLabel="Discovery radius"
+                  value={String(discoveryRadius)}
+                  onChange={v => { const n = Number(v); setRadiusDraft(n); void saveRadius(n) }}
+                  options={[10, 25, 50, 100].map(r => ({ value: String(r), label: `${r} miles` }))}
+                />
               </div>
               <button
                 onClick={() => {
@@ -1872,6 +1990,33 @@ export default function RestaurantDashboard() {
               >
                 {browseLoading ? 'Loading…' : <span className="inline-flex items-center gap-1"><svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>Refresh</span>}
               </button>
+            </div>
+            )}
+
+            {/* Relationship scope: everyone nearby vs. saved / following / follows you */}
+            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-0.5 no-scrollbar">
+              {([
+                { key: 'all' as const, label: 'All Nearby', icon: <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg> },
+                { key: 'saved' as const, label: 'Saved', count: relationCounts.saved, icon: <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> },
+                { key: 'following' as const, label: 'Following', count: relationCounts.following, icon: <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6"/></svg> },
+                { key: 'followers' as const, label: 'Follows You', count: relationCounts.followers, icon: <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg> },
+              ] as const).map(opt => {
+                const active = relationFilter === opt.key
+                const count = 'count' in opt ? opt.count : undefined
+                return (
+                  <button
+                    key={opt.key}
+                    onClick={() => setRelationFilter(opt.key)}
+                    className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${active ? 'bg-graphite text-snow shadow-sm' : 'bg-white text-charcoal hover:bg-[#E8E4E0]'}`}
+                  >
+                    {opt.icon}
+                    {opt.label}
+                    {count != null && count > 0 && (
+                      <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none ${active ? 'bg-snow/25 text-snow' : 'bg-chestnut/15 text-chestnut'}`}>{count}</span>
+                    )}
+                  </button>
+                )
+              })}
             </div>
 
             {/* Search */}
@@ -1965,14 +2110,14 @@ export default function RestaurantDashboard() {
             )}
 
             {/* Loading skeleton */}
-            {browseLoading && (
+            {browseListLoading && (
               <div className="space-y-3">
                 <SkeletonMusicianCard /><SkeletonMusicianCard /><SkeletonMusicianCard />
               </div>
             )}
 
-            {/* No location */}
-            {!browseLoading && restaurantCoords.lat == null && (
+            {/* No location (only matters for the radius-based "All Nearby" scope) */}
+            {!browseListLoading && relationFilter === 'all' && restaurantCoords.lat == null && (
               <EmptyState seed={17}
                 icon={<svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>}
                 title="Location not set"
@@ -1980,8 +2125,8 @@ export default function RestaurantDashboard() {
               />
             )}
 
-            {/* Empty state */}
-            {!browseLoading && restaurantCoords.lat != null && filteredMusicians.length === 0 && (
+            {/* Empty state — radius search */}
+            {!browseListLoading && relationFilter === 'all' && restaurantCoords.lat != null && filteredMusicians.length === 0 && (
               <EmptyState seed={17}
                 icon={<svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>}
                 title={`No musicians found within ${discoveryRadius} miles`}
@@ -1992,8 +2137,26 @@ export default function RestaurantDashboard() {
               />
             )}
 
+            {/* Empty state — relationship scopes */}
+            {!browseListLoading && relationFilter !== 'all' && filteredMusicians.length === 0 && (
+              <EmptyState seed={17}
+                icon={relationFilter === 'saved'
+                  ? <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                  : <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>}
+                title={relationFilter === 'saved' ? 'No saved musicians yet'
+                  : relationFilter === 'following' ? 'You\'re not following anyone yet'
+                  : 'No musicians follow you yet'}
+                body={relationFilter === 'saved' ? 'Tap the bookmark on any musician to save them here for quick access later.'
+                  : relationFilter === 'following' ? 'Follow musicians from their profile to keep a shortlist of talent you love.'
+                  : 'When musicians follow your venue, they\'ll show up here so you can reach out first.'}
+                action={search || genreFilters.length > 0 || typeFilter !== 'all'
+                  ? undefined
+                  : { label: 'Browse nearby talent', onClick: () => setRelationFilter('all') }}
+              />
+            )}
+
             {/* Musician cards */}
-            {!browseLoading && filteredMusicians.length > 0 && (
+            {!browseListLoading && filteredMusicians.length > 0 && (
               <div className="space-y-3">
                 {filteredMusicians.map(m => (
                   <div key={m.id} className="bg-white rounded-2xl p-4 shadow-sm" >
@@ -2009,6 +2172,9 @@ export default function RestaurantDashboard() {
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-chestnut/10 text-chestnut">
                               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>Band{m.bandMembers ? ` · ${m.bandMembers}` : ''}
                             </span>
+                          )}
+                          {followerIds.has(m.id) && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-graphite/[0.07] text-graphite"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Follows you</span>
                           )}
                         </div>
                         {m.location && <p className="text-charcoal text-xs mt-0.5">{m.location}</p>}
@@ -2328,13 +2494,14 @@ export default function RestaurantDashboard() {
                 </div>
               )}
               <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Date</label>
-              <StyledSelect
-                value={editDraft.date}
-                onChange={v => setEditDraft(p => ({ ...p, date: v }))}
-                options={getDateOptions(editDraft.date)}
-                placeholder="Pick a date"
-                className="mb-5"
-              />
+              <div className="mb-5 bg-white rounded-xl px-4 py-3 shadow-sm border border-charcoal/10">
+                <PrettyDatePicker
+                  value={editDraft.date}
+                  onChange={v => setEditDraft(p => ({ ...p, date: v }))}
+                  min={new Date().toISOString().slice(0, 10)}
+                  placeholder="Pick a date"
+                />
+              </div>
               <div className="grid grid-cols-2 gap-3 mb-5">
                 <div>
                   <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Start Time</label>
@@ -2514,13 +2681,14 @@ export default function RestaurantDashboard() {
             </div>
             <div className="p-6">
               <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Date</label>
-              <StyledSelect
-                value={newSlot.date}
-                onChange={v => setNewSlot(p => ({ ...p, date: v }))}
-                options={getDateOptions()}
-                placeholder="Pick a date"
-                className="mb-5"
-              />
+              <div className="mb-5 bg-white rounded-xl px-4 py-3 shadow-sm border border-charcoal/10">
+                <PrettyDatePicker
+                  value={newSlot.date}
+                  onChange={v => setNewSlot(p => ({ ...p, date: v }))}
+                  min={new Date().toISOString().slice(0, 10)}
+                  placeholder="Pick a date"
+                />
+              </div>
               <div className="grid grid-cols-2 gap-3 mb-5">
                 <div>
                   <label className="block text-charcoal text-xs font-semibold uppercase tracking-wide mb-1.5">Start Time</label>
@@ -2875,25 +3043,6 @@ function SlotCalendar({ slots, calendarMonth, setCalendarMonth, calendarSelected
 }
 
 
-function getDateOptions(currentValue?: string) {
-  const options: { value: string; label: string }[] = []
-  const today = new Date()
-  for (let i = 0; i < 90; i++) {
-    const d = new Date(today)
-    d.setDate(today.getDate() + i)
-    const value = d.toISOString().split('T')[0]
-    const prefix = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'long' })
-    options.push({ value, label: `${prefix} · ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` })
-  }
-  if (currentValue && !options.some(o => o.value === currentValue)) {
-    const d = new Date(currentValue + 'T00:00:00')
-    options.unshift({
-      value: currentValue,
-      label: d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
-    })
-  }
-  return options
-}
 
 function StyledSelect({ value, onChange, options, placeholder, className = '', disabled = false }: {
   value: string

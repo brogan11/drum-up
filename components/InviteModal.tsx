@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { TIME_OPTIONS, endTimeOptions } from '@/lib/time'
 import Modal from '@/components/Modal'
+import { PrettyDatePicker } from '@/components/PrettyDatePicker'
 
 interface OpenSlot {
   id: string
@@ -231,12 +232,14 @@ export default function InviteModal({ musicianId, musicianName, onClose, onSucce
             <div className="space-y-4 mb-4">
               <div>
                 <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">Date</label>
-                <StyledSelect
-                  value={date}
-                  onChange={setDate}
-                  options={getDateOptions()}
-                  placeholder="Pick a date"
-                />
+                <div className="bg-white rounded-xl px-4 py-3 shadow-sm border border-charcoal/10">
+                  <PrettyDatePicker
+                    value={date}
+                    onChange={setDate}
+                    min={new Date().toISOString().slice(0, 10)}
+                    placeholder="Pick a date"
+                  />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -321,19 +324,6 @@ export default function InviteModal({ musicianId, musicianName, onClose, onSucce
         </div>
     </Modal>
   )
-}
-
-function getDateOptions() {
-  const options: { value: string; label: string }[] = []
-  const today = new Date()
-  for (let i = 0; i < 90; i++) {
-    const d = new Date(today)
-    d.setDate(today.getDate() + i)
-    const value = d.toISOString().split('T')[0]
-    const prefix = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'long' })
-    options.push({ value, label: `${prefix} · ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` })
-  }
-  return options
 }
 
 function StyledSelect({ value, onChange, options, placeholder, className = '', disabled = false }: {

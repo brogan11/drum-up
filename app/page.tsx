@@ -3,6 +3,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { eqBarStyle } from '@/lib/eq'
 import { HowItWorksTabs } from '@/components/HowItWorksTabs'
+import { ScrollLink } from '@/components/ScrollLink'
 import {
   IconZap, IconPin, IconClock, IconCalSmall, IconHouse, IconMusic, IconTick, IconPlay,
   IconShield, IconGift, IconTag,
@@ -78,9 +79,9 @@ export default function HomePage() {
             <span className="text-snow text-xl font-black tracking-tight">Drum Up</span>
           </Link>
           <div className="flex items-center gap-4 md:gap-6">
-            <Link href="#how" className="text-snow hover:text-chestnut transition-colors font-medium hidden md:inline">How It Works</Link>
-            <Link href="#why" className="text-snow hover:text-chestnut transition-colors font-medium hidden md:inline">Why Us</Link>
-            <Link href="#faq" className="text-snow hover:text-chestnut transition-colors font-medium hidden md:inline">FAQ</Link>
+            <ScrollLink href="#how" className="text-snow hover:text-chestnut transition-colors font-medium hidden md:inline">How It Works</ScrollLink>
+            <ScrollLink href="#why" className="text-snow hover:text-chestnut transition-colors font-medium hidden md:inline">Why Us</ScrollLink>
+            <ScrollLink href="#faq" className="text-snow hover:text-chestnut transition-colors font-medium hidden md:inline">FAQ</ScrollLink>
 
             {/* Social — brand chestnut */}
             <div className="flex items-center gap-2">
@@ -650,9 +651,9 @@ export default function HomePage() {
               <div>
                 <p className="text-snow/50 text-[10px] font-bold uppercase tracking-widest mb-3">Navigate</p>
                 <ul className="text-snow/70 text-sm space-y-2">
-                  <li><Link href="#how" className="hover:text-chestnut transition-colors">How It Works</Link></li>
-                  <li><Link href="#why" className="hover:text-chestnut transition-colors">Why Drum Up</Link></li>
-                  <li><Link href="#faq" className="hover:text-chestnut transition-colors">FAQ</Link></li>
+                  <li><ScrollLink href="#how" className="hover:text-chestnut transition-colors">How It Works</ScrollLink></li>
+                  <li><ScrollLink href="#why" className="hover:text-chestnut transition-colors">Why Drum Up</ScrollLink></li>
+                  <li><ScrollLink href="#faq" className="hover:text-chestnut transition-colors">FAQ</ScrollLink></li>
                   <li><Link href="/auth/signup" className="hover:text-chestnut transition-colors">Sign Up</Link></li>
                   <li><Link href="/auth/login" className="hover:text-chestnut transition-colors">Log In</Link></li>
                 </ul>

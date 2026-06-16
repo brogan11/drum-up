@@ -18,6 +18,7 @@ import { formatMoney } from '@/lib/analytics'
 import { TIME_OPTIONS, endTimeOptions } from '@/lib/time'
 import { groupReputations, type RepSummary } from '@/lib/reviews'
 import { RatingBadge } from '@/components/RatingBadge'
+import { PrettyDatePicker } from '@/components/PrettyDatePicker'
 import InvitePeopleModal from '@/components/InvitePeopleModal'
 import Modal from '@/components/Modal'
 import {
@@ -202,7 +203,12 @@ export default function MusicianDashboard() {
   const [gigGenreFilters, setGigGenreFilters] = useState<string[]>([])
   const [gigSortBy, setGigSortBy] = useState<'date' | 'pay-high' | 'pay-low' | 'distance'>('date')
   const [gigGenrePanelOpen, setGigGenrePanelOpen] = useState(false)
-  const [showSavedGigsOnly, setShowSavedGigsOnly] = useState(false)
+  // Relationship scope for the gig browse: everything nearby, gigs you've saved,
+  // gigs from venues you follow, or gigs from venues that follow you. Venue
+  // relationships only count restaurants (fans/musicians are excluded).
+  const [gigRelationFilter, setGigRelationFilter] = useState<'all' | 'saved' | 'following' | 'followers'>('all')
+  const [followingVenueIds, setFollowingVenueIds] = useState<Set<string>>(new Set())
+  const [followerVenueIds, setFollowerVenueIds] = useState<Set<string>>(new Set())
   const [selectedGig, setSelectedGig] = useState<Gig | null>(null)
   // Aggregate reputation per venue, keyed by venue (restaurant) id, for browse cards.
   const [venueReps, setVenueReps] = useState<Map<string, RepSummary>>(new Map())
@@ -373,6 +379,17 @@ export default function MusicianDashboard() {
 
         setUserId(user.id)
         void getSavedSet(user.id).then(setSavedGigs)
+        // Venue relationship sets for the gig-browse scope filter: restaurants I follow,
+        // and restaurants that follow me. We embed the counterpart's user_type and keep
+        // only restaurants so the counts reflect what a musician actually browses.
+        void supabase.from('follows').select('following_id, following:following_id(user_type)').eq('follower_id', user.id)
+          .then(({ data }) => setFollowingVenueIds(new Set((data ?? [])
+            .filter(r => (r.following as { user_type?: string } | null)?.user_type === 'restaurant')
+            .map(r => r.following_id as string))))
+        void supabase.from('follows').select('follower_id, follower:follower_id(user_type)').eq('following_id', user.id)
+          .then(({ data }) => setFollowerVenueIds(new Set((data ?? [])
+            .filter(r => (r.follower as { user_type?: string } | null)?.user_type === 'restaurant')
+            .map(r => r.follower_id as string))))
 
         // legal_name and stripe_account_id are column-revoked from the client role
         // (see migration 2026_06_01_profiles_column_security.sql) — they must be read
@@ -1117,13 +1134,23 @@ export default function MusicianDashboard() {
   ]
   const profilePct = Math.round((profileChecks.filter(c => c.done).length / profileChecks.length) * 100)
   const profileMissing = profileChecks.filter(c => !c.done).map(c => c.label)
+  const savedGigCount = [...savedGigs].filter(k => k.startsWith('gig:')).length
+  const gigRelationCounts = {
+    saved: savedGigCount,
+    following: followingVenueIds.size,
+    followers: followerVenueIds.size,
+  }
   const filteredGigs = gigs
     .filter(g => {
       const q = gigSearch.toLowerCase()
       const matchSearch = !q || g.venue.name.toLowerCase().includes(q) || g.genres.some(x => x.toLowerCase().includes(q))
       const matchGenre = gigGenreFilters.length === 0 || gigGenreFilters.some(f => g.genres.includes(f))
-      const matchSaved = !showSavedGigsOnly || savedGigs.has(savedKey('gig', g.id))
-      return matchSearch && matchGenre && matchSaved
+      const matchRelation =
+        gigRelationFilter === 'all' ? true
+        : gigRelationFilter === 'saved' ? savedGigs.has(savedKey('gig', g.id))
+        : gigRelationFilter === 'following' ? followingVenueIds.has(g.venue.id)
+        : followerVenueIds.has(g.venue.id)
+      return matchSearch && matchGenre && matchRelation
     })
     .sort((a, b) => {
       if (gigSortBy === 'pay-high') return b.budget - a.budget
@@ -1398,6 +1425,32 @@ export default function MusicianDashboard() {
                 Browse <span className="text-chestnut italic">Gigs.</span>
               </h2>
             </div>
+            {/* Relationship scope: all open gigs vs. saved / venues you follow / venues that follow you */}
+            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-0.5 no-scrollbar">
+              {([
+                { key: 'all' as const, label: 'All Open', icon: <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> },
+                { key: 'saved' as const, label: 'Saved', count: gigRelationCounts.saved, icon: <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> },
+                { key: 'following' as const, label: 'Following', count: gigRelationCounts.following, icon: <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6"/></svg> },
+                { key: 'followers' as const, label: 'Follows You', count: gigRelationCounts.followers, icon: <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg> },
+              ] as const).map(opt => {
+                const active = gigRelationFilter === opt.key
+                const count = 'count' in opt ? opt.count : undefined
+                return (
+                  <button
+                    key={opt.key}
+                    onClick={() => setGigRelationFilter(opt.key)}
+                    className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${active ? 'bg-graphite text-snow shadow-sm' : 'bg-white text-charcoal hover:bg-[#E8E4E0]'}`}
+                  >
+                    {opt.icon}
+                    {opt.label}
+                    {count != null && count > 0 && (
+                      <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none ${active ? 'bg-snow/25 text-snow' : 'bg-chestnut/15 text-chestnut'}`}>{count}</span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+
             {/* Search */}
             <div className="relative mb-3">
               <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-charcoal/40 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
@@ -1424,13 +1477,6 @@ export default function MusicianDashboard() {
                     className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${gigSortBy === opt.key ? 'bg-chestnut text-snow shadow-sm' : 'bg-white text-charcoal hover:bg-[#E8E4E0]'}`}
                   >{opt.label}</button>
                 ))}
-                <button
-                  onClick={() => setShowSavedGigsOnly(s => !s)}
-                  className={`shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${showSavedGigsOnly ? 'bg-chestnut text-snow shadow-sm' : 'bg-white text-charcoal hover:bg-[#E8E4E0]'}`}
-                >
-                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill={showSavedGigsOnly ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-                  Saved
-                </button>
               </div>
               <button
                 onClick={() => setGigGenrePanelOpen(o => !o)}
@@ -1491,11 +1537,34 @@ export default function MusicianDashboard() {
                 <SkeletonMusicianCard />
               </div>
             ) : filteredGigs.length === 0 ? (
-              <EmptyState
-                icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>}
-                title="No open gigs right now"
-                body="Restaurants post available slots here. Check back soon — new gigs appear as venues look for talent."
-              />
+              gigRelationFilter === 'saved' ? (
+                <EmptyState
+                  icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>}
+                  title="No saved gigs yet"
+                  body="Tap the bookmark on any gig to save it here for quick access later."
+                  action={{ label: 'Browse all open gigs', onClick: () => setGigRelationFilter('all') }}
+                />
+              ) : gigRelationFilter === 'following' ? (
+                <EmptyState
+                  icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>}
+                  title="No gigs from venues you follow"
+                  body="Follow venues from their profile to keep their open slots in one place."
+                  action={{ label: 'Browse all open gigs', onClick: () => setGigRelationFilter('all') }}
+                />
+              ) : gigRelationFilter === 'followers' ? (
+                <EmptyState
+                  icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>}
+                  title="No gigs from venues that follow you"
+                  body="When venues follow you, their open slots show up here so you can apply first."
+                  action={{ label: 'Browse all open gigs', onClick: () => setGigRelationFilter('all') }}
+                />
+              ) : (
+                <EmptyState
+                  icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>}
+                  title="No open gigs right now"
+                  body="Restaurants post available slots here. Check back soon — new gigs appear as venues look for talent."
+                />
+              )
             ) : (
               <div className="space-y-3">
                 {filteredGigs.map(gig => (
@@ -1504,7 +1573,12 @@ export default function MusicianDashboard() {
                       <div className="flex items-center gap-3">
                         <Avatar src={gig.venue.avatar} className="w-11 h-11 rounded-full" textSize="text-xl" />
                         <div>
-                          <p className="text-graphite font-bold text-sm">{gig.venue.name}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-graphite font-bold text-sm">{gig.venue.name}</p>
+                            {followerVenueIds.has(gig.venue.id) && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-graphite/[0.07] text-graphite"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Follows you</span>
+                            )}
+                          </div>
                           <p className="text-charcoal text-xs">{gig.venue.type} · {gig.venue.distance}</p>
                           <RatingBadge rep={venueReps.get(gig.venue.id)} className="mt-0.5" />
                         </div>
@@ -2574,18 +2648,6 @@ export default function MusicianDashboard() {
 
 // ---- PostAvailabilityModal ----
 
-function getAvailDateOptions() {
-  const options: { value: string; label: string }[] = []
-  const today = new Date()
-  for (let i = 0; i < 90; i++) {
-    const d = new Date(today)
-    d.setDate(today.getDate() + i)
-    const value = d.toISOString().split('T')[0]
-    const prefix = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'long' })
-    options.push({ value, label: `${prefix} · ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` })
-  }
-  return options
-}
 
 function AvailSelect({ value, onChange, options, placeholder, disabled = false }: {
   value: string
@@ -2701,7 +2763,9 @@ function PostAvailabilityModal({ userId, myLat, myLon, onClose, onSuccess }: {
         <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
           <div>
             <label className="text-charcoal text-xs font-semibold uppercase tracking-wide block mb-1.5">Date</label>
-            <AvailSelect value={date} onChange={setDate} options={getAvailDateOptions()} placeholder="Pick a date" />
+            <div className="bg-white rounded-xl px-4 py-3 shadow-sm border border-charcoal/10">
+              <PrettyDatePicker value={date} onChange={setDate} min={new Date().toISOString().slice(0, 10)} placeholder="Pick a date" />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

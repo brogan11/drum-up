@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { AreaChart, CHART } from '@/components/Charts'
+import { PrettyDatePicker } from '@/components/PrettyDatePicker'
 
 // ---- Types ----
 
@@ -1856,8 +1857,9 @@ export default function AdminDashboard() {
                     </div>
                     <div className="flex-1">
                       <label className="text-[10px] uppercase tracking-widest text-charcoal">Until (optional)</label>
-                      <input type="date" value={feeUntilInput} onChange={e => setFeeUntilInput(e.target.value)}
-                        className="w-full px-2 py-1.5 rounded-lg bg-snow text-sm text-graphite shadow-sm focus:outline-none" />
+                      <div className="w-full px-2 py-1.5 rounded-lg bg-snow shadow-sm">
+                        <PrettyDatePicker value={feeUntilInput} onChange={setFeeUntilInput} min={new Date().toISOString().slice(0, 10)} placeholder="No expiry" />
+                      </div>
                     </div>
                   </div>
                   <div className="flex gap-2 mt-3">

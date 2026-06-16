@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Smooth in-page anchor navigation (e.g. nav links to #how / #why / #faq).
+   scroll-padding-top offsets the fixed nav so targeted sections aren't hidden
+   beneath it. Disabled automatically by the prefers-reduced-motion block below. */
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 5.5rem;
+}
+
 /* Respect users who ask the OS to minimize motion. Neutralizes the perpetual
    EQ bars, marquee, spin rings, and ping dot for vestibular safety + low-end
    battery. Kept at the very top so nothing overrides it. */
